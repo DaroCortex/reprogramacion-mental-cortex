@@ -93,6 +93,7 @@ export default function App() {
   const [adminName, setAdminName] = useState("");
   const [adminFile, setAdminFile] = useState(null);
   const [adminLink, setAdminLink] = useState("");
+  const [replaceSlug, setReplaceSlug] = useState("");
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [audioSrc, setAudioSrc] = useState("");
   const [audioStatus, setAudioStatus] = useState("idle");
@@ -121,6 +122,7 @@ export default function App() {
   const breathAudioRef = useRef(null);
   const bosqueAudioRef = useRef(null);
   const endApneaAudioRef = useRef(null);
+  const replaceInputRef = useRef(null);
   const intervalRef = useRef(null);
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
@@ -395,7 +397,8 @@ export default function App() {
           ...(prev.apneaHistory || []),
           {
             date: today,
-            seconds: Math.round((lastApneaMsRef.current || 0) / 1000)
+            seconds: Math.round((lastApneaMsRef.current || 0) / 1000),
+            timestamp: new Date().toISOString()
           }
         ].slice(-10),
         lastSummary: {
@@ -715,6 +718,65 @@ export default function App() {
     }
   };
 
+  const handleReplaceClick = (slugToUpdate) => {
+    setReplaceSlug(slugToUpdate);
+    if (replaceInputRef.current) {
+      replaceInputRef.current.value = "";
+      replaceInputRef.current.click();
+    }
+  };
+
+  const handleAdminReplace = async (file) => {
+    if (!adminPassword || !replaceSlug || !file) return;
+    setAdminStatus("loading");
+    setAdminMessage("");
+    try {
+      const signRes = await fetch("/api/admin/sign-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          fileName: file.name,
+          contentType: file.type || "audio/mpeg"
+        })
+      });
+      if (!signRes.ok) {
+        const detail = await signRes.json().catch(() => ({}));
+        throw new Error(detail?.error || "No se pudo firmar");
+      }
+      const { key, uploadUrl } = await signRes.json();
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "audio/mpeg" },
+        body: file
+      });
+      if (!uploadRes.ok) {
+        throw new Error("No se pudo subir audio");
+      }
+
+      const updateRes = await fetch("/api/admin/update-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          slug: replaceSlug,
+          audioKey: key
+        })
+      });
+      if (!updateRes.ok) {
+        const detail = await updateRes.json().catch(() => ({}));
+        throw new Error(detail?.error || "No se pudo actualizar");
+      }
+      await ensureAdminList(adminPassword);
+      setAdminStatus("ready");
+      setAdminMessage("Audio reemplazado.");
+    } catch (error) {
+      setAdminStatus("ready");
+      setAdminMessage(error?.message || "No se pudo reemplazar el audio.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="app">
@@ -849,6 +911,12 @@ export default function App() {
                         >
                           Abrir link
                         </a>
+                        <button
+                          className="secondary"
+                          onClick={() => handleReplaceClick(item.slug)}
+                        >
+                          Reemplazar audio
+                        </button>
                         <button
                           className="ghost"
                           onClick={() => handleAdminDelete(item.slug)}
@@ -1133,8 +1201,28 @@ export default function App() {
               Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones / apnea {progress.lastSummary.apneaSeconds || 0}s
             </div>
           )}
+          {progress.apneaHistory && progress.apneaHistory.length > 0 && (
+            <div className="history">
+              <div className="history-title">Historial de apnea</div>
+              <div className="history-list">
+                {progress.apneaHistory.map((entry, index) => (
+                  <div key={`${entry.timestamp || entry.date}-${index}`} className="history-item">
+                    <span>{entry.date}</span>
+                    <strong>{entry.seconds}s</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       </main>
+      <input
+        ref={replaceInputRef}
+        className="hidden-input"
+        type="file"
+        accept="audio/*"
+        onChange={(event) => handleAdminReplace(event.target.files?.[0] || null)}
+      />
     </div>
   );
 }

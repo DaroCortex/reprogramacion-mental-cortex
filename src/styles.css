@@ -301,6 +301,44 @@ input[type="range"] {
   gap: 12px;
 }
 
+.history {
+  margin-top: 16px;
+  border-top: 1px dashed var(--stroke);
+  padding-top: 12px;
+}
+
+.history-title {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #f6f3ee;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.history-item strong {
+  color: var(--ink);
+}
+
+.hidden-input {
+  position: fixed;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .admin-login {
   margin-top: 16px;
   display: flex;
