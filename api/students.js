@@ -5,8 +5,7 @@ export default async function handler(req, res) {
     const students = await readStudents();
     const safe = students.map((item) => ({
       name: item.name,
-      slug: item.slug,
-      audioKey: item.audioKey
+      slug: item.slug
     }));
     return res.status(200).json({ students: safe });
   } catch (error) {

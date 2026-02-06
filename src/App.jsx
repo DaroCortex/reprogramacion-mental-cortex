@@ -4,10 +4,10 @@ const DEFAULT_CONFIG = {
   breathsPerCycle: 30,
   inhaleSeconds: 2,
   exhaleSeconds: 2,
-  apneaSeconds: 60,
   recoverySeconds: 15,
   cycles: 3,
-  audioVolume: 0.8
+  audioVolume: 0.8,
+  bosqueVolume: 0.5
 };
 
 const PHASE_LABELS = {
@@ -19,6 +19,13 @@ const PHASE_LABELS = {
 };
 
 const TICK_MS = 100;
+const DOUBLE_TAP_MS = 280;
+
+const SYSTEM_AUDIO = {
+  respirax1: { slug: "respirax1", token: "1ffa5a6383f639d9cecc6d449e5074c7" },
+  bosque7: { slug: "bosque", token: "2ae1d8e90778ae226e1efd07c6d2b30b" },
+  inalamos: { slug: "inalamos", token: "871dc638b69167c142ddf7ddc6cdffc8" }
+};
 
 const getSlugFromLocation = () => {
   const params = new URLSearchParams(window.location.search);
@@ -97,18 +104,27 @@ export default function App() {
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [breathPulse, setBreathPulse] = useState(0);
+  const [pulseKey, setPulseKey] = useState(0);
 
   const [progress, setProgress] = useState({
     totalSessions: 0,
     totalBreaths: 0,
     streak: 0,
     lastSessionDate: "",
-    lastSummary: null
+    lastSummary: null,
+    lastApneaSeconds: 0,
+    apneaHistory: []
   });
 
   const audioRef = useRef(null);
+  const breathAudioRef = useRef(null);
+  const bosqueAudioRef = useRef(null);
+  const endApneaAudioRef = useRef(null);
   const intervalRef = useRef(null);
   const sessionStartRef = useRef(null);
+  const lastTapRef = useRef(0);
+  const lastApneaMsRef = useRef(0);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -178,14 +194,59 @@ export default function App() {
   }, [config.audioVolume]);
 
   useEffect(() => {
+    if (!bosqueAudioRef.current) return;
+    bosqueAudioRef.current.volume = Math.min(1, Math.max(0, config.bosqueVolume));
+  }, [config.bosqueVolume]);
+
+  useEffect(() => {
     setAudioSrc("");
     setAudioStatus("idle");
   }, [student?.slug]);
 
   useEffect(() => {
+    const loadSystemAudio = async () => {
+      const entries = Object.entries(SYSTEM_AUDIO);
+      for (const [key, value] of entries) {
+        try {
+          const response = await fetch(
+            `/api/audio?slug=${encodeURIComponent(value.slug)}&token=${encodeURIComponent(value.token)}`
+          );
+          if (!response.ok) continue;
+          const data = await response.json();
+          if (!data?.url) continue;
+          if (key === "respirax1" && breathAudioRef.current) {
+            breathAudioRef.current.src = data.url;
+          }
+          if (key === "bosque7" && bosqueAudioRef.current) {
+            bosqueAudioRef.current.src = data.url;
+          }
+          if (key === "inalamos" && endApneaAudioRef.current) {
+            endApneaAudioRef.current.src = data.url;
+          }
+        } catch (error) {
+          // ignore
+        }
+      }
+    };
+    loadSystemAudio();
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning || isPaused) {
+      stopBosque();
+      return;
+    }
+    playBosque();
+  }, [phase, isRunning, isPaused]);
+
+  useEffect(() => {
     if (!isRunning || isPaused) return;
 
     intervalRef.current = setInterval(() => {
+      if (phase === "apnea") {
+        setTimeLeftMs((prev) => prev + TICK_MS);
+        return;
+      }
       setTimeLeftMs((prev) => {
         const next = prev - TICK_MS;
         if (next > 0) return next;
@@ -216,6 +277,9 @@ export default function App() {
 
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
+      setBreathPulse(nextBreaths + 1);
+      setPulseKey((prev) => prev + 1);
+      playBreathSound();
       setTimeLeftMs(config.inhaleSeconds * 1000);
       return;
     }
@@ -230,6 +294,9 @@ export default function App() {
         setCycleIndex((prev) => prev + 1);
         setBreathsDone(0);
         setSubphase("inhale");
+        setBreathPulse(1);
+        setPulseKey((prev) => prev + 1);
+        playBreathSound();
         setPhase("breathing");
         setTimeLeftMs(config.inhaleSeconds * 1000);
         return;
@@ -248,6 +315,9 @@ export default function App() {
     setCycleIndex(1);
     setBreathsDone(0);
     setSubphase("inhale");
+    setBreathPulse(1);
+    setPulseKey((prev) => prev + 1);
+    playBreathSound();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
 
@@ -259,6 +329,7 @@ export default function App() {
   const resumeSession = () => {
     setIsPaused(false);
     if (phase === "apnea") playAudio();
+    if (phase === "breathing") playBosque();
   };
 
   const stopSession = () => {
@@ -270,17 +341,22 @@ export default function App() {
     setCycleIndex(1);
     setSubphase("inhale");
     stopAudio();
+    stopBosque();
   };
 
   const startApnea = () => {
     setPhase("apnea");
-    setTimeLeftMs(config.apneaSeconds * 1000);
+    setTimeLeftMs(0);
     loadSignedAudio().then((url) => {
       if (url) playAudio();
     });
   };
 
   const startRecovery = () => {
+    if (phase === "apnea") {
+      lastApneaMsRef.current = timeLeftMs;
+      playEndApnea();
+    }
     setPhase("recovery");
     setTimeLeftMs(config.recoverySeconds * 1000);
     stopAudio();
@@ -314,10 +390,19 @@ export default function App() {
         totalBreaths: (prev.totalBreaths || 0) + addedBreaths,
         streak: nextStreak,
         lastSessionDate: today,
+        lastApneaSeconds: Math.round((lastApneaMsRef.current || 0) / 1000),
+        apneaHistory: [
+          ...(prev.apneaHistory || []),
+          {
+            date: today,
+            seconds: Math.round((lastApneaMsRef.current || 0) / 1000)
+          }
+        ].slice(-10),
         lastSummary: {
           date: today,
           cycles: config.cycles,
-          breaths: addedBreaths
+          breaths: addedBreaths,
+          apneaSeconds: Math.round((lastApneaMsRef.current || 0) / 1000)
         }
       };
 
@@ -335,8 +420,34 @@ export default function App() {
     });
   };
 
+  const playBreathSound = () => {
+    if (!breathAudioRef.current) return;
+    breathAudioRef.current.currentTime = 0;
+    breathAudioRef.current.loop = false;
+    breathAudioRef.current.play().catch(() => {});
+  };
+
+  const playBosque = () => {
+    if (!bosqueAudioRef.current) return;
+    bosqueAudioRef.current.loop = true;
+    bosqueAudioRef.current.play().catch(() => {});
+  };
+
+  const stopBosque = () => {
+    if (!bosqueAudioRef.current) return;
+    bosqueAudioRef.current.pause();
+    bosqueAudioRef.current.currentTime = 0;
+  };
+
+  const playEndApnea = () => {
+    if (!endApneaAudioRef.current) return;
+    endApneaAudioRef.current.currentTime = 0;
+    endApneaAudioRef.current.loop = false;
+    endApneaAudioRef.current.play().catch(() => {});
+  };
+
   const loadSignedAudio = async () => {
-    if (!student?.slug || !student?.audioKey) return null;
+    if (!student?.slug) return null;
     setAudioStatus("loading");
     try {
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
@@ -458,6 +569,32 @@ export default function App() {
     }
   };
 
+  const handleDoubleTap = () => {
+    if (phase === "recovery") return;
+    if (!isRunning) {
+      startSession();
+      return;
+    }
+    if (phase === "breathing") {
+      startApnea();
+      return;
+    }
+    if (phase === "apnea") {
+      startRecovery();
+    }
+  };
+
+  const onPointerUp = (event) => {
+    if (event.pointerType && event.pointerType !== "touch") return;
+    const now = Date.now();
+    if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+      handleDoubleTap();
+      lastTapRef.current = 0;
+      return;
+    }
+    lastTapRef.current = now;
+  };
+
   const isAdminRoute = window.location.pathname.startsWith("/admin");
 
   useEffect(() => {
@@ -555,6 +692,26 @@ export default function App() {
     } catch (error) {
       setAdminStatus("ready");
       setAdminMessage(error?.message || "No se pudo crear el estudiante.");
+    }
+  };
+
+  const handleAdminDelete = async (slugToDelete) => {
+    if (!adminPassword) return;
+    const confirmed = window.confirm("¿Eliminar este estudiante?");
+    if (!confirmed) return;
+    try {
+      const response = await fetch("/api/admin/delete-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword, slug: slugToDelete })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "No se pudo eliminar");
+      }
+      await ensureAdminList(adminPassword);
+    } catch (error) {
+      setAdminMessage(error?.message || "No se pudo eliminar");
     }
   };
 
@@ -661,6 +818,9 @@ export default function App() {
                       <div>
                         <strong>{item.name}</strong>
                         <div className="muted">{item.slug}</div>
+                        {item.createdAt && (
+                          <div className="muted">Creado: {new Date(item.createdAt).toLocaleDateString()}</div>
+                        )}
                       </div>
                       <div className="link-actions">
                         <button
@@ -689,6 +849,12 @@ export default function App() {
                         >
                           Abrir link
                         </a>
+                        <button
+                          className="ghost"
+                          onClick={() => handleAdminDelete(item.slug)}
+                        >
+                          Eliminar
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -736,7 +902,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" onPointerUp={onPointerUp} onDoubleClick={handleDoubleTap}>
       {renderHeader()}
 
       <main className="grid">
@@ -752,7 +918,13 @@ export default function App() {
           </div>
 
           <div className="breath-visual">
-            <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()} />
+            <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()}>
+              {phase === "breathing" && (
+                <div key={pulseKey} className="breath-count">
+                  {breathPulse}
+                </div>
+              )}
+            </div>
             <div className="breath-text">
               {phase === "breathing" && subphase === "inhale" && "Inhala"}
               {phase === "breathing" && subphase === "exhale" && "Exhala"}
@@ -773,7 +945,7 @@ export default function App() {
             </div>
             <div>
               <span>Audio apnea</span>
-              <strong>{student.audioKey ? "Asignado" : "No"}</strong>
+              <strong>{student ? "Asignado" : "No"}</strong>
             </div>
           </div>
 
@@ -796,6 +968,9 @@ export default function App() {
           </div>
 
           <audio ref={audioRef} src={audioSrc} preload="auto" />
+          <audio ref={breathAudioRef} preload="auto" />
+          <audio ref={bosqueAudioRef} preload="auto" />
+          <audio ref={endApneaAudioRef} preload="auto" />
         </section>
 
         <section className="card">
@@ -848,21 +1023,6 @@ export default function App() {
               />
             </label>
             <label>
-              Apnea (segundos)
-              <input
-                type="number"
-                min="10"
-                max="240"
-                value={config.apneaSeconds}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    apneaSeconds: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
               Recuperación (segundos)
               <input
                 type="number"
@@ -908,6 +1068,22 @@ export default function App() {
                 }
               />
             </label>
+            <label>
+              Volumen bosque
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={config.bosqueVolume}
+                onChange={(event) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    bosqueVolume: Number(event.target.value)
+                  }))
+                }
+              />
+            </label>
           </div>
           <div className="audio-tools">
             <button className="secondary" onClick={previewAudio}>
@@ -947,10 +1123,14 @@ export default function App() {
               <span>Última sesión</span>
               <strong>{progress.lastSessionDate || "-"}</strong>
             </div>
+            <div>
+              <span>Última apnea</span>
+              <strong>{progress.lastApneaSeconds || 0}s</strong>
+            </div>
           </div>
           {progress.lastSummary && (
             <div className="summary">
-              Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones
+              Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones / apnea {progress.lastSummary.apneaSeconds || 0}s
             </div>
           )}
         </section>
