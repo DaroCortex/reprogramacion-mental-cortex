@@ -312,6 +312,7 @@ export default function App() {
     setBreathsDone(0);
     setSubphase("inhale");
     playBreathSound();
+    unlockApneaAudio();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
 
@@ -413,6 +414,22 @@ export default function App() {
     audioRef.current.play().catch(() => {
       // Autoplay might be blocked until user gesture
     });
+  };
+
+  const unlockApneaAudio = () => {
+    if (!audioRef.current) return;
+    const el = audioRef.current;
+    const prevMuted = el.muted;
+    el.muted = true;
+    el.play()
+      .then(() => {
+        el.pause();
+        el.currentTime = 0;
+        el.muted = prevMuted;
+      })
+      .catch(() => {
+        el.muted = prevMuted;
+      });
   };
 
   const playBreathSound = () => {
