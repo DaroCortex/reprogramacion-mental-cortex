@@ -67,13 +67,12 @@ const writeStudents = async (students) => {
   );
 };
 
-const signPutUrl = async (key, contentType) => {
+const signPutUrl = async (key) => {
   const client = getS3Client();
   const bucket = getBucket();
   const command = new PutObjectCommand({
     Bucket: bucket,
-    Key: key,
-    ContentType: contentType
+    Key: key
   });
   return getSignedUrl(client, command, { expiresIn: 3600 });
 };

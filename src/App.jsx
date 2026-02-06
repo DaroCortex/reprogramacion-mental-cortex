@@ -644,8 +644,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password: adminPassword,
-          fileName: adminFile.name,
-          contentType: adminFile.type || "audio/mpeg"
+          fileName: adminFile.name
         })
       });
       if (!signRes.ok) {
@@ -656,7 +655,6 @@ export default function App() {
 
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": adminFile.type || "audio/mpeg" },
         body: adminFile
       });
       if (!uploadRes.ok) {
@@ -728,8 +726,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password: adminPassword,
-          fileName: file.name,
-          contentType: file.type || "audio/mpeg"
+          fileName: file.name
         })
       });
       if (!signRes.ok) {
@@ -740,7 +737,6 @@ export default function App() {
 
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": file.type || "audio/mpeg" },
         body: file
       });
       if (!uploadRes.ok) {

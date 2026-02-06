@@ -11,12 +11,12 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const { password, fileName, contentType } = req.body || {};
+    const { password, fileName } = req.body || {};
     if (!isAllowed(password)) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    if (!fileName || !contentType) {
+    if (!fileName) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       .replace(/[^a-zA-Z0-9._-]/g, "");
     const key = `audios/${Date.now()}-${safeName}`;
 
-    const uploadUrl = await signPutUrl(key, contentType);
+    const uploadUrl = await signPutUrl(key);
     return res.status(200).json({ key, uploadUrl });
   } catch (error) {
     return res.status(500).json({ error: "No se pudo firmar la subida" });
