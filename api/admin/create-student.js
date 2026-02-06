@@ -69,6 +69,10 @@ export default async function handler(req, res) {
     await writeStudents(next);
     return res.status(200).json({ student });
   } catch (error) {
-    return res.status(500).json({ error: "No se pudo crear estudiante" });
+    console.error("create-student error:", error);
+    return res.status(500).json({
+      error: "No se pudo crear estudiante",
+      detail: error?.message || "error"
+    });
   }
 }

@@ -44,6 +44,10 @@ export default async function handler(req, res) {
     await writeStudents(next);
     return res.status(200).json({ ok: true });
   } catch (error) {
-    return res.status(500).json({ error: "No se pudo actualizar" });
+    console.error("update-student error:", error);
+    return res.status(500).json({
+      error: "No se pudo actualizar",
+      detail: error?.message || "error"
+    });
   }
 }
