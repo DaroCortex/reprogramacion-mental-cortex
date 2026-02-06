@@ -105,8 +105,6 @@ export default function App() {
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [breathPulse, setBreathPulse] = useState(0);
-  const [pulseKey, setPulseKey] = useState(0);
 
   const [progress, setProgress] = useState({
     totalSessions: 0,
@@ -279,8 +277,6 @@ export default function App() {
 
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
-      setBreathPulse(nextBreaths + 1);
-      setPulseKey((prev) => prev + 1);
       playBreathSound();
       setTimeLeftMs(config.inhaleSeconds * 1000);
       return;
@@ -296,8 +292,6 @@ export default function App() {
         setCycleIndex((prev) => prev + 1);
         setBreathsDone(0);
         setSubphase("inhale");
-        setBreathPulse(1);
-        setPulseKey((prev) => prev + 1);
         playBreathSound();
         setPhase("breathing");
         setTimeLeftMs(config.inhaleSeconds * 1000);
@@ -317,8 +311,6 @@ export default function App() {
     setCycleIndex(1);
     setBreathsDone(0);
     setSubphase("inhale");
-    setBreathPulse(1);
-    setPulseKey((prev) => prev + 1);
     playBreathSound();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
@@ -987,9 +979,9 @@ export default function App() {
 
           <div className="breath-visual">
             <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()}>
-              {phase === "breathing" && (
-                <div key={pulseKey} className="breath-count">
-                  {breathPulse}
+              {phase === "breathing" && subphase === "inhale" && (
+                <div key={`pulse-${cycleIndex}-${breathsDone}`} className="breath-count">
+                  {breathsDone + 1}
                 </div>
               )}
             </div>
