@@ -1,0 +1,16 @@
+{
+  "students": [
+    {
+      "name": "Estudiante Demo",
+      "audioKey": "audios/demo.mp3",
+      "slug": "estudiante-demo",
+      "token": "demo-token-123"
+    },
+    {
+      "name": "Ana Garcia",
+      "audioKey": "audios/ana-apnea.mp3",
+      "slug": "ana-garcia",
+      "token": "ana-token-456"
+    }
+  ]
+}

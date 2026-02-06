@@ -1,0 +1,12 @@
+{
+  "students": [
+    {
+      "name": "Estudiante Demo",
+      "audioKey": "audios/demo.mp3"
+    },
+    {
+      "name": "Ana Garcia",
+      "audioKey": "audios/ana-apnea.mp3"
+    }
+  ]
+}
