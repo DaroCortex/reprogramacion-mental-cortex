@@ -272,6 +272,18 @@ input[type="range"] {
   gap: 12px;
 }
 
+.admin-login {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.admin-login input {
+  min-width: 220px;
+}
+
 .link-list {
   display: grid;
   gap: 12px;

@@ -77,6 +77,15 @@ export default function App() {
   const [slug] = useState(getSlugFromLocation());
   const [token] = useState(getTokenFromLocation());
   const [searchTerm, setSearchTerm] = useState("");
+  const [adminPassword, setAdminPassword] = useState(
+    sessionStorage.getItem("rmcortex_admin_pw") || ""
+  );
+  const [adminStatus, setAdminStatus] = useState("idle");
+  const [adminStudents, setAdminStudents] = useState([]);
+  const [adminMessage, setAdminMessage] = useState("");
+  const [adminName, setAdminName] = useState("");
+  const [adminFile, setAdminFile] = useState(null);
+  const [adminLink, setAdminLink] = useState("");
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [audioSrc, setAudioSrc] = useState("");
   const [audioStatus, setAudioStatus] = useState("idle");
@@ -104,14 +113,21 @@ export default function App() {
   useEffect(() => {
     const loadStudents = async () => {
       try {
-        const response = await fetch("/students.json");
+        const response = await fetch("/api/students");
         if (!response.ok) {
-          throw new Error("No se pudo cargar students.json");
+          throw new Error("No se pudo cargar students");
         }
         const data = await response.json();
         setStudents(Array.isArray(data.students) ? data.students : []);
       } catch (error) {
-        setLoadError("No se pudo cargar la lista de estudiantes.");
+        try {
+          const fallback = await fetch("/students.json");
+          if (!fallback.ok) throw new Error("Fallback fallido");
+          const data = await fallback.json();
+          setStudents(Array.isArray(data.students) ? data.students : []);
+        } catch (innerError) {
+          setLoadError("No se pudo cargar la lista de estudiantes.");
+        }
       } finally {
         setLoading(false);
       }
@@ -442,6 +458,90 @@ export default function App() {
     }
   };
 
+  const isAdminRoute = window.location.pathname.startsWith("/admin");
+
+  useEffect(() => {
+    if (!isAdminRoute) return;
+    if (adminPassword) {
+      ensureAdminList(adminPassword);
+    }
+  }, [isAdminRoute, adminPassword]);
+
+  const ensureAdminList = async (password) => {
+    setAdminStatus("loading");
+    setAdminMessage("");
+    try {
+      const response = await fetch(`/api/admin/list?password=${encodeURIComponent(password)}`);
+      if (!response.ok) throw new Error("No autorizado");
+      const data = await response.json();
+      setAdminStudents(Array.isArray(data.students) ? data.students : []);
+      setAdminStatus("ready");
+      return true;
+    } catch (error) {
+      setAdminStatus("error");
+      setAdminMessage("Password incorrecto o sin acceso.");
+      return false;
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    if (!adminPassword) return;
+    sessionStorage.setItem("rmcortex_admin_pw", adminPassword);
+    await ensureAdminList(adminPassword);
+  };
+
+  const handleAdminCreate = async () => {
+    if (!adminPassword || !adminName || !adminFile) {
+      setAdminMessage("Completa nombre y audio.");
+      return;
+    }
+    setAdminStatus("loading");
+    setAdminMessage("");
+    setAdminLink("");
+    try {
+      const signRes = await fetch("/api/admin/sign-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          fileName: adminFile.name,
+          contentType: adminFile.type || "audio/mpeg"
+        })
+      });
+      if (!signRes.ok) throw new Error("No se pudo firmar");
+      const { key, uploadUrl } = await signRes.json();
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": adminFile.type || "audio/mpeg" },
+        body: adminFile
+      });
+      if (!uploadRes.ok) throw new Error("No se pudo subir audio");
+
+      const addRes = await fetch("/api/admin/add-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          name: adminName,
+          audioKey: key
+        })
+      });
+      if (!addRes.ok) throw new Error("No se pudo crear estudiante");
+      const { student: created } = await addRes.json();
+      const link = buildStudentLink(created.slug, created.token, true);
+      setAdminLink(link);
+      setAdminName("");
+      setAdminFile(null);
+      await ensureAdminList(adminPassword);
+      setAdminStatus("ready");
+      setAdminMessage("Estudiante creado.");
+    } catch (error) {
+      setAdminStatus("error");
+      setAdminMessage("No se pudo crear el estudiante.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="app">
@@ -460,6 +560,133 @@ export default function App() {
     );
   }
 
+  if (isAdminRoute) {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="card">
+          <h2>Panel de administrador</h2>
+          <p className="muted">Crea estudiantes y sube sus audios sin salir de aquí.</p>
+          <div className="admin-login">
+            <input
+              type="password"
+              placeholder="Password de admin"
+              value={adminPassword}
+              onChange={(event) => setAdminPassword(event.target.value)}
+            />
+            <button className="secondary" onClick={handleAdminLogin}>
+              Entrar
+            </button>
+          </div>
+          {adminStatus === "error" && <p className="status error">{adminMessage}</p>}
+        </div>
+
+        {adminStatus === "ready" && (
+          <>
+            <div className="card">
+              <h3>Nuevo estudiante</h3>
+              <div className="form-grid">
+                <label>
+                  Nombre
+                  <input
+                    type="text"
+                    value={adminName}
+                    onChange={(event) => setAdminName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Audio (apnea)
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(event) => setAdminFile(event.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
+              <div className="audio-tools">
+                <button className="primary" onClick={handleAdminCreate}>
+                  Crear estudiante
+                </button>
+                {adminStatus === "loading" && (
+                  <span className="muted">Procesando…</span>
+                )}
+                {adminMessage && <span className="muted">{adminMessage}</span>}
+              </div>
+              {adminLink && (
+                <div className="summary">
+                  Link listo: <span className="code">{adminLink}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h3>Estudiantes</h3>
+              <div className="panel-actions">
+                <input
+                  type="search"
+                  placeholder="Buscar estudiante…"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
+              </div>
+              <div className="link-list">
+                {adminStudents
+                  .filter((item) => {
+                    const term = searchTerm.trim().toLowerCase();
+                    if (!term) return true;
+                    return (
+                      String(item.name || "").toLowerCase().includes(term) ||
+                      String(item.slug || "").toLowerCase().includes(term) ||
+                      String(item.audioKey || "").toLowerCase().includes(term)
+                    );
+                  })
+                  .map((item) => (
+                    <div key={item.slug} className="link-row">
+                      <div>
+                        <strong>{item.name}</strong>
+                        <div className="muted">{item.slug}</div>
+                      </div>
+                      <div className="link-actions">
+                        <button
+                          className="secondary"
+                          onClick={() => copyLink(item.slug, item.token, false)}
+                        >
+                          Copiar link
+                        </button>
+                        <button
+                          className="primary"
+                          onClick={() => copyLink(item.slug, item.token, true)}
+                        >
+                          Copiar link con token
+                        </button>
+                        <button
+                          className="ghost"
+                          onClick={() => copyToken(item.token)}
+                        >
+                          Copiar token
+                        </button>
+                        <a
+                          className="ghost link-button"
+                          href={buildStudentLink(item.slug, item.token, true)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Abrir link
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                {adminStudents.length === 0 && (
+                  <p className="muted">Aún no hay estudiantes cargados.</p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   if (!slug) {
     return (
       <div className="app">
@@ -469,75 +696,11 @@ export default function App() {
           <p>Abre la app con un link como:</p>
           <div className="code">https://tu-dominio.vercel.app/s/tu-slug</div>
           <p>También puedes usar <span className="code">?s=tu-slug</span>.</p>
-          <p className="muted">El slug se genera automáticamente desde el nombre en <span className="code">public/students.json</span>.</p>
-        </div>
-        <div className="card">
-          <h3>Panel de links</h3>
-          <p className="muted">Copia el link único para cada estudiante.</p>
-          <div className="panel-actions">
-            <input
-              type="search"
-              placeholder="Buscar estudiante…"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-            <a className="secondary link-button" href="/students-links.csv" download>
-              Descargar CSV
+          <p className="muted">Si eres administrador, entra al panel para crear estudiantes y links.</p>
+          <div className="audio-tools">
+            <a className="secondary link-button" href="/admin">
+              Ir al panel admin
             </a>
-          </div>
-          <div className="link-list">
-            {studentsWithSlugs
-              .filter((item) => {
-                const term = searchTerm.trim().toLowerCase();
-                if (!term) return true;
-                return (
-                  String(item.name || "").toLowerCase().includes(term) ||
-                  String(item.slug || "").toLowerCase().includes(term) ||
-                  String(item.audioKey || "").toLowerCase().includes(term)
-                );
-              })
-              .map((item) => (
-                <div key={item.slug} className="link-row">
-                  <div>
-                    <strong>{item.name}</strong>
-                    <div className="muted">{item.slug}</div>
-                    {!item.audioKey && (
-                      <div className="warn">Sin audioKey</div>
-                    )}
-                  </div>
-                  <div className="link-actions">
-                    <button
-                      className="secondary"
-                      onClick={() => copyLink(item.slug, item.token, false)}
-                    >
-                      Copiar link
-                    </button>
-                    <button
-                      className="primary"
-                      onClick={() => copyLink(item.slug, item.token, true)}
-                    >
-                      Copiar link con token
-                    </button>
-                    <button
-                      className="ghost"
-                      onClick={() => copyToken(item.token)}
-                    >
-                      Copiar token
-                    </button>
-                    <a
-                      className="ghost link-button"
-                      href={buildStudentLink(item.slug, item.token, true)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Abrir link
-                    </a>
-                  </div>
-                </div>
-              ))}
-            {students.length === 0 && (
-              <p className="muted">Aún no hay estudiantes cargados.</p>
-            )}
           </div>
         </div>
       </div>

@@ -15,10 +15,13 @@ También funciona con:
 https://tu-dominio.vercel.app/?s=slug-del-estudiante
 ```
 
-## Configuración de estudiantes y audio
-Edita `public/students-source.json` y luego genera `public/students.json`.
-Los slugs se generan automáticamente desde el nombre (puedes fijar `slug` manualmente si lo deseas).
-Cada estudiante lleva `audioKey` y un `token` privado.
+## Panel de administrador (modo simple)
+Abre `/admin` en tu dominio. Desde ahí puedes:
+- Crear estudiantes
+- Subir audios
+- Obtener links listos con token
+
+Necesitas definir `ADMIN_PASSWORD` en Vercel para proteger el panel.
 
 ```json
 {
@@ -31,19 +34,10 @@ Cada estudiante lleva `audioKey` y un `token` privado.
 }
 ```
 
-Luego ejecuta:
+Si prefieres cargar estudiantes por script, puedes usar:
 
 ```
 npm run students:generate
-```
-
-Esto genera `public/students.json` con `slug` y `token`.
-También genera `public/students-links.csv` con los links completos.
-
-Opcional: define `BASE_URL` para el dominio real:
-
-```
-BASE_URL=https://tu-dominio.vercel.app npm run students:generate
 ```
 
 ## Audio seguro con Cloudflare R2 (URLs firmadas)
@@ -54,6 +48,8 @@ Configura estas variables en Vercel:
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 - `R2_BUCKET`
+- `ADMIN_PASSWORD`
+- `R2_STUDENTS_KEY` (opcional, default `students.json`)
 
 Luego sube los audios a ese bucket y usa la ruta interna en `audioKey`.
 
