@@ -478,7 +478,7 @@ export default function App() {
       setAdminStatus("ready");
       return true;
     } catch (error) {
-      setAdminStatus("error");
+      setAdminStatus("auth-error");
       setAdminMessage("Password incorrecto o sin acceso.");
       return false;
     }
@@ -499,6 +499,14 @@ export default function App() {
     setAdminMessage("");
     setAdminLink("");
     try {
+      const readError = async (res) => {
+        try {
+          const data = await res.json();
+          return data?.error || res.statusText;
+        } catch (error) {
+          return res.statusText;
+        }
+      };
       const signRes = await fetch("/api/admin/sign-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -508,7 +516,10 @@ export default function App() {
           contentType: adminFile.type || "audio/mpeg"
         })
       });
-      if (!signRes.ok) throw new Error("No se pudo firmar");
+      if (!signRes.ok) {
+        const detail = await readError(signRes);
+        throw new Error(`No se pudo firmar (${detail}).`);
+      }
       const { key, uploadUrl } = await signRes.json();
 
       const uploadRes = await fetch(uploadUrl, {
@@ -516,7 +527,9 @@ export default function App() {
         headers: { "Content-Type": adminFile.type || "audio/mpeg" },
         body: adminFile
       });
-      if (!uploadRes.ok) throw new Error("No se pudo subir audio");
+      if (!uploadRes.ok) {
+        throw new Error("No se pudo subir audio (permiso o formato).");
+      }
 
       const addRes = await fetch("/api/admin/add-student", {
         method: "POST",
@@ -527,7 +540,10 @@ export default function App() {
           audioKey: key
         })
       });
-      if (!addRes.ok) throw new Error("No se pudo crear estudiante");
+      if (!addRes.ok) {
+        const detail = await readError(addRes);
+        throw new Error(`No se pudo crear estudiante (${detail}).`);
+      }
       const { student: created } = await addRes.json();
       const link = buildStudentLink(created.slug, created.token, true);
       setAdminLink(link);
@@ -537,8 +553,8 @@ export default function App() {
       setAdminStatus("ready");
       setAdminMessage("Estudiante creado.");
     } catch (error) {
-      setAdminStatus("error");
-      setAdminMessage("No se pudo crear el estudiante.");
+      setAdminStatus("ready");
+      setAdminMessage(error?.message || "No se pudo crear el estudiante.");
     }
   };
 
@@ -578,7 +594,7 @@ export default function App() {
               Entrar
             </button>
           </div>
-          {adminStatus === "error" && <p className="status error">{adminMessage}</p>}
+          {adminStatus === "auth-error" && <p className="status error">{adminMessage}</p>}
         </div>
 
         {adminStatus === "ready" && (
