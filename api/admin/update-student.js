@@ -1,4 +1,4 @@
-import { readStudents, writeStudents } from "../_r2.js";
+import { readStudents, writeStudents, uploadObject } from "../_r2.js";
 
 const isAllowed = (password) => {
   const adminPassword = process.env.ADMIN_PASSWORD || "";
@@ -11,13 +11,24 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const { password, slug, audioKey } = req.body || {};
+    const { password, slug, audioKey, audioBase64, fileName, contentType } = req.body || {};
     if (!isAllowed(password)) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    if (!slug || !audioKey) {
+    if (!slug || (!audioKey && !audioBase64)) {
       return res.status(400).json({ error: "Datos incompletos" });
+    }
+
+    let nextAudioKey = audioKey;
+    if (!nextAudioKey && audioBase64 && fileName) {
+      const safeName = String(fileName)
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9._-]/g, "");
+      nextAudioKey = `audios/${Date.now()}-${safeName}`;
+      const buffer = Buffer.from(String(audioBase64), "base64");
+      await uploadObject(nextAudioKey, buffer, contentType);
     }
 
     const students = await readStudents();
@@ -25,7 +36,7 @@ export default async function handler(req, res) {
       if (item.slug !== slug) return item;
       return {
         ...item,
-        audioKey,
+        audioKey: nextAudioKey || item.audioKey,
         updatedAt: new Date().toISOString()
       };
     });

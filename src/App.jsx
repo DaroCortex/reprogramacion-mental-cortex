@@ -622,6 +622,18 @@ export default function App() {
     await ensureAdminList(adminPassword);
   };
 
+  const readFileBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64 = result.includes(",") ? result.split(",")[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("No se pudo leer archivo"));
+      reader.readAsDataURL(file);
+    });
+
   const handleAdminCreate = async () => {
     if (!adminPassword || !adminName || !adminFile) {
       setAdminMessage("Completa nombre y audio.");
@@ -631,48 +643,21 @@ export default function App() {
     setAdminMessage("");
     setAdminLink("");
     try {
-      const readError = async (res) => {
-        try {
-          const data = await res.json();
-          return data?.error || res.statusText;
-        } catch (error) {
-          return res.statusText;
-        }
-      };
-      const signRes = await fetch("/api/admin/sign-upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: adminPassword,
-          fileName: adminFile.name
-        })
-      });
-      if (!signRes.ok) {
-        const detail = await readError(signRes);
-        throw new Error(`No se pudo firmar (${detail}).`);
-      }
-      const { key, uploadUrl } = await signRes.json();
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        body: adminFile
-      });
-      if (!uploadRes.ok) {
-        throw new Error("No se pudo subir audio (permiso o formato).");
-      }
-
-      const addRes = await fetch("/api/admin/add-student", {
+      const audioBase64 = await readFileBase64(adminFile);
+      const addRes = await fetch("/api/admin/create-student", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password: adminPassword,
           name: adminName,
-          audioKey: key
+          fileName: adminFile.name,
+          contentType: adminFile.type || "audio/mpeg",
+          audioBase64
         })
       });
       if (!addRes.ok) {
-        const detail = await readError(addRes);
-        throw new Error(`No se pudo crear estudiante (${detail}).`);
+        const detail = await addRes.json().catch(() => ({}));
+        throw new Error(`No se pudo crear estudiante (${detail?.error || "error"}).`);
       }
       const { student: created } = await addRes.json();
       const link = buildStudentLink(created.slug, created.token, true);
@@ -721,35 +706,16 @@ export default function App() {
     setAdminStatus("loading");
     setAdminMessage("");
     try {
-      const signRes = await fetch("/api/admin/sign-upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: adminPassword,
-          fileName: file.name
-        })
-      });
-      if (!signRes.ok) {
-        const detail = await signRes.json().catch(() => ({}));
-        throw new Error(detail?.error || "No se pudo firmar");
-      }
-      const { key, uploadUrl } = await signRes.json();
-
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        body: file
-      });
-      if (!uploadRes.ok) {
-        throw new Error("No se pudo subir audio");
-      }
-
+      const audioBase64 = await readFileBase64(file);
       const updateRes = await fetch("/api/admin/update-student", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password: adminPassword,
           slug: replaceSlug,
-          audioKey: key
+          fileName: file.name,
+          contentType: file.type || "audio/mpeg",
+          audioBase64
         })
       });
       if (!updateRes.ok) {

@@ -86,4 +86,17 @@ const signGetUrl = async (key) => {
   return getSignedUrl(client, command, { expiresIn: 3600 });
 };
 
-export { getS3Client, readStudents, writeStudents, signPutUrl, signGetUrl };
+const uploadObject = async (key, body, contentType) => {
+  const client = getS3Client();
+  const bucket = getBucket();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType || "application/octet-stream"
+    })
+  );
+};
+
+export { getS3Client, readStudents, writeStudents, signPutUrl, signGetUrl, uploadObject };
