@@ -4,13 +4,13 @@
       "name": "Estudiante Demo",
       "audioKey": "audios/demo.mp3",
       "slug": "estudiante-demo",
-      "token": "demo-token-123"
+      "token": "0d9f82781b49a318b8847e5a6a8a7d88"
     },
     {
       "name": "Ana Garcia",
       "audioKey": "audios/ana-apnea.mp3",
       "slug": "ana-garcia",
-      "token": "ana-token-456"
+      "token": "44c35dd620ad44a58178c0e70171d1ff"
     }
   ]
 }
