@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_CONFIG = {
   breathsPerCycle: 30,
@@ -117,6 +117,8 @@ export default function App() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [audioSrc, setAudioSrc] = useState("");
   const [audioStatus, setAudioStatus] = useState("idle");
+  const [audioCheckStatus, setAudioCheckStatus] = useState("idle");
+  const [audioCheckMessage, setAudioCheckMessage] = useState("");
   const [ambientAudioMap, setAmbientAudioMap] = useState({
     bosque: "",
     oceano: ""
@@ -271,53 +273,77 @@ export default function App() {
     setAudioStatus("idle");
   }, [student?.slug]);
 
-  useEffect(() => {
-    const loadSystemAudio = async () => {
-      const fetchAudio = async (slug, providedToken) => {
-        const tokenPart = providedToken
-          ? `&token=${encodeURIComponent(providedToken)}`
-          : "";
-        const response = await fetch(
-          `/api/audio?slug=${encodeURIComponent(slug)}${tokenPart}`
-        );
-        if (!response.ok) return "";
-        const data = await response.json();
-        return data?.url || "";
-      };
-
-      const entries = Object.entries(SYSTEM_AUDIO);
-      for (const [key, value] of entries) {
-        try {
-          const url = await fetchAudio(value.slug, value.token);
-          if (!url) continue;
-          if (key === "respirax1" && breathAudioRef.current) {
-            breathAudioRef.current.src = url;
-          }
-          if (key === "bosque7") {
-            setAmbientAudioMap((prev) => ({ ...prev, bosque: url }));
-          }
-          if (key === "oceano") {
-            setAmbientAudioMap((prev) => ({ ...prev, oceano: url }));
-          }
-          if (key === "inalamos" && endApneaAudioRef.current) {
-            endApneaAudioRef.current.src = url;
-          }
-          if (key === "septasyncBalance") {
-            setSeptasyncAudioMap((prev) => ({ ...prev, balance: url }));
-          }
-          if (key === "septasyncGamma") {
-            setSeptasyncAudioMap((prev) => ({ ...prev, gamma: url }));
-          }
-          if (key === "septasyncTrance") {
-            setSeptasyncAudioMap((prev) => ({ ...prev, trance: url }));
-          }
-        } catch (error) {
-          // ignore
-        }
-      }
-    };
-    loadSystemAudio();
+  const fetchAudioUrl = useCallback(async (audioSlug, providedToken) => {
+    const tokenPart = providedToken
+      ? `&token=${encodeURIComponent(providedToken)}`
+      : "";
+    const response = await fetch(
+      `/api/audio?slug=${encodeURIComponent(audioSlug)}${tokenPart}`
+    );
+    if (!response.ok) return "";
+    const data = await response.json();
+    return data?.url || "";
   }, []);
+
+  const loadSystemAudio = useCallback(async () => {
+    const nextAmbient = {};
+    const nextSeptasync = {};
+    const entries = Object.entries(SYSTEM_AUDIO);
+    for (const [key, value] of entries) {
+      try {
+        const url = await fetchAudioUrl(value.slug, value.token);
+        if (!url) continue;
+        if (key === "respirax1" && breathAudioRef.current) {
+          breathAudioRef.current.src = url;
+        }
+        if (key === "bosque7") {
+          nextAmbient.bosque = url;
+          if (config.ambientSound === "bosque" && bosqueAudioRef.current) {
+            bosqueAudioRef.current.src = url;
+          }
+        }
+        if (key === "oceano") {
+          nextAmbient.oceano = url;
+          if (config.ambientSound === "oceano" && bosqueAudioRef.current) {
+            bosqueAudioRef.current.src = url;
+          }
+        }
+        if (key === "inalamos" && endApneaAudioRef.current) {
+          endApneaAudioRef.current.src = url;
+        }
+        if (key === "septasyncBalance") {
+          nextSeptasync.balance = url;
+          if (config.septasyncTrack === "balance" && septasyncAudioRef.current) {
+            septasyncAudioRef.current.src = url;
+          }
+        }
+        if (key === "septasyncGamma") {
+          nextSeptasync.gamma = url;
+          if (config.septasyncTrack === "gamma" && septasyncAudioRef.current) {
+            septasyncAudioRef.current.src = url;
+          }
+        }
+        if (key === "septasyncTrance") {
+          nextSeptasync.trance = url;
+          if (config.septasyncTrack === "trance" && septasyncAudioRef.current) {
+            septasyncAudioRef.current.src = url;
+          }
+        }
+      } catch (error) {
+        // ignore
+      }
+    }
+    if (Object.keys(nextAmbient).length) {
+      setAmbientAudioMap((prev) => ({ ...prev, ...nextAmbient }));
+    }
+    if (Object.keys(nextSeptasync).length) {
+      setSeptasyncAudioMap((prev) => ({ ...prev, ...nextSeptasync }));
+    }
+  }, [config.ambientSound, config.septasyncTrack, fetchAudioUrl]);
+
+  useEffect(() => {
+    loadSystemAudio();
+  }, [loadSystemAudio]);
 
   useEffect(() => {
     if (!bosqueAudioRef.current) return;
@@ -427,8 +453,63 @@ export default function App() {
     }
   };
 
-  const startSession = () => {
+  const primeAudioElement = async (audioElement) => {
+    if (!audioElement || !audioElement.src) return false;
+    const prevMuted = audioElement.muted;
+    const prevVolume = audioElement.volume;
+    try {
+      audioElement.muted = true;
+      audioElement.volume = 0;
+      audioElement.currentTime = 0;
+      await audioElement.play();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      return true;
+    } catch (error) {
+      return false;
+    } finally {
+      audioElement.muted = prevMuted;
+      audioElement.volume = prevVolume;
+    }
+  };
+
+  const runAudioCheck = async () => {
+    setAudioCheckStatus("checking");
+    setAudioCheckMessage("Chequeando audios...");
+    await loadSystemAudio();
+    const apneaUrl = await loadSignedAudio();
+    const checks = [];
+    if (apneaUrl && audioRef.current) checks.push(primeAudioElement(audioRef.current));
+    if (breathAudioRef.current?.src) checks.push(primeAudioElement(breathAudioRef.current));
+    if (endApneaAudioRef.current?.src) checks.push(primeAudioElement(endApneaAudioRef.current));
+    if (selectedAmbientUrl && bosqueAudioRef.current?.src) checks.push(primeAudioElement(bosqueAudioRef.current));
+    if (selectedSeptasyncUrl && septasyncAudioRef.current?.src) checks.push(primeAudioElement(septasyncAudioRef.current));
+
+    const results = await Promise.all(checks);
+    const okCount = results.filter(Boolean).length;
+    const allOk = results.length > 0 && okCount === results.length;
+
+    if (allOk) {
+      setAudioCheckStatus("ready");
+      setAudioCheckMessage(`Audio OK (${okCount}/${results.length})`);
+      return true;
+    }
+
+    setAudioCheckStatus("error");
+    setAudioCheckMessage(`Audio parcial (${okCount}/${results.length})`);
+    return false;
+  };
+
+  const startSession = async () => {
     if (!student) return;
+    const audioOk = await runAudioCheck();
+    if (!audioOk) {
+      const confirmStart = window.confirm(
+        "No pude activar todos los audios en el chequeo. ¿Iniciar igual?"
+      );
+      if (!confirmStart) return;
+    }
     sessionStartRef.current = Date.now();
     setIsRunning(true);
     setIsPaused(false);
@@ -438,7 +519,6 @@ export default function App() {
     setCurrentBreathNumber(1);
     setSubphase("inhale");
     playBreathSound();
-    unlockApneaAudio();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
 
@@ -1150,7 +1230,13 @@ export default function App() {
 
           <div className="actions">
             {!isRunning && (
-              <button className="primary" onClick={startSession}>Iniciar sesión</button>
+              <button
+                className="primary"
+                onClick={startSession}
+                disabled={audioCheckStatus === "checking"}
+              >
+                {audioCheckStatus === "checking" ? "Chequeando audio..." : "Iniciar sesión"}
+              </button>
             )}
             {isRunning && !isPaused && (
               <button className="secondary" onClick={pauseSession}>Pausar</button>
@@ -1442,6 +1528,9 @@ export default function App() {
           )}
 
           <div className="audio-tools">
+            <button className="secondary" onClick={runAudioCheck}>
+              Chequear audios
+            </button>
             <button className="secondary" onClick={previewAudio}>
               Probar audio
             </button>
@@ -1456,6 +1545,9 @@ export default function App() {
             )}
             {audioStatus === "error" && (
               <span className="muted">No se pudo cargar el audio.</span>
+            )}
+            {audioCheckMessage && (
+              <span className="muted">{audioCheckMessage}</span>
             )}
           </div>
         </section>
