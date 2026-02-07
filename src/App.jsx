@@ -415,6 +415,7 @@ export default function App() {
     if (phase === "breathing") {
       if (subphase === "inhale") {
         setSubphase("exhale");
+        playBreathSound();
         setTimeLeftMs(config.exhaleSeconds * 1000);
         return;
       }
@@ -754,17 +755,18 @@ export default function App() {
   };
 
   const inhaleStyle = {
-    animationDuration: `${config.inhaleSeconds}s`
+    "--phase-duration": `${config.inhaleSeconds}s`
   };
 
   const exhaleStyle = {
-    animationDuration: `${config.exhaleSeconds}s`
+    "--phase-duration": `${config.exhaleSeconds}s`
   };
 
   const phaseStyle = () => {
     if (phase === "breathing" && subphase === "inhale") return inhaleStyle;
     if (phase === "breathing" && subphase === "exhale") return exhaleStyle;
-    return { animationDuration: "6s" };
+    if (phase === "apnea" || phase === "recovery") return { animationDuration: "6s" };
+    return {};
   };
 
   const phaseClass = () => {

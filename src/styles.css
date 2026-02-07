@@ -156,6 +156,9 @@ body {
   box-shadow: none;
   border-radius: 0;
   transform: scale(0.9) translateZ(0);
+  transition:
+    transform var(--phase-duration, 2s) linear,
+    filter 140ms linear;
   will-change: transform;
   transform-origin: center;
   backface-visibility: hidden;
@@ -165,14 +168,14 @@ body {
 }
 
 .breath-orb.inhale {
-  animation: inhale ease-in-out infinite;
-  animation-fill-mode: both;
+  animation: none;
+  transform: scale(1.15) translateZ(0);
   filter: drop-shadow(0 16px 34px rgba(15, 107, 100, 0.28));
 }
 
 .breath-orb.exhale {
-  animation: exhale ease-in-out infinite;
-  animation-fill-mode: both;
+  animation: none;
+  transform: scale(0.9) translateZ(0);
   filter: drop-shadow(0 10px 26px rgba(15, 107, 100, 0.22));
 }
 
@@ -244,19 +247,19 @@ body {
 .breath-count {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 51%;
   transform: translate(-50%, -50%) scale(1);
   font-size: 32px;
   font-weight: 700;
   color: #fff;
   text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  background: rgba(0, 0, 0, 0.26);
+  background: rgba(0, 0, 0, 0.18);
   border-radius: 999px;
-  min-width: 46px;
-  min-height: 46px;
+  min-width: 44px;
+  min-height: 44px;
   display: grid;
   place-items: center;
-  padding: 4px 10px;
+  padding: 3px 9px;
   animation: breathFade 1.4s ease-out;
 }
 
