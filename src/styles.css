@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&family=Newsreader:opsz,wght@6..72,300;400;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Merriweather:wght@400;700&display=swap");
 
 :root {
   color-scheme: light;
@@ -13,10 +13,17 @@
   --shadow: 0 24px 70px rgba(14, 38, 40, 0.12);
 }
 
-@property --orb-scale {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 1;
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #11171b;
+  --bg-2: #1b242b;
+  --ink: #e8f0f4;
+  --muted: #9cb0ba;
+  --accent: #4fbfb1;
+  --accent-2: #e1a66a;
+  --card: #151d23;
+  --stroke: #2b3a44;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.36);
 }
 
 * {
@@ -25,10 +32,11 @@
 
 body {
   margin: 0;
-  font-family: "Bricolage Grotesque", sans-serif;
-  background: radial-gradient(circle at top left, #ffffff 0%, #f1ede6 35%, #dfe3e3 100%);
+  font-family: "Manrope", sans-serif;
+  background: radial-gradient(circle at top left, #ffffff 0%, var(--bg) 35%, var(--bg-2) 100%);
   color: var(--ink);
   min-height: 100vh;
+  transition: background 200ms ease, color 200ms ease;
 }
 
 #root {
@@ -50,9 +58,21 @@ body {
 }
 
 .header h1 {
-  font-family: "Newsreader", serif;
+  font-family: "Merriweather", serif;
   font-size: 32px;
   margin: 6px 0 0;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--stroke);
+  color: var(--muted);
 }
 
 .eyebrow {
@@ -119,8 +139,7 @@ body {
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #ffffff 0%, #b9d7d4 45%, #0f6b64 100%);
   box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.6), 0 18px 50px rgba(15, 107, 100, 0.3);
-  --orb-scale: 1;
-  transform: scale(var(--orb-scale));
+  transform: scale(0.9) translateZ(0);
   will-change: transform;
   transform-origin: center;
   backface-visibility: hidden;
@@ -157,25 +176,25 @@ body {
 }
 
 @keyframes inhale {
-  from { --orb-scale: 0.9; }
-  to { --orb-scale: 1.15; }
+  from { transform: scale(0.9) translateZ(0); }
+  to { transform: scale(1.15) translateZ(0); }
 }
 
 @keyframes exhale {
-  from { --orb-scale: 1.15; }
-  to { --orb-scale: 0.9; }
+  from { transform: scale(1.15) translateZ(0); }
+  to { transform: scale(0.9) translateZ(0); }
 }
 
 @keyframes hold {
-  0% { --orb-scale: 1.02; }
-  50% { --orb-scale: 1.08; }
-  100% { --orb-scale: 1.02; }
+  0% { transform: scale(1.02) translateZ(0); }
+  50% { transform: scale(1.08) translateZ(0); }
+  100% { transform: scale(1.02) translateZ(0); }
 }
 
 @keyframes recovery {
-  0% { --orb-scale: 0.95; }
-  50% { --orb-scale: 1.1; }
-  100% { --orb-scale: 0.98; }
+  0% { transform: scale(0.95) translateZ(0); }
+  50% { transform: scale(1.1) translateZ(0); }
+  100% { transform: scale(0.98) translateZ(0); }
 }
 
 .breath-count {
@@ -263,6 +282,8 @@ input {
   padding: 10px 12px;
   font-size: 14px;
   font-family: inherit;
+  background: var(--card);
+  color: var(--ink);
 }
 
 input[type="range"] {
@@ -288,7 +309,7 @@ input[type="range"] {
 .summary {
   margin-top: 16px;
   padding: 12px 16px;
-  background: #f7f5f0;
+  background: color-mix(in srgb, var(--card) 84%, var(--bg) 16%);
   border-radius: 14px;
   color: var(--muted);
   font-size: 14px;
@@ -325,7 +346,7 @@ input[type="range"] {
   align-items: center;
   padding: 8px 12px;
   border-radius: 12px;
-  background: #f6f3ee;
+  background: color-mix(in srgb, var(--card) 80%, var(--bg) 20%);
   font-size: 13px;
   color: var(--muted);
 }
@@ -383,7 +404,7 @@ input[type="range"] {
 }
 
 .link-button.secondary {
-  background: #e6efee;
+  background: color-mix(in srgb, var(--accent) 18%, var(--card) 82%);
   color: var(--accent);
 }
 
@@ -401,7 +422,7 @@ input[type="range"] {
   padding: 12px 14px;
   border: 1px solid var(--stroke);
   border-radius: 16px;
-  background: #f8f6f2;
+  background: color-mix(in srgb, var(--card) 82%, var(--bg) 18%);
 }
 
 .warn {
@@ -434,7 +455,7 @@ input[type="range"] {
   font-family: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   padding: 6px 10px;
   border-radius: 10px;
-  background: #f5f3ef;
+  background: color-mix(in srgb, var(--card) 80%, var(--bg) 20%);
   border: 1px dashed var(--stroke);
   display: inline-block;
   margin: 8px 0;
@@ -444,6 +465,11 @@ input[type="range"] {
   .header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .header-controls {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .student-chip {

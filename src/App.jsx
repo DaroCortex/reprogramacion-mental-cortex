@@ -78,6 +78,9 @@ const getYesterdayKey = () => {
 };
 
 export default function App() {
+  const [theme, setTheme] = useState(
+    localStorage.getItem("rmcortex_theme") || "light"
+  );
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -102,6 +105,8 @@ export default function App() {
   const [subphase, setSubphase] = useState("inhale");
   const [cycleIndex, setCycleIndex] = useState(1);
   const [breathsDone, setBreathsDone] = useState(0);
+  const [currentBreathNumber, setCurrentBreathNumber] = useState(1);
+  const [breathPulseId, setBreathPulseId] = useState(0);
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -125,6 +130,12 @@ export default function App() {
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
+
+  useEffect(() => {
+    const safeTheme = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", safeTheme);
+    localStorage.setItem("rmcortex_theme", safeTheme);
+  }, [theme]);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -277,6 +288,8 @@ export default function App() {
 
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
+      setCurrentBreathNumber(nextBreaths + 1);
+      setBreathPulseId((prev) => prev + 1);
       playBreathSound();
       setTimeLeftMs(config.inhaleSeconds * 1000);
       return;
@@ -292,6 +305,8 @@ export default function App() {
         setCycleIndex((prev) => prev + 1);
         setBreathsDone(0);
         setSubphase("inhale");
+        setCurrentBreathNumber(1);
+        setBreathPulseId((prev) => prev + 1);
         playBreathSound();
         setPhase("breathing");
         setTimeLeftMs(config.inhaleSeconds * 1000);
@@ -310,6 +325,8 @@ export default function App() {
     setPhase("breathing");
     setCycleIndex(1);
     setBreathsDone(0);
+    setCurrentBreathNumber(1);
+    setBreathPulseId((prev) => prev + 1);
     setSubphase("inhale");
     playBreathSound();
     unlockApneaAudio();
@@ -334,6 +351,7 @@ export default function App() {
     setTimeLeftMs(0);
     setBreathsDone(0);
     setCycleIndex(1);
+    setCurrentBreathNumber(1);
     setSubphase("inhale");
     stopAudio();
     stopBosque();
@@ -547,9 +565,18 @@ export default function App() {
         <p className="eyebrow">Respiración guiada</p>
         <h1>Reprogramación Mental / Cortex</h1>
       </div>
-      <div className="student-chip">
-        <span>Estudiante</span>
-        <strong>{student?.name || "Sin asignación"}</strong>
+      <div className="header-controls">
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+        >
+          {theme === "dark" ? "Modo claro" : "Modo oscuro"}
+        </button>
+        <div className="student-chip">
+          <span>Estudiante</span>
+          <strong>{student?.name || "Sin asignación"}</strong>
+        </div>
       </div>
     </header>
   );
@@ -959,8 +986,8 @@ export default function App() {
           <div className="breath-visual">
             <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()}>
               {phase === "breathing" && subphase === "inhale" && (
-                <div key={`pulse-${cycleIndex}-${breathsDone}`} className="breath-count">
-                  {breathsDone + 1}
+                <div key={`pulse-${breathPulseId}`} className="breath-count">
+                  {currentBreathNumber}
                 </div>
               )}
             </div>
