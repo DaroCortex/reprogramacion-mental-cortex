@@ -1212,7 +1212,7 @@ export default function App() {
                   onError={() => setBreathLogoMissing(true)}
                 />
               )}
-              {breathLogoMissing && <div className="breath-logo-fallback" />}
+              {breathLogoMissing && <div className="breath-logo-fallback">Falta /public/logo-05.png</div>}
               {phase === "breathing" && (
                 <div
                   key={`pulse-${cycleIndex}-${breathsDone}`}

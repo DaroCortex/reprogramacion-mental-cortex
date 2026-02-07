@@ -192,8 +192,14 @@ body {
 .breath-logo-fallback {
   width: 82%;
   height: 82%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #b9d7d4 45%, #0f6b64 100%);
+  border-radius: 16px;
+  border: 2px dashed var(--stroke);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
 }
 
 .breath-text {
