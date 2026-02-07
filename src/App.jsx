@@ -114,6 +114,8 @@ export default function App() {
   const [adminLink, setAdminLink] = useState("");
   const [replaceSlug, setReplaceSlug] = useState("");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
+  const [brandLogoMissing, setBrandLogoMissing] = useState(false);
+  const [breathLogoMissing, setBreathLogoMissing] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [audioSrc, setAudioSrc] = useState("");
   const [audioStatus, setAudioStatus] = useState("idle");
@@ -774,7 +776,15 @@ export default function App() {
     <header className="header">
       <div>
         <p className="eyebrow">Respiración guiada</p>
-        <h1>Reprogramación Mental / Cortex</h1>
+        {!brandLogoMissing && (
+          <img
+            className="brand-logo"
+            src="/logo-10.png"
+            alt="Cortex"
+            onError={() => setBrandLogoMissing(true)}
+          />
+        )}
+        {brandLogoMissing && <h1 className="brand-fallback">Reprogramación Mental / Cortex</h1>}
       </div>
       <div className="header-controls">
         <button
@@ -1194,6 +1204,15 @@ export default function App() {
 
           <div className="breath-visual">
             <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()}>
+              {!breathLogoMissing && (
+                <img
+                  className="breath-logo"
+                  src="/logo-05.png"
+                  alt="Cortex breath"
+                  onError={() => setBreathLogoMissing(true)}
+                />
+              )}
+              {breathLogoMissing && <div className="breath-logo-fallback" />}
               {phase === "breathing" && (
                 <div
                   key={`pulse-${cycleIndex}-${breathsDone}`}

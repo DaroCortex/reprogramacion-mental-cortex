@@ -63,6 +63,18 @@ body {
   margin: 6px 0 0;
 }
 
+.brand-logo {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  height: auto;
+  margin-top: 8px;
+}
+
+.brand-fallback {
+  display: block;
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -134,39 +146,54 @@ body {
 }
 
 .breath-orb {
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #b9d7d4 45%, #0f6b64 100%);
-  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.6), 0 18px 50px rgba(15, 107, 100, 0.3);
+  width: 220px;
+  height: 220px;
   transform: scale(0.9) translateZ(0);
   will-change: transform;
   transform-origin: center;
   backface-visibility: hidden;
   display: grid;
   place-items: center;
+  position: relative;
 }
 
 .breath-orb.inhale {
   animation: inhale ease-in-out infinite;
   animation-fill-mode: both;
+  filter: drop-shadow(0 16px 34px rgba(15, 107, 100, 0.28));
 }
 
 .breath-orb.exhale {
   animation: exhale ease-in-out infinite;
   animation-fill-mode: both;
+  filter: drop-shadow(0 10px 26px rgba(15, 107, 100, 0.22));
 }
 
 .breath-orb.apnea {
-  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e5c7a5 50%, #c17b3a 100%);
   animation: hold 6s ease-in-out infinite;
   animation-fill-mode: both;
+  filter: drop-shadow(0 16px 30px rgba(193, 123, 58, 0.3));
 }
 
 .breath-orb.recovery {
-  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #b7cfe0 50%, #3a5f72 100%);
   animation: recovery 6s ease-in-out infinite;
   animation-fill-mode: both;
+  filter: drop-shadow(0 16px 30px rgba(58, 95, 114, 0.28));
+}
+
+.breath-logo {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.breath-logo-fallback {
+  width: 82%;
+  height: 82%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #b9d7d4 45%, #0f6b64 100%);
 }
 
 .breath-text {
@@ -198,10 +225,21 @@ body {
 }
 
 .breath-count {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   font-size: 32px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  color: #fff;
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.26);
+  border-radius: 999px;
+  min-width: 46px;
+  min-height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 4px 10px;
   animation: breathFade 1.4s ease-out;
 }
 
@@ -506,5 +544,9 @@ input[type="range"] {
 
   .student-chip {
     width: 100%;
+  }
+
+  .brand-logo {
+    max-width: 280px;
   }
 }
