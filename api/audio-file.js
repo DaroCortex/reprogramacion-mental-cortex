@@ -34,17 +34,28 @@ export default async function handler(req, res) {
 
     const client = getS3Client();
     const bucket = getBucket();
+    const requestedRange = req.headers?.range;
     const output = await client.send(
       new GetObjectCommand({
         Bucket: bucket,
-        Key: student.audioKey
+        Key: student.audioKey,
+        ...(requestedRange ? { Range: requestedRange } : {})
       })
     );
 
     const data = await streamToBuffer(output.Body);
     res.setHeader("Content-Type", output.ContentType || "audio/mpeg");
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Disposition", "inline");
+    if (output.ContentLength != null) {
+      res.setHeader("Content-Length", String(output.ContentLength));
+    }
+    if (output.ContentRange) {
+      res.setHeader("Content-Range", output.ContentRange);
+    }
     res.setHeader("Cache-Control", "no-store");
-    return res.status(200).send(data);
+    const statusCode = requestedRange && output.ContentRange ? 206 : 200;
+    return res.status(statusCode).send(data);
   } catch (error) {
     return res.status(500).json({
       error: "No se pudo cargar el audio",
