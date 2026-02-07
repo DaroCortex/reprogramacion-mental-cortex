@@ -455,26 +455,34 @@ export default function App() {
     }
   };
 
-  const primeAudioElement = async (audioElement) => {
-    if (!audioElement || !audioElement.src) return false;
-    const prevMuted = audioElement.muted;
-    const prevVolume = audioElement.volume;
-    try {
-      audioElement.muted = true;
-      audioElement.volume = 0;
-      audioElement.currentTime = 0;
-      await audioElement.play();
-      await new Promise((resolve) => setTimeout(resolve, 60));
-      audioElement.pause();
-      audioElement.currentTime = 0;
-      return true;
-    } catch (error) {
-      return false;
-    } finally {
-      audioElement.muted = prevMuted;
-      audioElement.volume = prevVolume;
-    }
-  };
+  const waitForAudioReady = (audioElement, timeoutMs = 1200) =>
+    new Promise((resolve) => {
+      if (!audioElement || !audioElement.src) {
+        resolve(false);
+        return;
+      }
+      if (audioElement.readyState >= 2) {
+        resolve(true);
+        return;
+      }
+      let done = false;
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        audioElement.removeEventListener("canplay", onReady);
+        audioElement.removeEventListener("loadeddata", onReady);
+        audioElement.removeEventListener("error", onError);
+        clearTimeout(timer);
+        resolve(result);
+      };
+      const onReady = () => finish(true);
+      const onError = () => finish(false);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      audioElement.addEventListener("canplay", onReady);
+      audioElement.addEventListener("loadeddata", onReady);
+      audioElement.addEventListener("error", onError);
+      audioElement.load();
+    });
 
   const runAudioCheck = async () => {
     setAudioCheckStatus("checking");
@@ -482,36 +490,30 @@ export default function App() {
     await loadSystemAudio();
     const apneaUrl = await loadSignedAudio();
     const checks = [];
-    if (apneaUrl && audioRef.current) checks.push(primeAudioElement(audioRef.current));
-    if (breathAudioRef.current?.src) checks.push(primeAudioElement(breathAudioRef.current));
-    if (endApneaAudioRef.current?.src) checks.push(primeAudioElement(endApneaAudioRef.current));
-    if (selectedAmbientUrl && bosqueAudioRef.current?.src) checks.push(primeAudioElement(bosqueAudioRef.current));
-    if (selectedSeptasyncUrl && septasyncAudioRef.current?.src) checks.push(primeAudioElement(septasyncAudioRef.current));
+    if (apneaUrl && audioRef.current) checks.push(waitForAudioReady(audioRef.current));
+    if (breathAudioRef.current?.src) checks.push(waitForAudioReady(breathAudioRef.current));
+    if (endApneaAudioRef.current?.src) checks.push(waitForAudioReady(endApneaAudioRef.current));
+    if (selectedAmbientUrl && bosqueAudioRef.current?.src) checks.push(waitForAudioReady(bosqueAudioRef.current));
+    if (selectedSeptasyncUrl && septasyncAudioRef.current?.src) checks.push(waitForAudioReady(septasyncAudioRef.current));
 
     const results = await Promise.all(checks);
     const okCount = results.filter(Boolean).length;
     const allOk = results.length > 0 && okCount === results.length;
 
-    if (allOk) {
+    if (allOk || (apneaUrl && okCount >= 1)) {
       setAudioCheckStatus("ready");
       setAudioCheckMessage(`Audio OK (${okCount}/${results.length})`);
       return true;
     }
 
-    setAudioCheckStatus("error");
-    setAudioCheckMessage(`Audio parcial (${okCount}/${results.length})`);
-    return false;
+    setAudioCheckStatus("warning");
+    setAudioCheckMessage(`Audio parcial (${okCount}/${results.length}), inicio permitido`);
+    return true;
   };
 
   const startSession = async () => {
     if (!student) return;
-    const audioOk = await runAudioCheck();
-    if (!audioOk) {
-      const confirmStart = window.confirm(
-        "No pude activar todos los audios en el chequeo. ¿Iniciar igual?"
-      );
-      if (!confirmStart) return;
-    }
+    await runAudioCheck();
     sessionStartRef.current = Date.now();
     setIsRunning(true);
     setIsPaused(false);
@@ -521,6 +523,7 @@ export default function App() {
     setCurrentBreathNumber(1);
     setSubphase("inhale");
     playBreathSound();
+    unlockApneaAudio();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
 

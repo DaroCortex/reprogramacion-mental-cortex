@@ -71,6 +71,10 @@ body {
   margin-top: 8px;
 }
 
+[data-theme="dark"] .brand-logo {
+  filter: invert(1) brightness(1.05);
+}
+
 .brand-fallback {
   display: block;
 }
@@ -148,6 +152,9 @@ body {
 .breath-orb {
   width: 220px;
   height: 220px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
   transform: scale(0.9) translateZ(0);
   will-change: transform;
   transform-origin: center;
@@ -187,6 +194,10 @@ body {
   object-fit: contain;
   user-select: none;
   pointer-events: none;
+}
+
+[data-theme="dark"] .breath-logo {
+  filter: invert(1) brightness(1.08);
 }
 
 .breath-logo-fallback {
@@ -234,7 +245,7 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(1);
   font-size: 32px;
   font-weight: 700;
   color: #fff;
@@ -250,9 +261,9 @@ body {
 }
 
 @keyframes breathFade {
-  0% { opacity: 0; transform: translateY(6px) scale(0.95); }
-  15% { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-8px) scale(1.02); }
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.02); }
 }
 
 .session-meta {
