@@ -1,5 +1,7 @@
 import { readStudents } from "./_r2.js";
 
+const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
+
 export default async function handler(req, res) {
   try {
     const slug = String(req.query.slug || "").trim();
@@ -15,11 +17,15 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "Audio no encontrado" });
     }
 
-    if (!token || token !== String(student.token || "")) {
+    const isPublicAudio = PUBLIC_AUDIO_SLUGS.has(slug);
+    if (!isPublicAudio && (!token || token !== String(student.token || ""))) {
       return res.status(403).json({ error: "Token inválido" });
     }
 
-    const url = `/api/audio-file?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`;
+    const query = isPublicAudio
+      ? `slug=${encodeURIComponent(slug)}`
+      : `slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`;
+    const url = `/api/audio-file?${query}`;
     return res.status(200).json({ url });
   } catch (error) {
     return res.status(500).json({ error: "No se pudo preparar el audio" });

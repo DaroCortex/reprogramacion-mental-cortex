@@ -1,6 +1,8 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getBucket, getS3Client, readStudents } from "./_r2.js";
 
+const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
+
 const streamToBuffer = async (stream) => {
   const chunks = [];
   for await (const chunk of stream) {
@@ -25,7 +27,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "Audio no encontrado" });
     }
 
-    if (!token || token !== String(student.token || "")) {
+    const isPublicAudio = PUBLIC_AUDIO_SLUGS.has(slug);
+    if (!isPublicAudio && (!token || token !== String(student.token || ""))) {
       return res.status(403).json({ error: "Token inválido" });
     }
 

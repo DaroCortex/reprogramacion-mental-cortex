@@ -22,9 +22,9 @@ const TICK_MS = 100;
 const DOUBLE_TAP_MS = 280;
 
 const SYSTEM_AUDIO = {
-  respirax1: { slug: "respira", token: "11ee8a1b86c6718ed0757ee003bdaeb1" },
-  bosque7: { slug: "bosq", token: "ba75731bc5a0fdca486c8b1fec21ab34" },
-  inalamos: { slug: "inala", token: "f933948e280f5bd384c9a10f99e48be4" }
+  respirax1: { slug: "respira" },
+  bosque7: { slug: "bosq" },
+  inalamos: { slug: "inala" }
 };
 
 const getSlugFromLocation = () => {
@@ -106,7 +106,6 @@ export default function App() {
   const [cycleIndex, setCycleIndex] = useState(1);
   const [breathsDone, setBreathsDone] = useState(0);
   const [currentBreathNumber, setCurrentBreathNumber] = useState(1);
-  const [breathPulseId, setBreathPulseId] = useState(0);
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -219,9 +218,7 @@ export default function App() {
       const entries = Object.entries(SYSTEM_AUDIO);
       for (const [key, value] of entries) {
         try {
-          const response = await fetch(
-            `/api/audio?slug=${encodeURIComponent(value.slug)}&token=${encodeURIComponent(value.token)}`
-          );
+          const response = await fetch(`/api/audio?slug=${encodeURIComponent(value.slug)}`);
           if (!response.ok) continue;
           const data = await response.json();
           if (!data?.url) continue;
@@ -289,7 +286,6 @@ export default function App() {
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
       setCurrentBreathNumber(nextBreaths + 1);
-      setBreathPulseId((prev) => prev + 1);
       playBreathSound();
       setTimeLeftMs(config.inhaleSeconds * 1000);
       return;
@@ -306,7 +302,6 @@ export default function App() {
         setBreathsDone(0);
         setSubphase("inhale");
         setCurrentBreathNumber(1);
-        setBreathPulseId((prev) => prev + 1);
         playBreathSound();
         setPhase("breathing");
         setTimeLeftMs(config.inhaleSeconds * 1000);
@@ -326,7 +321,6 @@ export default function App() {
     setCycleIndex(1);
     setBreathsDone(0);
     setCurrentBreathNumber(1);
-    setBreathPulseId((prev) => prev + 1);
     setSubphase("inhale");
     playBreathSound();
     unlockApneaAudio();
@@ -985,8 +979,12 @@ export default function App() {
 
           <div className="breath-visual">
             <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()}>
-              {phase === "breathing" && subphase === "inhale" && (
-                <div key={`pulse-${breathPulseId}`} className="breath-count">
+              {phase === "breathing" && (
+                <div
+                  key={`pulse-${cycleIndex}-${breathsDone}`}
+                  className="breath-count"
+                  style={{ animationDuration: `${config.inhaleSeconds + config.exhaleSeconds}s` }}
+                >
                   {currentBreathNumber}
                 </div>
               )}
