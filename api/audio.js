@@ -1,4 +1,4 @@
-import { readStudents, signGetUrl } from "./_r2.js";
+import { readStudents } from "./_r2.js";
 
 export default async function handler(req, res) {
   try {
@@ -19,9 +19,9 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: "Token inválido" });
     }
 
-    const url = await signGetUrl(student.audioKey);
+    const url = `/api/audio-file?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`;
     return res.status(200).json({ url });
   } catch (error) {
-    return res.status(500).json({ error: "No se pudo firmar el audio" });
+    return res.status(500).json({ error: "No se pudo preparar el audio" });
   }
 }

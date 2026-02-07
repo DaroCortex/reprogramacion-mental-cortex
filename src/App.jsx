@@ -22,9 +22,9 @@ const TICK_MS = 100;
 const DOUBLE_TAP_MS = 280;
 
 const SYSTEM_AUDIO = {
-  respirax1: { slug: "respirax1", token: "1ffa5a6383f639d9cecc6d449e5074c7" },
-  bosque7: { slug: "bosque", token: "2ae1d8e90778ae226e1efd07c6d2b30b" },
-  inalamos: { slug: "inalamos", token: "871dc638b69167c142ddf7ddc6cdffc8" }
+  respirax1: { slug: "respira", token: "11ee8a1b86c6718ed0757ee003bdaeb1" },
+  bosque7: { slug: "bosq", token: "ba75731bc5a0fdca486c8b1fec21ab34" },
+  inalamos: { slug: "inala", token: "f933948e280f5bd384c9a10f99e48be4" }
 };
 
 const getSlugFromLocation = () => {

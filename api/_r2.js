@@ -99,4 +99,4 @@ const uploadObject = async (key, body, contentType) => {
   );
 };
 
-export { getS3Client, readStudents, writeStudents, signPutUrl, signGetUrl, uploadObject };
+export { getS3Client, getBucket, readStudents, writeStudents, signPutUrl, signGetUrl, uploadObject };
