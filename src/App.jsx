@@ -7,7 +7,10 @@ const DEFAULT_CONFIG = {
   recoverySeconds: 15,
   cycles: 3,
   audioVolume: 0.8,
-  bosqueVolume: 0.5
+  bosqueVolume: 0.5,
+  ambientSound: "bosque",
+  septasyncTrack: "none",
+  septasyncVolume: 0.5
 };
 
 const PHASE_LABELS = {
@@ -24,8 +27,21 @@ const DOUBLE_TAP_MS = 280;
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
   bosque7: { slug: "bosq" },
-  inalamos: { slug: "inala" }
+  oceano: { slug: "oceano", token: "0b1c639be3bfbd85ce0b03878cfe2da0" },
+  inalamos: { slug: "inala" },
+  septasyncBalance: { slug: "balance", token: "feac0b11ec4cc1075e8d3cab8820da64" },
+  septasyncGamma: { slug: "gamma", token: "fab74156451bda36e14983914723b1cc" },
+  septasyncTrance: { slug: "trance", token: "3d662b5c21e6ed1373a269ee865a4193" }
 };
+
+const SPEED_OPTIONS = [
+  { id: "rapida", label: "Rápida 1.5s", value: 1.5 },
+  { id: "normal", label: "Normal 2s", value: 2 },
+  { id: "lenta", label: "Lenta 3s", value: 3 }
+];
+
+const BREATHS_OPTIONS = [36, 42, 48];
+const CYCLES_OPTIONS = [3, 5, 8, 15];
 
 const getSlugFromLocation = () => {
   const params = new URLSearchParams(window.location.search);
@@ -97,9 +113,19 @@ export default function App() {
   const [adminFile, setAdminFile] = useState(null);
   const [adminLink, setAdminLink] = useState("");
   const [replaceSlug, setReplaceSlug] = useState("");
+  const [manualConfigOpen, setManualConfigOpen] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [audioSrc, setAudioSrc] = useState("");
   const [audioStatus, setAudioStatus] = useState("idle");
+  const [ambientAudioMap, setAmbientAudioMap] = useState({
+    bosque: "",
+    oceano: ""
+  });
+  const [septasyncAudioMap, setSeptasyncAudioMap] = useState({
+    balance: "",
+    gamma: "",
+    trance: ""
+  });
 
   const [phase, setPhase] = useState("idle");
   const [subphase, setSubphase] = useState("inhale");
@@ -124,6 +150,7 @@ export default function App() {
   const breathAudioRef = useRef(null);
   const bosqueAudioRef = useRef(null);
   const endApneaAudioRef = useRef(null);
+  const septasyncAudioRef = useRef(null);
   const replaceInputRef = useRef(null);
   const intervalRef = useRef(null);
   const sessionStartRef = useRef(null);
@@ -169,6 +196,29 @@ export default function App() {
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
 
+  const selectedAmbientUrl = useMemo(() => {
+    if (config.ambientSound === "none") return "";
+    return ambientAudioMap[config.ambientSound] || "";
+  }, [ambientAudioMap, config.ambientSound]);
+
+  const selectedSeptasyncUrl = useMemo(() => {
+    if (config.septasyncTrack === "none") return "";
+    if (config.septasyncTrack === "balance") return septasyncAudioMap.balance || "";
+    if (config.septasyncTrack === "gamma") return septasyncAudioMap.gamma || "";
+    if (config.septasyncTrack === "trance") return septasyncAudioMap.trance || "";
+    return "";
+  }, [config.septasyncTrack, septasyncAudioMap]);
+
+  const filteredAdminStudents = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return adminStudents;
+    return adminStudents.filter((item) => (
+      String(item.name || "").toLowerCase().includes(term) ||
+      String(item.slug || "").toLowerCase().includes(term) ||
+      String(item.audioKey || "").toLowerCase().includes(term)
+    ));
+  }, [adminStudents, searchTerm]);
+
   useEffect(() => {
     if (!slug) return;
     const savedConfig = localStorage.getItem(`rmcortex_config_${slug}`);
@@ -177,7 +227,15 @@ export default function App() {
         const parsed = JSON.parse(savedConfig);
         setConfig((prev) => ({
           ...prev,
-          ...parsed
+          ...parsed,
+          ambientSound: parsed.ambientSound || prev.ambientSound,
+          septasyncTrack: parsed.septasyncTrack || prev.septasyncTrack,
+          septasyncVolume: Number.isFinite(parsed.septasyncVolume)
+            ? parsed.septasyncVolume
+            : prev.septasyncVolume,
+          bosqueVolume: Number.isFinite(parsed.bosqueVolume)
+            ? parsed.bosqueVolume
+            : prev.bosqueVolume
         }));
       } catch (error) {
         // ignore malformed
@@ -215,21 +273,43 @@ export default function App() {
 
   useEffect(() => {
     const loadSystemAudio = async () => {
+      const fetchAudio = async (slug, providedToken) => {
+        const tokenPart = providedToken
+          ? `&token=${encodeURIComponent(providedToken)}`
+          : "";
+        const response = await fetch(
+          `/api/audio?slug=${encodeURIComponent(slug)}${tokenPart}`
+        );
+        if (!response.ok) return "";
+        const data = await response.json();
+        return data?.url || "";
+      };
+
       const entries = Object.entries(SYSTEM_AUDIO);
       for (const [key, value] of entries) {
         try {
-          const response = await fetch(`/api/audio?slug=${encodeURIComponent(value.slug)}`);
-          if (!response.ok) continue;
-          const data = await response.json();
-          if (!data?.url) continue;
+          const url = await fetchAudio(value.slug, value.token);
+          if (!url) continue;
           if (key === "respirax1" && breathAudioRef.current) {
-            breathAudioRef.current.src = data.url;
+            breathAudioRef.current.src = url;
           }
-          if (key === "bosque7" && bosqueAudioRef.current) {
-            bosqueAudioRef.current.src = data.url;
+          if (key === "bosque7") {
+            setAmbientAudioMap((prev) => ({ ...prev, bosque: url }));
+          }
+          if (key === "oceano") {
+            setAmbientAudioMap((prev) => ({ ...prev, oceano: url }));
           }
           if (key === "inalamos" && endApneaAudioRef.current) {
-            endApneaAudioRef.current.src = data.url;
+            endApneaAudioRef.current.src = url;
+          }
+          if (key === "septasyncBalance") {
+            setSeptasyncAudioMap((prev) => ({ ...prev, balance: url }));
+          }
+          if (key === "septasyncGamma") {
+            setSeptasyncAudioMap((prev) => ({ ...prev, gamma: url }));
+          }
+          if (key === "septasyncTrance") {
+            setSeptasyncAudioMap((prev) => ({ ...prev, trance: url }));
           }
         } catch (error) {
           // ignore
@@ -240,12 +320,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!bosqueAudioRef.current) return;
+    if (!selectedAmbientUrl) {
+      stopBosque();
+      return;
+    }
+    if (bosqueAudioRef.current.src !== selectedAmbientUrl) {
+      bosqueAudioRef.current.src = selectedAmbientUrl;
+    }
+  }, [selectedAmbientUrl]);
+
+  useEffect(() => {
     if (!isRunning || isPaused) {
       stopBosque();
       return;
     }
     playBosque();
-  }, [phase, isRunning, isPaused]);
+  }, [phase, isRunning, isPaused, selectedAmbientUrl]);
+
+  useEffect(() => {
+    if (!septasyncAudioRef.current) return;
+    if (!selectedSeptasyncUrl) {
+      stopSeptasync();
+      return;
+    }
+    if (septasyncAudioRef.current.src !== selectedSeptasyncUrl) {
+      septasyncAudioRef.current.src = selectedSeptasyncUrl;
+    }
+  }, [selectedSeptasyncUrl]);
+
+  useEffect(() => {
+    if (!septasyncAudioRef.current) return;
+    septasyncAudioRef.current.volume = Math.min(1, Math.max(0, config.septasyncVolume));
+  }, [config.septasyncVolume]);
+
+  useEffect(() => {
+    if (!isRunning || isPaused) {
+      stopSeptasync();
+      return;
+    }
+    playSeptasync();
+  }, [isRunning, isPaused, selectedSeptasyncUrl]);
 
   useEffect(() => {
     if (!isRunning || isPaused) return;
@@ -349,6 +464,7 @@ export default function App() {
     setSubphase("inhale");
     stopAudio();
     stopBosque();
+    stopSeptasync();
   };
 
   const startApnea = () => {
@@ -367,6 +483,7 @@ export default function App() {
     setPhase("recovery");
     setTimeLeftMs(config.recoverySeconds * 1000);
     stopAudio();
+    stopSeptasync();
   };
 
   const finishSession = () => {
@@ -453,6 +570,10 @@ export default function App() {
 
   const playBosque = () => {
     if (!bosqueAudioRef.current) return;
+    if (!selectedAmbientUrl) return;
+    if (bosqueAudioRef.current.src !== selectedAmbientUrl) {
+      bosqueAudioRef.current.src = selectedAmbientUrl;
+    }
     bosqueAudioRef.current.loop = true;
     bosqueAudioRef.current.play().catch(() => {});
   };
@@ -461,6 +582,22 @@ export default function App() {
     if (!bosqueAudioRef.current) return;
     bosqueAudioRef.current.pause();
     bosqueAudioRef.current.currentTime = 0;
+  };
+
+  const playSeptasync = () => {
+    if (!septasyncAudioRef.current) return;
+    if (!selectedSeptasyncUrl) return;
+    if (septasyncAudioRef.current.src !== selectedSeptasyncUrl) {
+      septasyncAudioRef.current.src = selectedSeptasyncUrl;
+    }
+    septasyncAudioRef.current.loop = true;
+    septasyncAudioRef.current.play().catch(() => {});
+  };
+
+  const stopSeptasync = () => {
+    if (!septasyncAudioRef.current) return;
+    septasyncAudioRef.current.pause();
+    septasyncAudioRef.current.currentTime = 0;
   };
 
   const playEndApnea = () => {
@@ -855,18 +992,12 @@ export default function App() {
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
+                <span className="muted">
+                  {filteredAdminStudents.length} / {adminStudents.length}
+                </span>
               </div>
               <div className="link-list">
-                {adminStudents
-                  .filter((item) => {
-                    const term = searchTerm.trim().toLowerCase();
-                    if (!term) return true;
-                    return (
-                      String(item.name || "").toLowerCase().includes(term) ||
-                      String(item.slug || "").toLowerCase().includes(term) ||
-                      String(item.audioKey || "").toLowerCase().includes(term)
-                    );
-                  })
+                {filteredAdminStudents
                   .map((item) => (
                     <div key={item.slug} className="link-row">
                       <div>
@@ -918,8 +1049,12 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                {adminStudents.length === 0 && (
-                  <p className="muted">Aún no hay estudiantes cargados.</p>
+                {filteredAdminStudents.length === 0 && (
+                  <p className="muted">
+                    {adminStudents.length === 0
+                      ? "Aún no hay estudiantes cargados."
+                      : "Sin resultados para esa búsqueda."}
+                  </p>
                 )}
               </div>
             </div>
@@ -1035,105 +1170,104 @@ export default function App() {
           <audio ref={breathAudioRef} preload="auto" />
           <audio ref={bosqueAudioRef} preload="auto" />
           <audio ref={endApneaAudioRef} preload="auto" />
+          <audio ref={septasyncAudioRef} preload="auto" />
         </section>
 
         <section className="card">
           <h3>Configuración rápida</h3>
-          <p className="muted">Puedes ajustar esto para todas las sesiones del estudiante.</p>
-          <div className="form-grid">
+          <p className="muted">Presets rápidos para no tocar sliders en cada sesión.</p>
+
+          <div className="preset-group">
+            <div className="preset-label">Velocidad respiración</div>
+            <div className="preset-row">
+              {SPEED_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`chip ${config.inhaleSeconds === option.value && config.exhaleSeconds === option.value ? "active" : ""}`}
+                  onClick={() =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      inhaleSeconds: option.value,
+                      exhaleSeconds: option.value
+                    }))
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="preset-group">
+            <div className="preset-label">Respiraciones por ciclo</div>
+            <div className="preset-row">
+              {BREATHS_OPTIONS.map((value) => (
+                <button
+                  key={`breaths-${value}`}
+                  type="button"
+                  className={`chip ${config.breathsPerCycle === value ? "active" : ""}`}
+                  onClick={() =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      breathsPerCycle: value
+                    }))
+                  }
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="preset-group">
+            <div className="preset-label">Ciclos</div>
+            <div className="preset-row">
+              {CYCLES_OPTIONS.map((value) => (
+                <button
+                  key={`cycles-${value}`}
+                  type="button"
+                  className={`chip ${config.cycles === value ? "active" : ""}`}
+                  onClick={() =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      cycles: value
+                    }))
+                  }
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="preset-group">
+            <div className="preset-label">Sonido ambiente</div>
+            <div className="preset-row">
+              <button
+                type="button"
+                className={`chip ${config.ambientSound === "bosque" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, ambientSound: "bosque" }))}
+              >
+                Bosque
+              </button>
+              <button
+                type="button"
+                className={`chip ${config.ambientSound === "oceano" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, ambientSound: "oceano" }))}
+              >
+                Oceano
+              </button>
+              <button
+                type="button"
+                className={`chip ${config.ambientSound === "none" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, ambientSound: "none" }))}
+              >
+                Sin sonido
+              </button>
+            </div>
             <label>
-              Respiraciones por ciclo
-              <input
-                type="number"
-                min="5"
-                max="60"
-                value={config.breathsPerCycle}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    breathsPerCycle: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Inhalar (segundos)
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={config.inhaleSeconds}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    inhaleSeconds: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Exhalar (segundos)
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={config.exhaleSeconds}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    exhaleSeconds: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Recuperación (segundos)
-              <input
-                type="number"
-                min="5"
-                max="60"
-                value={config.recoverySeconds}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    recoverySeconds: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Ciclos
-              <input
-                type="number"
-                min="1"
-                max="6"
-                value={config.cycles}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    cycles: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Volumen audio apnea
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={config.audioVolume}
-                onChange={(event) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    audioVolume: Number(event.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Volumen bosque
+              Volumen ambiente
               <input
                 type="range"
                 min="0"
@@ -1149,6 +1283,164 @@ export default function App() {
               />
             </label>
           </div>
+
+          <div className="preset-group">
+            <div className="preset-label">Septasync</div>
+            <div className="preset-row">
+              <button
+                type="button"
+                className={`chip ${config.septasyncTrack === "balance" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, septasyncTrack: "balance" }))}
+              >
+                Balance
+              </button>
+              <button
+                type="button"
+                className={`chip ${config.septasyncTrack === "gamma" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, septasyncTrack: "gamma" }))}
+              >
+                Gamma
+              </button>
+              <button
+                type="button"
+                className={`chip ${config.septasyncTrack === "trance" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, septasyncTrack: "trance" }))}
+              >
+                Trance
+              </button>
+              <button
+                type="button"
+                className={`chip ${config.septasyncTrack === "none" ? "active" : ""}`}
+                onClick={() => setConfig((prev) => ({ ...prev, septasyncTrack: "none" }))}
+              >
+                Off
+              </button>
+            </div>
+            <label>
+              Volumen Septasync
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={config.septasyncVolume}
+                onChange={(event) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    septasyncVolume: Number(event.target.value)
+                  }))
+                }
+              />
+            </label>
+            <span className="muted">Septasync activo durante la sesión (volumen independiente).</span>
+          </div>
+
+          <div className="audio-tools">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setManualConfigOpen((prev) => !prev)}
+            >
+              {manualConfigOpen ? "Ocultar manual" : "Manual"}
+            </button>
+          </div>
+
+          {manualConfigOpen && (
+            <div className="form-grid">
+              <label>
+                Respiraciones por ciclo
+                <input
+                  type="number"
+                  min="5"
+                  max="60"
+                  value={config.breathsPerCycle}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      breathsPerCycle: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Inhalar (segundos)
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={config.inhaleSeconds}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      inhaleSeconds: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Exhalar (segundos)
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={config.exhaleSeconds}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      exhaleSeconds: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Recuperación (segundos)
+                <input
+                  type="number"
+                  min="5"
+                  max="60"
+                  value={config.recoverySeconds}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      recoverySeconds: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Ciclos
+                <input
+                  type="number"
+                  min="1"
+                  max="15"
+                  value={config.cycles}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      cycles: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Volumen audio apnea
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={config.audioVolume}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      audioVolume: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          )}
+
           <div className="audio-tools">
             <button className="secondary" onClick={previewAudio}>
               Probar audio

@@ -269,6 +269,38 @@ button:hover {
   margin-top: 16px;
 }
 
+.preset-group {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.preset-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.preset-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  background: color-mix(in srgb, var(--card) 84%, var(--bg) 16%);
+  color: var(--ink);
+  border: 1px solid var(--stroke);
+  padding: 10px 14px;
+}
+
+.chip.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
 label {
   display: grid;
   gap: 8px;
