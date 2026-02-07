@@ -157,6 +157,7 @@ export default function App() {
   const septasyncAudioRef = useRef(null);
   const replaceInputRef = useRef(null);
   const intervalRef = useRef(null);
+  const breathStopTimerRef = useRef(null);
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
@@ -415,7 +416,6 @@ export default function App() {
     if (phase === "breathing") {
       if (subphase === "inhale") {
         setSubphase("exhale");
-        playBreathSound();
         setTimeLeftMs(config.exhaleSeconds * 1000);
         return;
       }
@@ -430,7 +430,7 @@ export default function App() {
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
       setCurrentBreathNumber(nextBreaths + 1);
-      playBreathSound();
+      playBreathSound((config.inhaleSeconds + config.exhaleSeconds) * 1000);
       setTimeLeftMs(config.inhaleSeconds * 1000);
       return;
     }
@@ -446,7 +446,7 @@ export default function App() {
         setBreathsDone(0);
         setSubphase("inhale");
         setCurrentBreathNumber(1);
-        playBreathSound();
+        playBreathSound((config.inhaleSeconds + config.exhaleSeconds) * 1000);
         setPhase("breathing");
         setTimeLeftMs(config.inhaleSeconds * 1000);
         return;
@@ -523,7 +523,7 @@ export default function App() {
     setBreathsDone(0);
     setCurrentBreathNumber(1);
     setSubphase("inhale");
-    playBreathSound();
+    playBreathSound((config.inhaleSeconds + config.exhaleSeconds) * 1000);
     unlockApneaAudio();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
@@ -551,6 +551,7 @@ export default function App() {
     stopAudio();
     stopBosque();
     stopSeptasync();
+    stopBreathSound();
   };
 
   const startApnea = () => {
@@ -647,11 +648,31 @@ export default function App() {
       });
   };
 
-  const playBreathSound = () => {
+  const playBreathSound = (durationMs) => {
     if (!breathAudioRef.current) return;
+    if (breathStopTimerRef.current) {
+      clearTimeout(breathStopTimerRef.current);
+      breathStopTimerRef.current = null;
+    }
     breathAudioRef.current.currentTime = 0;
     breathAudioRef.current.loop = false;
     breathAudioRef.current.play().catch(() => {});
+    const totalMs = Number.isFinite(durationMs)
+      ? durationMs
+      : (config.inhaleSeconds + config.exhaleSeconds) * 1000;
+    breathStopTimerRef.current = setTimeout(() => {
+      stopBreathSound();
+    }, Math.max(0, totalMs));
+  };
+
+  const stopBreathSound = () => {
+    if (!breathAudioRef.current) return;
+    if (breathStopTimerRef.current) {
+      clearTimeout(breathStopTimerRef.current);
+      breathStopTimerRef.current = null;
+    }
+    breathAudioRef.current.pause();
+    breathAudioRef.current.currentTime = 0;
   };
 
   const playBosque = () => {
