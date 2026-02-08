@@ -42,6 +42,14 @@ const SPEED_OPTIONS = [
 
 const BREATHS_OPTIONS = [36, 42, 48];
 const CYCLES_OPTIONS = [3, 5, 8, 15];
+const PRACTICE_OPTIONS = [
+  { id: "reprogramacion", label: "Practica de Reprogramacion mental", enabled: true },
+  { id: "colores", label: "Practica de visualizacion de colores", enabled: false },
+  { id: "remota", label: "Practica de vision remota", enabled: false },
+  { id: "meditacion", label: "Practica de meditacion", enabled: false },
+  { id: "telekinesis", label: "Practica de telekinesis", enabled: false },
+  { id: "magia", label: "Sesion de magia blanca", enabled: false }
+];
 
 const getSlugFromLocation = () => {
   const params = new URLSearchParams(window.location.search);
@@ -114,6 +122,7 @@ export default function App() {
   const [adminLink, setAdminLink] = useState("");
   const [replaceSlug, setReplaceSlug] = useState("");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
+  const [practiceScreen, setPracticeScreen] = useState("menu");
   const [brandLogoMissing, setBrandLogoMissing] = useState(false);
   const [breathLogoMissing, setBreathLogoMissing] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -999,6 +1008,13 @@ export default function App() {
     }
   };
 
+  const handleBackToMenu = () => {
+    if (isRunningRef.current) {
+      stopSession();
+    }
+    setPracticeScreen("menu");
+  };
+
   const onPointerUp = (event) => {
     if (event.pointerType && event.pointerType !== "touch") return;
     const now = Date.now();
@@ -1341,9 +1357,40 @@ export default function App() {
     );
   }
 
+  if (practiceScreen === "menu") {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="card menu-card">
+          <h2>Selecciona practica</h2>
+          <p className="muted">Por ahora solo la primera opcion esta activa.</p>
+          <div className="practice-menu">
+            {PRACTICE_OPTIONS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`menu-button ${item.enabled ? "enabled" : "disabled"}`}
+                onClick={item.enabled ? () => setPracticeScreen("practice") : undefined}
+                disabled={!item.enabled}
+              >
+                {item.label}
+                {!item.enabled && <span>Proximamente</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app" onPointerUp={onPointerUp} onDoubleClick={handleDoubleTap}>
       {renderHeader()}
+      <div className="practice-nav">
+        <button type="button" className="ghost" onClick={handleBackToMenu}>
+          Volver al menu
+        </button>
+      </div>
 
       <main className="grid">
         <section className="session card">
@@ -1735,49 +1782,51 @@ export default function App() {
           </div>
         </section>
 
-        <section className="card">
-          <h3>Seguimiento local</h3>
-          <div className="stats-grid">
-            <div>
-              <span>Sesiones totales</span>
-              <strong>{progress.totalSessions || 0}</strong>
-            </div>
-            <div>
-              <span>Respiraciones totales</span>
-              <strong>{progress.totalBreaths || 0}</strong>
-            </div>
-            <div>
-              <span>Racha</span>
-              <strong>{progress.streak || 0} días</strong>
-            </div>
-            <div>
-              <span>Última sesión</span>
-              <strong>{progress.lastSessionDate || "-"}</strong>
-            </div>
-            <div>
-              <span>Última apnea</span>
-              <strong>{progress.lastApneaSeconds || 0}s</strong>
-            </div>
-          </div>
-          {progress.lastSummary && (
-            <div className="summary">
-              Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones / apnea {progress.lastSummary.apneaSeconds || 0}s
-            </div>
-          )}
-          {progress.apneaHistory && progress.apneaHistory.length > 0 && (
-            <div className="history">
-              <div className="history-title">Historial de apnea</div>
-              <div className="history-list">
-                {progress.apneaHistory.map((entry, index) => (
-                  <div key={`${entry.timestamp || entry.date}-${index}`} className="history-item">
-                    <span>{entry.date}</span>
-                    <strong>{entry.seconds}s</strong>
-                  </div>
-                ))}
+        {phase === "complete" && (
+          <section className="card">
+            <h3>Seguimiento local</h3>
+            <div className="stats-grid">
+              <div>
+                <span>Sesiones totales</span>
+                <strong>{progress.totalSessions || 0}</strong>
+              </div>
+              <div>
+                <span>Respiraciones totales</span>
+                <strong>{progress.totalBreaths || 0}</strong>
+              </div>
+              <div>
+                <span>Racha</span>
+                <strong>{progress.streak || 0} días</strong>
+              </div>
+              <div>
+                <span>Última sesión</span>
+                <strong>{progress.lastSessionDate || "-"}</strong>
+              </div>
+              <div>
+                <span>Última apnea</span>
+                <strong>{progress.lastApneaSeconds || 0}s</strong>
               </div>
             </div>
-          )}
-        </section>
+            {progress.lastSummary && (
+              <div className="summary">
+                Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones / apnea {progress.lastSummary.apneaSeconds || 0}s
+              </div>
+            )}
+            {progress.apneaHistory && progress.apneaHistory.length > 0 && (
+              <div className="history">
+                <div className="history-title">Historial de apnea</div>
+                <div className="history-list">
+                  {progress.apneaHistory.map((entry, index) => (
+                    <div key={`${entry.timestamp || entry.date}-${index}`} className="history-item">
+                      <span>{entry.date}</span>
+                      <strong>{entry.seconds}s</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
       </main>
       <input
         ref={replaceInputRef}
