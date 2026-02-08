@@ -139,6 +139,7 @@ export default function App() {
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [endHoldProgress, setEndHoldProgress] = useState(0);
 
   const [progress, setProgress] = useState({
     totalSessions: 0,
@@ -158,6 +159,13 @@ export default function App() {
   const replaceInputRef = useRef(null);
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
+  const wakeLockRef = useRef(null);
+  const hiddenAtRef = useRef(null);
+  const endHoldTimeoutRef = useRef(null);
+  const endHoldIntervalRef = useRef(null);
+  const phaseRef = useRef(phase);
+  const isRunningRef = useRef(isRunning);
+  const isPausedRef = useRef(isPaused);
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
@@ -167,6 +175,18 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", safeTheme);
     localStorage.setItem("rmcortex_theme", safeTheme);
   }, [theme]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    isRunningRef.current = isRunning;
+  }, [isRunning]);
+
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -412,6 +432,77 @@ export default function App() {
     };
   }, [isRunning, isPaused, phase, subphase, breathsDone, cycleIndex, config]);
 
+  const requestWakeLock = async () => {
+    if (!("wakeLock" in navigator) || wakeLockRef.current) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request("screen");
+      wakeLockRef.current.addEventListener("release", () => {
+        wakeLockRef.current = null;
+      });
+    } catch (error) {
+      // ignore unsupported/blocked
+    }
+  };
+
+  const releaseWakeLock = async () => {
+    if (!wakeLockRef.current) return;
+    try {
+      await wakeLockRef.current.release();
+    } catch (error) {
+      // ignore
+    } finally {
+      wakeLockRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (isRunning && !isPaused) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [isRunning, isPaused]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (isRunningRef.current && !isPausedRef.current) {
+          hiddenAtRef.current = Date.now();
+        }
+        return;
+      }
+
+      if (isRunningRef.current && !isPausedRef.current) {
+        requestWakeLock();
+      }
+
+      if (!hiddenAtRef.current) return;
+      const elapsed = Date.now() - hiddenAtRef.current;
+      hiddenAtRef.current = null;
+      if (elapsed <= 0) return;
+
+      if (phaseRef.current === "apnea") {
+        setTimeLeftMs((prev) => prev + elapsed);
+        return;
+      }
+
+      setTimeLeftMs((prev) => {
+        const next = prev - elapsed;
+        if (next > 0) return next;
+        handlePhaseAdvance();
+        return 0;
+      });
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  useEffect(() => () => {
+    cancelEndApneaHold();
+    releaseWakeLock();
+  }, []);
+
   const handlePhaseAdvance = () => {
     if (phase === "breathing") {
       if (subphase === "inhale") {
@@ -504,11 +595,21 @@ export default function App() {
     if (allOk || (apneaUrl && okCount >= 1)) {
       setAudioCheckStatus("ready");
       setAudioCheckMessage(`Audio OK (${okCount}/${results.length})`);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.loop = false;
+      }
       return true;
     }
 
     setAudioCheckStatus("warning");
     setAudioCheckMessage(`Audio parcial (${okCount}/${results.length}), inicio permitido`);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.loop = false;
+    }
     return true;
   };
 
@@ -761,6 +862,34 @@ export default function App() {
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
+  };
+
+  const cancelEndApneaHold = () => {
+    if (endHoldTimeoutRef.current) {
+      clearTimeout(endHoldTimeoutRef.current);
+      endHoldTimeoutRef.current = null;
+    }
+    if (endHoldIntervalRef.current) {
+      clearInterval(endHoldIntervalRef.current);
+      endHoldIntervalRef.current = null;
+    }
+    setEndHoldProgress(0);
+  };
+
+  const startEndApneaHold = (event) => {
+    if (phase !== "apnea") return;
+    event.preventDefault();
+    cancelEndApneaHold();
+    const startAt = Date.now();
+    const holdMs = 1500;
+    endHoldIntervalRef.current = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - startAt) / holdMs) * 100);
+      setEndHoldProgress(pct);
+    }, 30);
+    endHoldTimeoutRef.current = setTimeout(() => {
+      cancelEndApneaHold();
+      endApneaEarly();
+    }, holdMs);
   };
 
   const endApneaEarly = () => {
@@ -1293,7 +1422,16 @@ export default function App() {
               <button className="ghost" onClick={stopSession}>Detener</button>
             )}
             {phase === "apnea" && (
-              <button className="primary" onClick={endApneaEarly}>Terminar apnea</button>
+              <button
+                className="primary hold-to-end"
+                style={{ "--hold-pct": `${endHoldProgress}%` }}
+                onPointerDown={startEndApneaHold}
+                onPointerUp={cancelEndApneaHold}
+                onPointerLeave={cancelEndApneaHold}
+                onPointerCancel={cancelEndApneaHold}
+              >
+                <span>Mantener 1.5s para terminar apnea</span>
+              </button>
             )}
           </div>
 

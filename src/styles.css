@@ -30,6 +30,10 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   font-family: "Manrope", sans-serif;
@@ -37,16 +41,19 @@ body {
   color: var(--ink);
   min-height: 100vh;
   transition: background 200ms ease, color 200ms ease;
+  overflow-x: hidden;
 }
 
 #root {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .app {
   max-width: 1100px;
   margin: 0 auto;
   padding: 40px 24px 80px;
+  overflow-x: clip;
 }
 
 .header {
@@ -303,6 +310,27 @@ button {
 button.primary {
   background: var(--accent);
   color: white;
+}
+
+.hold-to-end {
+  position: relative;
+  overflow: hidden;
+}
+
+.hold-to-end::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--hold-pct, 0%);
+  background: rgba(193, 123, 58, 0.58);
+  transition: width 30ms linear;
+}
+
+.hold-to-end span {
+  position: relative;
+  z-index: 1;
 }
 
 button.secondary {
