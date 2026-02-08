@@ -1,8 +1,20 @@
-import crypto from "crypto";
 import { readAdmins, writeAdmins } from "./_r2.js";
 
-const hashPassword = (value) =>
-  crypto.createHash("sha256").update(String(value || "")).digest("hex");
+const hashPassword = (value) => {
+  const input = String(value || "");
+  // Hash simple determinístico sin dependencias nativas.
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return `h${(hash >>> 0).toString(16)}`;
+};
 
 const isSuperAdmin = (password) => {
   const master = process.env.ADMIN_PASSWORD || "";
