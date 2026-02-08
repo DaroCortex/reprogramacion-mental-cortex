@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 
 const DEFAULT_CONFIG = {
   breathsPerCycle: 30,
@@ -51,6 +52,7 @@ const BREATHS_OPTIONS = [36, 42, 48];
 const CYCLES_OPTIONS = [3, 5, 8, 15];
 const PRACTICE_OPTIONS = [
   { id: "reprogramacion", label: "Practica de Reprogramacion mental", enabled: true },
+  { id: "metas", label: "Metas Diarias", enabled: true },
   { id: "colores", label: "Practica de visualizacion de colores", enabled: false },
   { id: "remota", label: "Practica de vision remota", enabled: false },
   { id: "meditacion", label: "Practica de meditacion", enabled: false },
@@ -1063,6 +1065,14 @@ export default function App() {
     setPracticeScreen("menu");
   };
 
+  const openPracticeOption = (practiceId) => {
+    if (practiceId === "metas") {
+      setPracticeScreen("daily-goals");
+      return;
+    }
+    setPracticeScreen("practice");
+  };
+
   const onPointerUp = (event) => {
     if (event.pointerType && event.pointerType !== "touch") return;
     const now = Date.now();
@@ -1411,14 +1421,14 @@ export default function App() {
         {renderHeader()}
         <div className="card menu-card">
           <h2>Selecciona practica</h2>
-          <p className="muted">Por ahora solo la primera opcion esta activa.</p>
+          <p className="muted">Puedes entrar en Reprogramacion mental o Metas Diarias. El resto queda en Proximamente.</p>
           <div className="practice-menu">
             {PRACTICE_OPTIONS.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 className={`menu-button ${item.enabled ? "enabled" : "disabled"}`}
-                onClick={item.enabled ? () => setPracticeScreen("practice") : undefined}
+                onClick={item.enabled ? () => openPracticeOption(item.id) : undefined}
                 disabled={!item.enabled}
               >
                 {item.label}
@@ -1427,6 +1437,20 @@ export default function App() {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (practiceScreen === "daily-goals") {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="practice-nav">
+          <button type="button" className="ghost" onClick={handleBackToMenu}>
+            Volver al menu
+          </button>
+        </div>
+        <DailyGoalsModule />
       </div>
     );
   }
