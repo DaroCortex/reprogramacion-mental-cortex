@@ -1,9 +1,5 @@
 import { signPutUrl } from "../_r2.js";
-
-const isAllowed = (password) => {
-  const adminPassword = process.env.ADMIN_PASSWORD || "";
-  return password && adminPassword && password === adminPassword;
-};
+import { verifyAdminPassword } from "../_auth.js";
 
 export default async function handler(req, res) {
   try {
@@ -12,7 +8,7 @@ export default async function handler(req, res) {
     }
 
     const { password, fileName } = req.body || {};
-    if (!isAllowed(password)) {
+    if (!(await verifyAdminPassword(password))) {
       return res.status(401).json({ error: "No autorizado" });
     }
 

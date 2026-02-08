@@ -1,5 +1,4 @@
-import { readStudents } from "../_r2.js";
-import { verifyAdminPassword } from "../_auth.js";
+import { listAdmins, verifyAdminPassword } from "../_auth.js";
 
 export default async function handler(req, res) {
   try {
@@ -7,9 +6,10 @@ export default async function handler(req, res) {
     if (!(await verifyAdminPassword(password))) {
       return res.status(401).json({ error: "No autorizado" });
     }
-    const students = await readStudents();
-    return res.status(200).json({ students });
+
+    const admins = await listAdmins();
+    return res.status(200).json({ admins });
   } catch (error) {
-    return res.status(500).json({ error: "No se pudo cargar estudiantes" });
+    return res.status(500).json({ error: "No se pudo listar administradores" });
   }
 }

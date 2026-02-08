@@ -82,6 +82,15 @@ function formatDate(key) {
   return d.toLocaleDateString("es-ES", { weekday: "short", day: "2-digit", month: "short" });
 }
 
+function isSunday(key) {
+  const d = new Date(`${key}T12:00:00`);
+  return d.getDay() === 0;
+}
+
+function isBreathingTask(item) {
+  return /respiraci/i.test(String(item?.text || ""));
+}
+
 function toId(value) {
   return value
     .toLowerCase()
@@ -206,6 +215,10 @@ function pickFiveTemplates(templates, dayKey) {
   const optionalRotated = rotate(optional, dayHash % Math.max(optional.length, 1));
 
   const selected = [...criticalRotated.slice(0, 3), ...optionalRotated.slice(0, 2)];
+  const breathing = templates.find((item) => isBreathingTask(item));
+  if (breathing && !selected.find((item) => item.id === breathing.id)) {
+    selected[0] = breathing;
+  }
   if (selected.length < 5) {
     const filler = rotate(templates, dayHash % Math.max(templates.length, 1));
     for (const t of filler) {
@@ -228,20 +241,27 @@ function pointsForItem(item) {
   return 0;
 }
 
-function scoreDay(day) {
+function scoreDay(day, dayKeyForRules = "") {
   const items = day?.items ?? [];
-  const valid = items.filter((item) => item.status !== "na");
+  const sunday = isSunday(dayKeyForRules);
+  const normalized = items.map((item) => {
+    if (!sunday) return item;
+    if (isBreathingTask(item)) return item;
+    return { ...item, status: "na", critical: false };
+  });
+
+  const valid = normalized.filter((item) => item.status !== "na");
   const possible = valid.reduce((sum, item) => sum + (item.points ?? 10), 0);
 
-  const earnedRaw = items.reduce((sum, item) => sum + pointsForItem(item), 0);
-  const critical = items.filter((item) => item.critical);
+  const earnedRaw = normalized.reduce((sum, item) => sum + pointsForItem(item), 0);
+  const critical = normalized.filter((item) => item.critical);
   const criticalDone = critical.filter((item) => item.status === "done" || item.status === "partial").length;
-  const doneOrPartial = items.filter((item) => item.status === "done" || item.status === "partial").length;
+  const doneOrPartial = normalized.filter((item) => item.status === "done" || item.status === "partial").length;
 
   let bonus = 0;
   if (doneOrPartial >= 1) bonus += 2;
   if (critical.length && criticalDone === critical.length) bonus += 8;
-  if (doneOrPartial === items.length && items.length >= 5) bonus += 12;
+  if (doneOrPartial === normalized.length && normalized.length >= 5) bonus += 12;
 
   const earned = earnedRaw + bonus;
   const scorePct = possible ? Math.max(0, Math.min(100, Math.round((earned / possible) * 100))) : 0;
@@ -254,11 +274,12 @@ function scoreDay(day) {
     earned,
     scorePct,
     dayValid,
-    done: items.filter((i) => i.status === "done").length,
+    done: normalized.filter((i) => i.status === "done").length,
     doneOrPartial,
-    total: items.length,
+    total: normalized.length,
     criticalDone,
-    criticalTotal: critical.length
+    criticalTotal: critical.length,
+    sundayAdjusted: sunday
   };
 }
 
@@ -270,7 +291,7 @@ function weekStartKey(key) {
 }
 
 function weekSummary(daysArray) {
-  const scored = daysArray.filter(Boolean).map(scoreDay);
+  const scored = daysArray.filter(Boolean).map(({ day, key }) => scoreDay(day, key));
   const avg = scored.length ? Math.round(scored.reduce((s, d) => s + d.scorePct, 0) / scored.length) : 0;
   const tier = [...WEEK_TIERS].reverse().find((t) => avg >= t.minAvg) ?? null;
   const validDays = scored.filter((d) => d.dayValid).length;
@@ -289,7 +310,7 @@ function computeGamification(daysMap, endKey) {
   const weekBuckets = new Map();
 
   keys.forEach((key, index) => {
-    const scored = scoreDay(daysMap[key]);
+    const scored = scoreDay(daysMap[key], key);
     dayResults[key] = { ...scored, protectedByWildcard: false };
     xp += Math.max(0, scored.earned);
 
@@ -345,14 +366,45 @@ function tierProgressPct(avg, currentTier, nextTier) {
   return Math.max(0, Math.min(100, Math.round(((avg - start) / span) * 100)));
 }
 
-function DailyGoalsModule() {
-  const [mode, setMode] = useState(localStorage.getItem("wm-mode") || "student");
-  const [students, setStudents] = useState(() => loadStudents());
-  const [activeStudentId, setActiveStudentId] = useState(localStorage.getItem("wm-active-student") || "jaime");
-  const [store, setStore] = useState(() => loadStudentStore(localStorage.getItem("wm-active-student") || "jaime"));
+function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
+  const fixedId = fixedStudent?.id ? toId(fixedStudent.id) : "";
+  const fixedName = fixedStudent?.name || "Estudiante";
+  const cloudSlug = fixedStudent?.slug || "";
+  const cloudToken = fixedStudent?.token || "";
+  const modeKey = fixedId ? `wm-mode-${fixedId}` : "wm-mode";
+  const studentsKey = fixedId ? `wm-students-${fixedId}` : "wm-students";
+  const activeKey = fixedId ? `wm-active-student-${fixedId}` : "wm-active-student";
+  const [mode, setMode] = useState(allowAdmin ? (localStorage.getItem(modeKey) || "student") : "student");
+  const [students, setStudents] = useState(() => {
+    if (fixedId) {
+      return [{
+        id: fixedId,
+        name: fixedName,
+        coachNotes: "Plan personal diario",
+        templates: [
+          { id: `${fixedId}-resp`, text: "Respiracion de reprogramacion mental", category: "Salud", critical: true, points: 12 },
+          { id: `${fixedId}-kpi`, text: "Revision de KPIs", category: "Sistema", critical: true, points: 10 },
+          { id: `${fixedId}-foco`, text: "Tarea principal completada", category: "Sistema", critical: true, points: 10 },
+          { id: `${fixedId}-familia`, text: "Momento de presencia personal/familiar", category: "Familia", critical: false, points: 8 },
+          { id: `${fixedId}-registro`, text: "Registro breve emocional", category: "Salud", critical: false, points: 8 }
+        ]
+      }];
+    }
+    const raw = localStorage.getItem(studentsKey);
+    if (!raw) return loadStudents();
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) && parsed.length ? parsed : loadStudents();
+    } catch {
+      return loadStudents();
+    }
+  });
+  const [activeStudentId, setActiveStudentId] = useState(fixedId || localStorage.getItem(activeKey) || "jaime");
+  const [store, setStore] = useState(() => loadStudentStore(fixedId || localStorage.getItem(activeKey) || "jaime"));
   const [tab, setTab] = useState("daily");
   const [focusDate, setFocusDate] = useState(dateKey());
   const [message, setMessage] = useState("");
+  const [cloudLoading, setCloudLoading] = useState(false);
 
   const [newStudentName, setNewStudentName] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
@@ -395,17 +447,20 @@ function DailyGoalsModule() {
   );
 
   useEffect(() => {
-    localStorage.setItem("wm-mode", mode);
-  }, [mode]);
+    if (!allowAdmin) return;
+    localStorage.setItem(modeKey, mode);
+  }, [mode, modeKey, allowAdmin]);
 
   useEffect(() => {
-    localStorage.setItem("wm-students", JSON.stringify(students));
-  }, [students]);
+    if (fixedId) return;
+    localStorage.setItem(studentsKey, JSON.stringify(students));
+  }, [students, studentsKey, fixedId]);
 
   useEffect(() => {
-    localStorage.setItem("wm-active-student", activeStudentId);
+    if (fixedId) return;
+    localStorage.setItem(activeKey, activeStudentId);
     setStore(loadStudentStore(activeStudentId));
-  }, [activeStudentId]);
+  }, [activeStudentId, activeKey, fixedId]);
 
   useEffect(() => {
     let next = ensureDay(store, focusDate);
@@ -418,6 +473,72 @@ function DailyGoalsModule() {
     localStorage.setItem(`wm-store-${activeStudentId}`, JSON.stringify(store));
   }, [activeStudentId, store]);
 
+  useEffect(() => {
+    if (!cloudSlug || !cloudToken) return;
+    let cancelled = false;
+    const loadCloud = async () => {
+      setCloudLoading(true);
+      try {
+        const response = await fetch(`/api/daily/get?slug=${encodeURIComponent(cloudSlug)}&token=${encodeURIComponent(cloudToken)}`);
+        if (!response.ok) throw new Error("Sin cloud");
+        const data = await response.json();
+        const payload = data?.data || {};
+        if (cancelled) return;
+        if (payload?.store) setStore(payload.store);
+        if (payload?.templates || payload?.studentName) {
+          setStudents((prev) =>
+            prev.map((item) =>
+              item.id !== activeStudentId
+                ? item
+                : {
+                    ...item,
+                    name: payload.studentName || item.name,
+                    coachNotes: payload.coachNotes || item.coachNotes,
+                    templates: Array.isArray(payload.templates) && payload.templates.length
+                      ? payload.templates
+                      : item.templates
+                  }
+            )
+          );
+        }
+      } catch {
+        // fallback local
+      } finally {
+        if (!cancelled) setCloudLoading(false);
+      }
+    };
+    loadCloud();
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudSlug, cloudToken, activeStudentId]);
+
+  useEffect(() => {
+    if (!cloudSlug || !cloudToken || cloudLoading) return;
+    const timer = setTimeout(async () => {
+      try {
+        await fetch("/api/daily/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: cloudSlug,
+            token: cloudToken,
+            payload: {
+              studentId: activeStudentId,
+              studentName: activeStudent?.name || fixedName,
+              coachNotes: activeStudent?.coachNotes || "",
+              templates: activeStudent?.templates || [],
+              store
+            }
+          })
+        });
+      } catch {
+        // silent save retry on next change
+      }
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [store, activeStudent, activeStudentId, cloudSlug, cloudToken, cloudLoading, fixedName]);
+
   const yesterdayKey = shiftDate(focusDate, -1);
   const todayDay = store.days[focusDate] || { items: [] };
   const yesterdayDay = store.days[yesterdayKey] || { items: [] };
@@ -426,10 +547,10 @@ function DailyGoalsModule() {
 
   const weeklyStats = useMemo(() => {
     const keys = Array.from({ length: 7 }, (_, i) => shiftDate(yesterdayKey, -i));
-    const days = keys.map((k) => store.days[k]).filter(Boolean);
+    const days = keys.map((k) => ({ key: k, day: store.days[k] })).filter((item) => Boolean(item.day));
     if (!days.length) return { avg: 0, points: 0, done: 0, total: 0, validDays: 0, tier: null };
     const wk = weekSummary(days);
-    const scored = days.map((d) => scoreDay(d));
+    const scored = days.map((d) => scoreDay(d.day, d.key));
     return {
       avg: wk.avg,
       points: scored.reduce((s, d) => s + Math.max(0, d.earned), 0),
@@ -442,7 +563,7 @@ function DailyGoalsModule() {
 
   const xp = gamification.xp;
   const level = levelFromXp(xp);
-  const yesterdayStats = gamification.dayResults[yesterdayKey] || scoreDay(yesterdayDay);
+  const yesterdayStats = gamification.dayResults[yesterdayKey] || scoreDay(yesterdayDay, yesterdayKey);
   const nextTier = WEEK_TIERS.find((t) => t.minAvg > (weeklyStats.tier?.minAvg ?? 0)) || null;
   const lvlPct = levelProgressPct(xp, level);
   const tierPct = tierProgressPct(weeklyStats.avg, weeklyStats.tier, nextTier);
@@ -615,7 +736,7 @@ function DailyGoalsModule() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Mentor Diario</p>
+          <p className="eyebrow">Metas Diarias</p>
           <h1>{mode === "admin" ? "Panel Administrador" : "Panel Estudiante"}</h1>
           <p className="subtitle">
             {mode === "admin"
@@ -624,17 +745,23 @@ function DailyGoalsModule() {
           </p>
         </div>
         <div className="topbar-controls">
-          <label className="control">
-            Vista
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="student">Estudiante</option>
-              <option value="admin">Administrador</option>
-            </select>
-          </label>
+          {allowAdmin && (
+            <label className="control">
+              Vista
+              <select value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="student">Estudiante</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+          )}
 
           <label className="control">
             Alumno
-            <select value={activeStudentId} onChange={(e) => setActiveStudentId(e.target.value)}>
+            <select
+              value={activeStudentId}
+              onChange={(e) => setActiveStudentId(e.target.value)}
+              disabled={Boolean(fixedId)}
+            >
               {students.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}

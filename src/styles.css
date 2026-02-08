@@ -96,12 +96,14 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .theme-toggle {
-  background: transparent;
+  background: color-mix(in srgb, var(--card) 85%, var(--bg) 15%);
   border: 1px solid var(--stroke);
-  color: var(--muted);
+  color: var(--ink);
 }
 
 .eyebrow {
@@ -121,6 +123,7 @@ body {
   box-shadow: var(--shadow);
   font-size: 13px;
   text-align: right;
+  min-width: 170px;
 }
 
 .student-chip span {
@@ -695,21 +698,42 @@ input[type="range"] {
 }
 
 @media (max-width: 700px) {
+  .app {
+    padding: 24px 14px 48px;
+  }
+
   .header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 18px;
   }
 
   .header-controls {
     width: 100%;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-items: stretch;
   }
 
-  .student-chip {
+  .student-chip,
+  .theme-toggle {
     width: 100%;
+    text-align: center;
+    box-shadow: none;
   }
 
   .brand-logo {
-    max-width: 280px;
+    max-width: 240px;
+    margin-top: 4px;
+  }
+
+  .practice-nav {
+    margin-bottom: 10px;
+  }
+
+  .practice-nav .ghost {
+    width: 100%;
   }
 }

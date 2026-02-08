@@ -1,4 +1,10 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectCommand
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const getS3Client = () => {
@@ -39,34 +45,24 @@ const getBucket = () => {
 };
 
 const getStudentsKey = () => process.env.R2_STUDENTS_KEY || "students.json";
+const getAdminsKey = () => process.env.R2_ADMINS_KEY || "admins.json";
 
 const readStudents = async () => {
-  const client = getS3Client();
-  const bucket = getBucket();
-  const key = getStudentsKey();
-  try {
-    const data = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-    const raw = await streamToString(data.Body);
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed.students) ? parsed.students : [];
-  } catch (error) {
-    return [];
-  }
+  const parsed = await readJson(getStudentsKey(), { students: [] });
+  return Array.isArray(parsed.students) ? parsed.students : [];
 };
 
 const writeStudents = async (students) => {
-  const client = getS3Client();
-  const bucket = getBucket();
-  const key = getStudentsKey();
-  const body = JSON.stringify({ students }, null, 2);
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: "application/json"
-    })
-  );
+  await writeJson(getStudentsKey(), { students });
+};
+
+const readAdmins = async () => {
+  const parsed = await readJson(getAdminsKey(), { admins: [] });
+  return Array.isArray(parsed.admins) ? parsed.admins : [];
+};
+
+const writeAdmins = async (admins) => {
+  await writeJson(getAdminsKey(), { admins });
 };
 
 const signPutUrl = async (key) => {
@@ -99,4 +95,67 @@ const uploadObject = async (key, body, contentType) => {
   );
 };
 
-export { getS3Client, getBucket, readStudents, writeStudents, signPutUrl, signGetUrl, uploadObject };
+const readJson = async (key, fallback = {}) => {
+  const client = getS3Client();
+  const bucket = getBucket();
+  try {
+    const data = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const raw = await streamToString(data.Body);
+    return JSON.parse(raw);
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const writeJson = async (key, value) => {
+  const client = getS3Client();
+  const bucket = getBucket();
+  const body = JSON.stringify(value, null, 2);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: "application/json"
+    })
+  );
+};
+
+const listObjects = async (prefix) => {
+  const client = getS3Client();
+  const bucket = getBucket();
+  const output = await client.send(
+    new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix
+    })
+  );
+  return output.Contents || [];
+};
+
+const deleteObject = async (key) => {
+  const client = getS3Client();
+  const bucket = getBucket();
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key
+    })
+  );
+};
+
+export {
+  getS3Client,
+  getBucket,
+  readStudents,
+  writeStudents,
+  readAdmins,
+  writeAdmins,
+  signPutUrl,
+  signGetUrl,
+  uploadObject,
+  readJson,
+  writeJson,
+  listObjects,
+  deleteObject
+};

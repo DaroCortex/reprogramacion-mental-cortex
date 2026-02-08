@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import cssText from "./daily-goals.css?raw";
 import DailyGoalsModuleCore from "./DailyGoalsModuleCore";
 
-export default function DailyGoalsModule() {
+export default function DailyGoalsModule(props) {
   const hostRef = useRef(null);
   const [mountNode, setMountNode] = useState(null);
 
@@ -22,7 +22,7 @@ export default function DailyGoalsModule() {
 
   return (
     <div ref={hostRef}>
-      {mountNode ? createPortal(<DailyGoalsModuleCore />, mountNode) : null}
+      {mountNode ? createPortal(<DailyGoalsModuleCore {...props} />, mountNode) : null}
     </div>
   );
 }

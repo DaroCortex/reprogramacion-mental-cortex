@@ -17,7 +17,7 @@ const DEFAULT_CONFIG = {
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
-  breathing: "Respiración guiada",
+  breathing: "Audio de reprogramación mental",
   apnea: "Apnea",
   recovery: "Recuperación",
   complete: "Sesión completada"
@@ -161,6 +161,12 @@ export default function App() {
   const [adminName, setAdminName] = useState("");
   const [adminFile, setAdminFile] = useState(null);
   const [adminLink, setAdminLink] = useState("");
+  const [adminsList, setAdminsList] = useState([]);
+  const [newAdminName, setNewAdminName] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [newAdminConfirmation, setNewAdminConfirmation] = useState("");
+  const [newAdminConfirmedTwice, setNewAdminConfirmedTwice] = useState(false);
+  const [adminManagerMessage, setAdminManagerMessage] = useState("");
   const [replaceSlug, setReplaceSlug] = useState("");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
   const [practiceScreen, setPracticeScreen] = useState("menu");
@@ -995,7 +1001,9 @@ export default function App() {
   const renderHeader = () => (
     <header className="header">
       <div>
-        <p className="eyebrow">Respiración guiada</p>
+        <p className="eyebrow">
+          {practiceScreen === "daily-goals" ? "Metas Diarias" : "Reprogramación mental"}
+        </p>
         {!brandLogoMissing && (
           <img
             className="brand-logo"
@@ -1096,6 +1104,7 @@ export default function App() {
     if (!isAdminRoute) return;
     if (adminPassword) {
       ensureAdminList(adminPassword);
+      ensureAdminsRegistry(adminPassword);
     }
   }, [isAdminRoute, adminPassword]);
 
@@ -1116,10 +1125,86 @@ export default function App() {
     }
   };
 
+  const ensureAdminsRegistry = async (password) => {
+    setAdminManagerMessage("");
+    try {
+      const response = await fetch(`/api/admin/admins-list?password=${encodeURIComponent(password)}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setAdminsList(Array.isArray(data.admins) ? data.admins : []);
+    } catch (error) {
+      // silent
+    }
+  };
+
   const handleAdminLogin = async () => {
     if (!adminPassword) return;
     sessionStorage.setItem("rmcortex_admin_pw", adminPassword);
     await ensureAdminList(adminPassword);
+    await ensureAdminsRegistry(adminPassword);
+  };
+
+  const handleCreateAdmin = async () => {
+    if (!adminPassword || !newAdminName || !newAdminPassword) {
+      setAdminManagerMessage("Completa nombre y password de administrador.");
+      return;
+    }
+    const expected = `CONFIRMAR ${newAdminName.trim()}`;
+    if (newAdminConfirmation.trim() !== expected || !newAdminConfirmedTwice) {
+      setAdminManagerMessage(`Doble confirmación requerida: ${expected}`);
+      return;
+    }
+    try {
+      const response = await fetch("/api/admin/add-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          name: newAdminName,
+          adminPassword: newAdminPassword,
+          confirmationText: newAdminConfirmation,
+          confirmedTwice: newAdminConfirmedTwice
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo crear administrador");
+      }
+      setNewAdminName("");
+      setNewAdminPassword("");
+      setNewAdminConfirmation("");
+      setNewAdminConfirmedTwice(false);
+      await ensureAdminsRegistry(adminPassword);
+      setAdminManagerMessage("Administrador creado.");
+    } catch (error) {
+      setAdminManagerMessage(error?.message || "No se pudo crear administrador.");
+    }
+  };
+
+  const handleRemoveAdmin = async (name) => {
+    if (!adminPassword) return;
+    const confirmationText = window.prompt(`Escribe exactamente: ELIMINAR ${name}`);
+    if (!confirmationText) return;
+    const confirmedTwice = window.confirm("¿Seguro? Esta acción elimina acceso de administrador.");
+    if (!confirmedTwice) return;
+    try {
+      const response = await fetch("/api/admin/remove-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          name,
+          confirmationText,
+          confirmedTwice
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "No se pudo eliminar");
+      await ensureAdminsRegistry(adminPassword);
+      setAdminManagerMessage("Administrador eliminado.");
+    } catch (error) {
+      setAdminManagerMessage(error?.message || "No se pudo eliminar administrador.");
+    }
   };
 
   const readFileBase64 = (file) =>
@@ -1272,6 +1357,67 @@ export default function App() {
 
         {adminStatus === "ready" && (
           <>
+            <div className="card">
+              <h3>Administradores</h3>
+              <p className="muted">Solo el administrador principal puede crear o eliminar administradores secundarios.</p>
+              <div className="form-grid">
+                <label>
+                  Nombre admin
+                  <input
+                    type="text"
+                    value={newAdminName}
+                    onChange={(event) => setNewAdminName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Password admin
+                  <input
+                    type="password"
+                    value={newAdminPassword}
+                    onChange={(event) => setNewAdminPassword(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Doble confirmación
+                  <input
+                    type="text"
+                    placeholder={newAdminName ? `CONFIRMAR ${newAdminName}` : "CONFIRMAR nombre"}
+                    value={newAdminConfirmation}
+                    onChange={(event) => setNewAdminConfirmation(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="audio-tools">
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={newAdminConfirmedTwice}
+                    onChange={(event) => setNewAdminConfirmedTwice(event.target.checked)}
+                  />
+                  Confirmo por segunda vez que deseo crear este administrador.
+                </label>
+                <button className="secondary" onClick={handleCreateAdmin}>
+                  Crear administrador
+                </button>
+                {adminManagerMessage && <span className="muted">{adminManagerMessage}</span>}
+              </div>
+              <div className="link-list">
+                {adminsList.map((admin) => (
+                  <div key={admin.name} className="link-row">
+                    <div>
+                      <strong>{admin.name}</strong>
+                      <div className="muted">Creado: {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "-"}</div>
+                    </div>
+                    <div className="link-actions">
+                      <button className="ghost" onClick={() => handleRemoveAdmin(admin.name)}>
+                        Eliminar admin
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="card">
               <h3>Nuevo estudiante</h3>
               <div className="form-grid">
@@ -1456,7 +1602,15 @@ export default function App() {
             Volver al menu
           </button>
         </div>
-        <DailyGoalsModule />
+        <DailyGoalsModule
+          allowAdmin={false}
+          fixedStudent={{
+            id: student?.slug || "",
+            name: student?.name || "Estudiante",
+            slug: student?.slug || "",
+            token
+          }}
+        />
       </div>
     );
   }
