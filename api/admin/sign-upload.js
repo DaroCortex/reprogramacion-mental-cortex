@@ -1,5 +1,5 @@
-import { signPutUrl } from "../_r2.js";
-import { verifyAdminPassword } from "../_auth.js";
+import { signPutUrl } from "../../lib/r2.js";
+import { verifyAdminPassword } from "../../lib/auth.js";
 
 export default async function handler(req, res) {
   try {

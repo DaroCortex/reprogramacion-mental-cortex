@@ -1,5 +1,5 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { getBucket, getS3Client, readStudents } from "./_r2.js";
+import { getBucket, getS3Client, readStudents } from "../lib/r2.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
 

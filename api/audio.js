@@ -1,4 +1,4 @@
-import { readStudents } from "./_r2.js";
+import { readStudents } from "../lib/r2.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
 

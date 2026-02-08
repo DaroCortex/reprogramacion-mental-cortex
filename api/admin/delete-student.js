@@ -1,5 +1,5 @@
-import { readStudents, writeStudents } from "../_r2.js";
-import { verifyAdminPassword } from "../_auth.js";
+import { readStudents, writeStudents } from "../../lib/r2.js";
+import { verifyAdminPassword } from "../../lib/auth.js";
 
 export default async function handler(req, res) {
   try {

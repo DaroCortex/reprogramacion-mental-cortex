@@ -1,4 +1,4 @@
-import { readStudents } from "./_r2.js";
+import { readStudents } from "../lib/r2.js";
 
 export default async function handler(req, res) {
   try {

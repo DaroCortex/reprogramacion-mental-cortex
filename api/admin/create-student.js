@@ -1,6 +1,6 @@
 import crypto from "crypto";
-import { readStudents, writeStudents, uploadObject } from "../_r2.js";
-import { verifyAdminPassword } from "../_auth.js";
+import { readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
+import { verifyAdminPassword } from "../../lib/auth.js";
 
 const slugify = (value) =>
   value

@@ -479,7 +479,7 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
     const loadCloud = async () => {
       setCloudLoading(true);
       try {
-        const response = await fetch(`/api/daily/get?slug=${encodeURIComponent(cloudSlug)}&token=${encodeURIComponent(cloudToken)}`);
+        const response = await fetch(`/api/daily/data?slug=${encodeURIComponent(cloudSlug)}&token=${encodeURIComponent(cloudToken)}`);
         if (!response.ok) throw new Error("Sin cloud");
         const data = await response.json();
         const payload = data?.data || {};
@@ -517,7 +517,7 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
     if (!cloudSlug || !cloudToken || cloudLoading) return;
     const timer = setTimeout(async () => {
       try {
-        await fetch("/api/daily/save", {
+        await fetch("/api/daily/data", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

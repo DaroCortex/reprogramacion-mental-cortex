@@ -1128,7 +1128,7 @@ export default function App() {
   const ensureAdminsRegistry = async (password) => {
     setAdminManagerMessage("");
     try {
-      const response = await fetch(`/api/admin/admins-list?password=${encodeURIComponent(password)}`);
+      const response = await fetch(`/api/admin/admins?password=${encodeURIComponent(password)}`);
       if (!response.ok) return;
       const data = await response.json();
       setAdminsList(Array.isArray(data.admins) ? data.admins : []);
@@ -1155,7 +1155,7 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch("/api/admin/add-admin", {
+      const response = await fetch("/api/admin/admins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1188,8 +1188,8 @@ export default function App() {
     const confirmedTwice = window.confirm("¿Seguro? Esta acción elimina acceso de administrador.");
     if (!confirmedTwice) return;
     try {
-      const response = await fetch("/api/admin/remove-admin", {
-        method: "POST",
+      const response = await fetch("/api/admin/admins", {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password: adminPassword,
