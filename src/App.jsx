@@ -130,6 +130,18 @@ const getNostrilHint = (nostrilState) => {
   return "Ambas fosas";
 };
 
+const fetchJsonWithTimeout = async (url, timeoutMs = 3000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export default function App() {
   const [theme, setTheme] = useState(
     localStorage.getItem("rmcortex_theme") || "light"
@@ -229,17 +241,11 @@ export default function App() {
   useEffect(() => {
     const loadStudents = async () => {
       try {
-        const response = await fetch("/api/students");
-        if (!response.ok) {
-          throw new Error("No se pudo cargar students");
-        }
-        const data = await response.json();
+        const data = await fetchJsonWithTimeout("/api/students", 1800);
         setStudents(Array.isArray(data.students) ? data.students : []);
       } catch (error) {
         try {
-          const fallback = await fetch("/students.json");
-          if (!fallback.ok) throw new Error("Fallback fallido");
-          const data = await fallback.json();
+          const data = await fetchJsonWithTimeout("/students.json", 1800);
           setStudents(Array.isArray(data.students) ? data.students : []);
         } catch (innerError) {
           setLoadError("No se pudo cargar la lista de estudiantes.");
