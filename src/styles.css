@@ -188,6 +188,31 @@ body {
   font-weight: 600;
 }
 
+.nostril-preview {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.nostril-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--stroke) 72%, transparent);
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  opacity: 0.6;
+}
+
+.nostril-dot.active {
+  background: color-mix(in srgb, var(--dawn-core) 85%, #fff 15%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--dawn-mid) 70%, transparent);
+  transform: scale(1.2);
+  opacity: 1;
+}
+
 .breath-orb {
   width: 220px;
   height: 220px;

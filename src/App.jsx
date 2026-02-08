@@ -967,6 +967,12 @@ export default function App() {
     return getNostrilState(config.breathStyle, currentBreathNumber);
   }, [phase, config.breathStyle, currentBreathNumber]);
 
+  const nextNostrilState = useMemo(() => {
+    if (phase !== "breathing") return "none";
+    if (currentBreathNumber >= config.breathsPerCycle) return "none";
+    return getNostrilState(config.breathStyle, currentBreathNumber + 1);
+  }, [phase, config.breathStyle, currentBreathNumber, config.breathsPerCycle]);
+
   const renderHeader = () => (
     <header className="header">
       <div>
@@ -1440,6 +1446,11 @@ export default function App() {
               <div className="breath-counter-top">
                 <strong>{currentBreathNumber}</strong>
                 <span>{getNostrilHint(nostrilState)}</span>
+                <div className="nostril-preview" aria-label="Siguiente respiración">
+                  <span className={`nostril-dot ${nextNostrilState === "left" ? "active" : ""}`} />
+                  <span className={`nostril-dot ${nextNostrilState === "both" ? "active" : ""}`} />
+                  <span className={`nostril-dot ${nextNostrilState === "right" ? "active" : ""}`} />
+                </div>
               </div>
             )}
 
