@@ -24,6 +24,7 @@ const PHASE_LABELS = {
 
 const TICK_MS = 100;
 const DOUBLE_TAP_MS = 280;
+const NOSTRIL_PREVIEW_MS = 500;
 
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
@@ -973,6 +974,16 @@ export default function App() {
     return getNostrilState(config.breathStyle, currentBreathNumber + 1);
   }, [phase, config.breathStyle, currentBreathNumber, config.breathsPerCycle]);
 
+  const glowNostrilState = useMemo(() => {
+    if (phase !== "breathing") return "both";
+    const isAboutToSwitch =
+      subphase === "exhale" &&
+      nextNostrilState !== "none" &&
+      timeLeftMs <= NOSTRIL_PREVIEW_MS;
+    if (isAboutToSwitch) return nextNostrilState;
+    return nostrilState;
+  }, [phase, subphase, timeLeftMs, nextNostrilState, nostrilState]);
+
   const renderHeader = () => (
     <header className="header">
       <div>
@@ -1454,7 +1465,7 @@ export default function App() {
               </div>
             )}
 
-            <div className={`breath-orb ${phaseClass()} nostril-${nostrilState}`} style={phaseStyle()}>
+            <div className={`breath-orb ${phaseClass()} nostril-${glowNostrilState}`} style={phaseStyle()}>
               {!breathLogoMissing && (
                 <img
                   className="breath-logo"
