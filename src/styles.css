@@ -210,12 +210,13 @@ body {
 .breath-orb::before {
   content: "";
   position: absolute;
-  inset: -16%;
+  inset: -20%;
   border-radius: 999px;
   z-index: -1;
   pointer-events: none;
   opacity: 0.35;
   transform: scale(1);
+  filter: blur(8px);
   transition:
     opacity var(--phase-duration, 2s) linear,
     transform var(--phase-duration, 2s) linear,
@@ -224,17 +225,21 @@ body {
 
 .breath-orb.nostril-both::before {
   background:
-    radial-gradient(circle at 50% 50%, var(--dawn-core) 0%, var(--dawn-mid) 34%, var(--dawn-soft) 62%, transparent 80%);
+    radial-gradient(circle at 50% 50%, var(--dawn-core) 0%, var(--dawn-mid) 30%, var(--dawn-soft) 48%, transparent 68%);
 }
 
 .breath-orb.nostril-left::before {
   background:
-    radial-gradient(circle at 30% 52%, var(--dawn-core) 0%, var(--dawn-mid) 32%, var(--dawn-soft) 58%, transparent 78%);
+    radial-gradient(ellipse 95% 86% at 30% 52%, var(--dawn-core) 0%, var(--dawn-mid) 26%, var(--dawn-soft) 40%, transparent 58%);
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 72%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 72%, transparent 100%);
 }
 
 .breath-orb.nostril-right::before {
   background:
-    radial-gradient(circle at 70% 52%, var(--dawn-core) 0%, var(--dawn-mid) 32%, var(--dawn-soft) 58%, transparent 78%);
+    radial-gradient(ellipse 95% 86% at 70% 52%, var(--dawn-core) 0%, var(--dawn-mid) 26%, var(--dawn-soft) 40%, transparent 58%);
+  -webkit-mask-image: linear-gradient(to left, #000 0%, #000 48%, transparent 72%, transparent 100%);
+  mask-image: linear-gradient(to left, #000 0%, #000 48%, transparent 72%, transparent 100%);
 }
 
 .breath-orb.inhale {
