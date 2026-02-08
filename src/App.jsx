@@ -1358,7 +1358,7 @@ export default function App() {
         {adminStatus === "ready" && (
           <>
             <div className="card">
-              <h3>Administradores</h3>
+              <h3>Administradores (v2)</h3>
               <p className="muted">Solo el administrador principal puede crear o eliminar administradores secundarios.</p>
               <div className="form-grid">
                 <label>
