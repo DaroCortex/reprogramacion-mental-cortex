@@ -11,6 +11,9 @@
   --card: #ffffff;
   --stroke: #d0d6d4;
   --shadow: 0 24px 70px rgba(14, 38, 40, 0.12);
+  --dawn-core: rgba(255, 197, 112, 0.62);
+  --dawn-mid: rgba(255, 150, 79, 0.48);
+  --dawn-soft: rgba(255, 115, 61, 0.26);
 }
 
 [data-theme="dark"] {
@@ -24,6 +27,9 @@
   --card: #151d23;
   --stroke: #2b3a44;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.36);
+  --dawn-core: rgba(255, 210, 122, 0.72);
+  --dawn-mid: rgba(255, 166, 96, 0.56);
+  --dawn-soft: rgba(255, 121, 74, 0.34);
 }
 
 * {
@@ -160,6 +166,28 @@ body {
   gap: 16px;
 }
 
+.breath-counter-top {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  margin-bottom: -4px;
+}
+
+.breath-counter-top strong {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.breath-counter-top span {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .breath-orb {
   width: 220px;
   height: 220px;
@@ -176,18 +204,59 @@ body {
   display: grid;
   place-items: center;
   position: relative;
+  isolation: isolate;
+}
+
+.breath-orb::before {
+  content: "";
+  position: absolute;
+  inset: -16%;
+  border-radius: 999px;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  transform: scale(1);
+  transition:
+    opacity var(--phase-duration, 2s) linear,
+    transform var(--phase-duration, 2s) linear,
+    background 200ms ease;
+}
+
+.breath-orb.nostril-both::before {
+  background:
+    radial-gradient(circle at 50% 50%, var(--dawn-core) 0%, var(--dawn-mid) 34%, var(--dawn-soft) 62%, transparent 80%);
+}
+
+.breath-orb.nostril-left::before {
+  background:
+    radial-gradient(circle at 30% 52%, var(--dawn-core) 0%, var(--dawn-mid) 32%, var(--dawn-soft) 58%, transparent 78%);
+}
+
+.breath-orb.nostril-right::before {
+  background:
+    radial-gradient(circle at 70% 52%, var(--dawn-core) 0%, var(--dawn-mid) 32%, var(--dawn-soft) 58%, transparent 78%);
 }
 
 .breath-orb.inhale {
   animation: none;
   transform: scale(1.15) translateZ(0);
-  filter: drop-shadow(0 16px 34px rgba(15, 107, 100, 0.28));
+  filter: drop-shadow(0 16px 34px rgba(255, 140, 68, 0.34));
+}
+
+.breath-orb.inhale::before {
+  opacity: 0.95;
+  transform: scale(1.13);
 }
 
 .breath-orb.exhale {
   animation: none;
   transform: scale(0.9) translateZ(0);
-  filter: drop-shadow(0 10px 26px rgba(15, 107, 100, 0.22));
+  filter: drop-shadow(0 10px 26px rgba(255, 125, 66, 0.28));
+}
+
+.breath-orb.exhale::before {
+  opacity: 0.45;
+  transform: scale(0.92);
 }
 
 .breath-orb.apnea {
@@ -253,31 +322,6 @@ body {
   0% { transform: scale(0.95) translateZ(0); }
   50% { transform: scale(1.1) translateZ(0); }
   100% { transform: scale(0.98) translateZ(0); }
-}
-
-.breath-count {
-  position: absolute;
-  left: 50%;
-  top: 51%;
-  transform: translate(-50%, -50%) scale(1);
-  font-size: 32px;
-  font-weight: 700;
-  color: #fff;
-  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  background: rgba(0, 0, 0, 0.18);
-  border-radius: 999px;
-  min-width: 44px;
-  min-height: 44px;
-  display: grid;
-  place-items: center;
-  padding: 3px 9px;
-  animation: breathFade 1.4s ease-out;
-}
-
-@keyframes breathFade {
-  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
-  15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.02); }
 }
 
 .session-meta {

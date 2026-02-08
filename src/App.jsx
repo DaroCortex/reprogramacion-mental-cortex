@@ -6,6 +6,7 @@ const DEFAULT_CONFIG = {
   exhaleSeconds: 2,
   recoverySeconds: 15,
   cycles: 3,
+  breathStyle: "activation",
   audioVolume: 0.8,
   bosqueVolume: 0.5,
   ambientSound: "bosque",
@@ -38,6 +39,11 @@ const SPEED_OPTIONS = [
   { id: "rapida", label: "Rápida 1.5s", value: 1.5 },
   { id: "normal", label: "Normal 2s", value: 2 },
   { id: "lenta", label: "Lenta 3s", value: 3 }
+];
+const BREATH_STYLE_OPTIONS = [
+  { id: "activation", label: "Activacion" },
+  { id: "reset", label: "Reset" },
+  { id: "comfort", label: "Confort" }
 ];
 
 const BREATHS_OPTIONS = [36, 42, 48];
@@ -99,6 +105,26 @@ const getYesterdayKey = () => {
   const date = new Date();
   date.setDate(date.getDate() - 1);
   return date.toISOString().slice(0, 10);
+};
+
+const getNostrilState = (style, breathNumber) => {
+  const index = Math.max(1, breathNumber) - 1;
+  if (style === "comfort") {
+    const sequence = ["both", "both", "both", "left", "left", "left", "right", "right", "right"];
+    return sequence[index % sequence.length];
+  }
+  if (style === "reset") {
+    // Inspirado en ciclos alternos tipo nadi shodhana para reset mental.
+    const sequence = ["left", "right", "left", "right", "both", "both"];
+    return sequence[index % sequence.length];
+  }
+  return "both";
+};
+
+const getNostrilHint = (nostrilState) => {
+  if (nostrilState === "left") return "Fosa izquierda";
+  if (nostrilState === "right") return "Fosa derecha";
+  return "Ambas fosas";
 };
 
 export default function App() {
@@ -936,6 +962,11 @@ export default function App() {
     return "idle";
   };
 
+  const nostrilState = useMemo(() => {
+    if (phase !== "breathing") return "both";
+    return getNostrilState(config.breathStyle, currentBreathNumber);
+  }, [phase, config.breathStyle, currentBreathNumber]);
+
   const renderHeader = () => (
     <header className="header">
       <div>
@@ -1405,7 +1436,14 @@ export default function App() {
           </div>
 
           <div className="breath-visual">
-            <div className={`breath-orb ${phaseClass()}`} style={phaseStyle()}>
+            {phase === "breathing" && (
+              <div className="breath-counter-top">
+                <strong>{currentBreathNumber}</strong>
+                <span>{getNostrilHint(nostrilState)}</span>
+              </div>
+            )}
+
+            <div className={`breath-orb ${phaseClass()} nostril-${nostrilState}`} style={phaseStyle()}>
               {!breathLogoMissing && (
                 <img
                   className="breath-logo"
@@ -1415,15 +1453,6 @@ export default function App() {
                 />
               )}
               {breathLogoMissing && <div className="breath-logo-fallback">Falta /public/logo-05.png</div>}
-              {phase === "breathing" && (
-                <div
-                  key={`pulse-${cycleIndex}-${breathsDone}`}
-                  className="breath-count"
-                  style={{ animationDuration: `${config.inhaleSeconds + config.exhaleSeconds}s` }}
-                >
-                  {currentBreathNumber}
-                </div>
-              )}
             </div>
             <div className="breath-text">
               {phase === "breathing" && subphase === "inhale" && "Inhala"}
@@ -1492,6 +1521,30 @@ export default function App() {
         <section className="card">
           <h3>Configuración rápida</h3>
           <p className="muted">Presets rápidos para no tocar sliders en cada sesión.</p>
+
+          <div className="preset-group">
+            <div className="preset-label">Estilo respiración</div>
+            <div className="preset-row">
+              {BREATH_STYLE_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`chip ${config.breathStyle === option.id ? "active" : ""}`}
+                  onClick={() =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      breathStyle: option.id
+                    }))
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span className="muted">
+              Activacion: ambas fosas. Confort: 3 ambas + 3 izquierda + 3 derecha. Reset: alterna izquierda/derecha con cierre en ambas.
+            </span>
+          </div>
 
           <div className="preset-group">
             <div className="preset-label">Velocidad respiración</div>
