@@ -6,6 +6,7 @@
   --muted: #5c6b6e;
   --line: #d9e0df;
   --accent: #0f6b64;
+  --accent-hover: #0b5750;
   --accent-soft: #daf0ee;
   --warn: #b06f2a;
   --warn-soft: #f6e8d8;
@@ -14,6 +15,27 @@
   --good: #126d4d;
   --good-soft: #d7f2e7;
   --radius: 16px;
+  --transition-fast: 160ms ease;
+  --transition-med: 260ms ease;
+}
+
+/* ── Dark mode ─────────────────────────────────────── */
+
+[data-theme="dark"] {
+  --bg: #0e1317;
+  --card: #171f27;
+  --ink: #eaf2f6;
+  --muted: #8ea4b0;
+  --line: #283642;
+  --accent: #50c4b5;
+  --accent-hover: #6dd4c7;
+  --accent-soft: #1a3330;
+  --warn: #dea05c;
+  --warn-soft: #2e2519;
+  --bad: #e06460;
+  --bad-soft: #2e1a1a;
+  --good: #4ec78f;
+  --good-soft: #152e22;
 }
 
 * {
@@ -24,11 +46,16 @@
   width: min(980px, 100%);
   margin: 0 auto;
   padding: 14px 10px 34px;
-  font-family: "Manrope", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top, #ffffff, var(--bg));
+  font-family: "Manrope", system-ui, sans-serif;
+  background: radial-gradient(ellipse at top, color-mix(in srgb, var(--card) 50%, transparent), var(--bg));
   color: var(--ink);
   border-radius: 16px;
+  transition: background var(--transition-med), color var(--transition-fast);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Top bar ───────────────────────────────────────── */
 
 .topbar {
   display: grid;
@@ -65,9 +92,12 @@ h1 {
 
 .control {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 select,
@@ -83,15 +113,26 @@ textarea {
   width: 100%;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   padding: 10px 12px;
   color: var(--ink);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+select:focus,
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 textarea {
   min-height: 120px;
   resize: vertical;
 }
+
+/* ── Hero cards ────────────────────────────────────── */
 
 .hero-cards {
   display: grid;
@@ -104,50 +145,67 @@ textarea {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 16px;
+  transition: border-color var(--transition-fast);
 }
 
 .hero-card h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .hero-card p {
   margin: 6px 0 4px;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .hero-card small {
   color: var(--muted);
+  font-size: 12px;
 }
 
 .score-card {
-  background: linear-gradient(120deg, #e7f4f2, #ffffff);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent-soft) 50%, var(--card) 50%),
+    var(--card));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line) 75%);
 }
+
+.score-card h2 {
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+/* ── Gamification strip ────────────────────────────── */
 
 .gamify-strip {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .game-card {
-  background: linear-gradient(180deg, #fcfffe, #f4f8f8);
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 14px;
+  padding: 12px;
+  transition: border-color var(--transition-fast);
 }
 
 .game-card h4 {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--muted);
+  font-weight: 700;
 }
 
 .game-card p {
-  margin: 6px 0 6px;
+  margin: 4px 0 6px;
   font-size: 20px;
   font-weight: 800;
 }
@@ -159,9 +217,9 @@ textarea {
 
 .progress-track {
   width: 100%;
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
-  background: #e4eceb;
+  background: color-mix(in srgb, var(--line) 80%, var(--bg) 20%);
   overflow: hidden;
   margin-bottom: 6px;
 }
@@ -169,52 +227,67 @@ textarea {
 .progress-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #0f6b64, #43b6ab);
-  transition: width 280ms ease;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #8ce0d6 40%));
+  transition: width 360ms ease;
 }
 
 .progress-track.tier {
-  height: 9px;
+  height: 7px;
 }
 
 .progress-fill.tier {
-  background: linear-gradient(90deg, #b06f2a, #e4af68);
+  background: linear-gradient(90deg, var(--warn), color-mix(in srgb, var(--warn) 50%, #f0d09a 50%));
 }
+
+/* ── Tab bar ───────────────────────────────────────── */
 
 .tabbar {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--bg);
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 14px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(86px, 1fr));
-  gap: 6px;
-  padding: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
   overflow-x: auto;
   margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
 }
 
 .tab {
-  border: 1px solid var(--line);
-  background: #fff;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--muted);
   border-radius: 10px;
   padding: 8px 6px;
   font-size: 12px;
-  line-height: 1.1;
-  min-height: 52px;
+  font-weight: 600;
+  line-height: 1.15;
+  min-height: 48px;
   white-space: pre-line;
   overflow-wrap: anywhere;
   word-break: break-word;
   cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tab:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .tab.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 25%, transparent);
 }
+
+/* ── Content layout ────────────────────────────────── */
 
 .content,
 .admin-layout {
@@ -222,40 +295,46 @@ textarea {
   gap: 12px;
 }
 
+/* ── Panels ────────────────────────────────────────── */
+
 .panel {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 16px;
   overflow: hidden;
+  transition: border-color var(--transition-fast);
 }
 
 .panel-head {
   display: flex;
   gap: 8px;
   justify-content: space-between;
-  align-items: start;
+  align-items: center;
   margin-bottom: 10px;
 }
 
 .panel-head h3 {
   margin: 0;
-  font-size: 18px;
-  line-height: 1.15;
+  font-size: 17px;
+  line-height: 1.2;
 }
 
 .panel-head span {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .hint {
   margin: 0 0 10px;
   color: var(--muted);
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
+
+/* ── Check lists ───────────────────────────────────── */
 
 .check-list,
 .plan-list,
@@ -272,15 +351,16 @@ textarea {
 .unlock {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
   display: grid;
   gap: 8px;
-  background: #fff;
+  background: var(--card);
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
 .check-row.doneish {
-  border-color: #b7ddd8;
-  background: linear-gradient(180deg, #ffffff, #f4fbfa);
+  border-color: color-mix(in srgb, var(--good) 40%, var(--line) 60%);
+  background: color-mix(in srgb, var(--good-soft) 40%, var(--card) 60%);
 }
 
 .check-row.updated {
@@ -294,7 +374,7 @@ textarea {
   }
   50% {
     transform: scale(1.003);
-    box-shadow: 0 0 0 4px rgba(15, 107, 100, 0.12);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
   }
   100% {
     transform: scale(1);
@@ -316,7 +396,7 @@ textarea {
 .plan-row strong {
   display: block;
   font-size: 14px;
-  line-height: 1.26;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
@@ -328,9 +408,11 @@ textarea {
   line-height: 1.3;
 }
 
+/* ── Status squares ────────────────────────────────── */
+
 .status-grid {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .status-grid.squares-5 {
@@ -339,15 +421,22 @@ textarea {
 
 .status {
   border: 1px solid var(--line);
-  background: #fff;
+  background: color-mix(in srgb, var(--card) 90%, var(--bg) 10%);
   border-radius: 10px;
   color: var(--muted);
   cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.status:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line) 60%);
 }
 
 .status.square {
-  min-height: 52px;
+  min-height: 50px;
   padding: 4px;
+  display: grid;
+  place-items: center;
 }
 
 .status.square span {
@@ -356,11 +445,12 @@ textarea {
   line-height: 1.08;
   text-align: center;
   overflow-wrap: anywhere;
+  font-weight: 600;
 }
 
 .status.selected {
   transform: translateY(-1px);
-  box-shadow: 0 3px 12px rgba(15, 107, 100, 0.15);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .status.active.good {
@@ -387,8 +477,10 @@ textarea {
   color: var(--accent);
 }
 
+/* ── Panel footer ──────────────────────────────────── */
+
 .panel-foot {
-  margin-top: 10px;
+  margin-top: 12px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
@@ -396,20 +488,27 @@ textarea {
 
 .panel-foot div {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   text-align: center;
-  padding: 8px;
+  padding: 10px 8px;
+  background: color-mix(in srgb, var(--card) 80%, var(--bg) 20%);
 }
 
 .panel-foot strong {
   display: block;
-  font-size: 18px;
+  font-size: 20px;
+  color: var(--accent);
 }
 
 .panel-foot span {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
 }
+
+/* ── Metric grid ───────────────────────────────────── */
 
 .metric-grid {
   display: grid;
@@ -419,21 +518,26 @@ textarea {
 
 .metric-grid article {
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--card) 80%, var(--bg) 20%);
 }
 
 .metric-grid h4 {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .metric-grid p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 22px;
 }
+
+/* ── Level road ────────────────────────────────────── */
 
 .level-road {
   display: grid;
@@ -444,14 +548,15 @@ textarea {
 
 .level-pill {
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px;
-  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--card);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .level-pill.on {
-  border-color: #0f6b64;
-  background: #eaf8f6;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .level-pill strong {
@@ -463,6 +568,8 @@ textarea {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* ── Form rows ─────────────────────────────────────── */
 
 .add-row,
 .test-actions {
@@ -476,21 +583,49 @@ textarea {
   grid-template-columns: 1fr 1fr;
 }
 
+/* ── Buttons ───────────────────────────────────────── */
+
 button {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   line-height: 1.2;
   overflow-wrap: anywhere;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+button:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 button.ghost {
   border-color: var(--line);
-  background: #fff;
+  background: transparent;
   color: var(--muted);
 }
+
+button.ghost:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 15%, var(--line) 85%);
+}
+
+/* ── Unlock list ───────────────────────────────────── */
 
 .unlock {
   display: flex;
@@ -499,19 +634,36 @@ button.ghost {
   gap: 10px;
 }
 
+.unlock span {
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 .unlock.on {
   border-color: var(--good);
   background: var(--good-soft);
 }
 
+.unlock.on span {
+  color: var(--good);
+}
+
+/* ── Flash message ─────────────────────────────────── */
+
 .flash {
   margin-top: 10px;
   border: 1px solid var(--accent);
   background: var(--accent-soft);
-  border-radius: 10px;
-  padding: 8px 10px;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 10px 14px;
   font-size: 13px;
+  font-weight: 500;
 }
+
+/* ── Wildcard FAB ──────────────────────────────────── */
 
 .wildcard-fab {
   position: fixed;
@@ -520,28 +672,35 @@ button.ghost {
   z-index: 40;
   border-radius: 14px;
   border: 1px solid var(--accent);
-  background: #ffffff;
-  box-shadow: 0 8px 22px rgba(15, 34, 35, 0.15);
-  padding: 8px 10px;
+  background: var(--card);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 15%, rgba(0,0,0,0.1));
+  padding: 8px 12px;
   text-align: center;
-  min-width: 96px;
+  min-width: 90px;
+  transition: box-shadow var(--transition-fast);
 }
 
 .wildcard-fab span {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
 }
 
 .wildcard-fab strong {
   display: block;
-  font-size: 19px;
+  font-size: 20px;
   color: var(--accent);
+  font-weight: 800;
 }
+
+/* ── Responsive: small ─────────────────────────────── */
 
 @media (max-width: 420px) {
   .status.square {
-    min-height: 56px;
+    min-height: 52px;
   }
 
   .status.square span {
@@ -560,10 +719,28 @@ button.ghost {
   .wildcard-fab {
     right: 10px;
     bottom: 10px;
-    min-width: 88px;
-    padding: 7px 8px;
+    min-width: 80px;
+    padding: 6px 8px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  .hero-card {
+    padding: 12px;
+  }
+
+  .panel-foot strong {
+    font-size: 17px;
+  }
+
+  .metric-grid p {
+    font-size: 18px;
   }
 }
+
+/* ── Responsive: desktop ───────────────────────────── */
 
 @media (min-width: 760px) {
   .app-shell {
@@ -576,11 +753,11 @@ button.ghost {
   }
 
   .topbar-controls {
-    grid-template-columns: 190px 190px;
+    grid-template-columns: 180px 180px;
   }
 
   .hero-cards {
-    grid-template-columns: 1fr 260px;
+    grid-template-columns: 1fr 240px;
   }
 
   .gamify-strip {
@@ -607,5 +784,9 @@ button.ghost {
   .wildcard-fab {
     right: 18px;
     bottom: 18px;
+  }
+
+  .panel {
+    padding: 20px;
   }
 }

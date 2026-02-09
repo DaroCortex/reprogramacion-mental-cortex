@@ -20,6 +20,19 @@ export default function DailyGoalsModule(props) {
     setMountNode(container);
   }, [mountNode]);
 
+  // Propagate parent theme into Shadow DOM container
+  useEffect(() => {
+    if (!mountNode) return;
+    const syncTheme = () => {
+      const theme = document.documentElement.getAttribute("data-theme") || "light";
+      mountNode.setAttribute("data-theme", theme);
+    };
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, [mountNode]);
+
   return (
     <div ref={hostRef}>
       {mountNode ? createPortal(<DailyGoalsModuleCore {...props} />, mountNode) : null}
