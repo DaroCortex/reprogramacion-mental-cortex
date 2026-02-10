@@ -33,20 +33,26 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const { password, name, fileName, audioBase64, contentType } = req.body || {};
+    const { password, name, fileName, audioBase64, contentType, audioKey } = req.body || {};
     if (!(await verifyAdminPassword(password))) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    if (!name || !fileName || !audioBase64) {
+    if (!name) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
-
-    const inputBuffer = Buffer.from(String(audioBase64), "base64");
-    const optimized = await optimizeAudioBuffer({ inputBuffer, fileName });
-    const key = buildAudioKey(fileName, optimized.extension || "mp3");
-
-    await uploadObject(key, optimized.buffer, optimized.contentType || contentType);
+    let key = String(audioKey || "").trim();
+    let optimization = null;
+    if (!key) {
+      if (!fileName || !audioBase64) {
+        return res.status(400).json({ error: "Datos incompletos" });
+      }
+      const inputBuffer = Buffer.from(String(audioBase64), "base64");
+      const optimized = await optimizeAudioBuffer({ inputBuffer, fileName });
+      key = buildAudioKey(fileName, optimized.extension || "mp3");
+      await uploadObject(key, optimized.buffer, optimized.contentType || contentType);
+      optimization = optimized.optimization;
+    }
 
     const students = await readStudents();
     const slug = uniqueSlug(name, students);
@@ -61,7 +67,7 @@ export default async function handler(req, res) {
 
     const next = [...students, student];
     await writeStudents(next);
-    return res.status(200).json({ student, optimization: optimized.optimization });
+    return res.status(200).json({ student, optimization });
   } catch (error) {
     console.error("create-student error:", error);
     return res.status(500).json({

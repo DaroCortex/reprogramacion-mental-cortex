@@ -26,6 +26,7 @@ const PHASE_LABELS = {
 const TICK_MS = 100;
 const DOUBLE_TAP_MS = 280;
 const NOSTRIL_PREVIEW_MS = 500;
+const DIRECT_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
@@ -1219,6 +1220,33 @@ export default function App() {
       reader.readAsDataURL(file);
     });
 
+  const directUploadToR2 = async (file) => {
+    const signRes = await fetch("/api/admin/sign-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        password: adminPassword,
+        fileName: file.name
+      })
+    });
+    const signPayload = await signRes.json().catch(() => ({}));
+    if (!signRes.ok || !signPayload?.uploadUrl || !signPayload?.key) {
+      throw new Error(signPayload?.error || "No se pudo preparar subida directa");
+    }
+
+    const putRes = await fetch(signPayload.uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type || "audio/mpeg"
+      },
+      body: file
+    });
+    if (!putRes.ok) {
+      throw new Error("No se pudo subir audio directo a R2");
+    }
+    return signPayload.key;
+  };
+
   const handleAdminCreate = async () => {
     if (!adminPassword || !adminName || !adminFile) {
       setAdminMessage("Completa nombre y audio.");
@@ -1228,17 +1256,26 @@ export default function App() {
     setAdminMessage("");
     setAdminLink("");
     try {
-      const audioBase64 = await readFileBase64(adminFile);
+      const isLarge = adminFile.size > DIRECT_UPLOAD_THRESHOLD_BYTES;
+      const payloadBase = {
+        password: adminPassword,
+        name: adminName
+      };
+      const payloadBody = isLarge
+        ? {
+            ...payloadBase,
+            audioKey: await directUploadToR2(adminFile)
+          }
+        : {
+            ...payloadBase,
+            fileName: adminFile.name,
+            contentType: adminFile.type || "audio/mpeg",
+            audioBase64: await readFileBase64(adminFile)
+          };
       const addRes = await fetch("/api/admin/create-student", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: adminPassword,
-          name: adminName,
-          fileName: adminFile.name,
-          contentType: adminFile.type || "audio/mpeg",
-          audioBase64
-        })
+        body: JSON.stringify(payloadBody)
       });
       if (!addRes.ok) {
         const detail = await addRes.json().catch(() => ({}));
@@ -1252,7 +1289,9 @@ export default function App() {
       setAdminFile(null);
       await ensureAdminList(adminPassword);
       setAdminStatus("ready");
-      if (payload?.optimization) {
+      if (isLarge) {
+        setAdminMessage("Estudiante creado. Audio grande subido directo (sin compresión automática).");
+      } else if (payload?.optimization) {
         const opt = payload.optimization;
         const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
         const toMb = (opt.finalBytes / (1024 * 1024)).toFixed(2);
@@ -1300,17 +1339,24 @@ export default function App() {
     setAdminStatus("loading");
     setAdminMessage("");
     try {
-      const audioBase64 = await readFileBase64(file);
+      const isLarge = file.size > DIRECT_UPLOAD_THRESHOLD_BYTES;
+      const payloadBody = isLarge
+        ? {
+            password: adminPassword,
+            slug: replaceSlug,
+            audioKey: await directUploadToR2(file)
+          }
+        : {
+            password: adminPassword,
+            slug: replaceSlug,
+            fileName: file.name,
+            contentType: file.type || "audio/mpeg",
+            audioBase64: await readFileBase64(file)
+          };
       const updateRes = await fetch("/api/admin/update-student", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: adminPassword,
-          slug: replaceSlug,
-          fileName: file.name,
-          contentType: file.type || "audio/mpeg",
-          audioBase64
-        })
+        body: JSON.stringify(payloadBody)
       });
       if (!updateRes.ok) {
         const detail = await updateRes.json().catch(() => ({}));
@@ -1319,7 +1365,9 @@ export default function App() {
       const payload = await updateRes.json().catch(() => ({}));
       await ensureAdminList(adminPassword);
       setAdminStatus("ready");
-      if (payload?.optimization) {
+      if (isLarge) {
+        setAdminMessage("Audio reemplazado. Archivo grande subido directo (sin compresión automática).");
+      } else if (payload?.optimization) {
         const opt = payload.optimization;
         const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
         const toMb = (opt.finalBytes / (1024 * 1024)).toFixed(2);
