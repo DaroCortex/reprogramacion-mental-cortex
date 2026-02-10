@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
 import { verifyAdminPassword } from "../../lib/auth.js";
+import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 
 const slugify = (value) =>
   value
@@ -41,14 +42,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    const safeName = String(fileName)
-      .trim()
-      .replace(/\s+/g, "_")
-      .replace(/[^a-zA-Z0-9._-]/g, "");
-    const key = `audios/${Date.now()}-${safeName}`;
-    const buffer = Buffer.from(String(audioBase64), "base64");
+    const inputBuffer = Buffer.from(String(audioBase64), "base64");
+    const optimized = await optimizeAudioBuffer({ inputBuffer, fileName });
+    const key = buildAudioKey(fileName, optimized.extension || "mp3");
 
-    await uploadObject(key, buffer, contentType);
+    await uploadObject(key, optimized.buffer, optimized.contentType || contentType);
 
     const students = await readStudents();
     const slug = uniqueSlug(name, students);
@@ -63,7 +61,7 @@ export default async function handler(req, res) {
 
     const next = [...students, student];
     await writeStudents(next);
-    return res.status(200).json({ student });
+    return res.status(200).json({ student, optimization: optimized.optimization });
   } catch (error) {
     console.error("create-student error:", error);
     return res.status(500).json({

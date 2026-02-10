@@ -1244,14 +1244,23 @@ export default function App() {
         const detail = await addRes.json().catch(() => ({}));
         throw new Error(`No se pudo crear estudiante (${detail?.error || "error"}).`);
       }
-      const { student: created } = await addRes.json();
+      const payload = await addRes.json();
+      const created = payload.student;
       const link = buildStudentLink(created.slug, created.token, true);
       setAdminLink(link);
       setAdminName("");
       setAdminFile(null);
       await ensureAdminList(adminPassword);
       setAdminStatus("ready");
-      setAdminMessage("Estudiante creado.");
+      if (payload?.optimization) {
+        const opt = payload.optimization;
+        const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
+        const toMb = (opt.finalBytes / (1024 * 1024)).toFixed(2);
+        const mode = opt.mode || "procesado";
+        setAdminMessage(`Estudiante creado. Audio ${mode}: ${fromMb}MB -> ${toMb}MB`);
+      } else {
+        setAdminMessage("Estudiante creado.");
+      }
     } catch (error) {
       setAdminStatus("ready");
       setAdminMessage(error?.message || "No se pudo crear el estudiante.");
@@ -1307,9 +1316,18 @@ export default function App() {
         const detail = await updateRes.json().catch(() => ({}));
         throw new Error(detail?.error || "No se pudo actualizar");
       }
+      const payload = await updateRes.json().catch(() => ({}));
       await ensureAdminList(adminPassword);
       setAdminStatus("ready");
-      setAdminMessage("Audio reemplazado.");
+      if (payload?.optimization) {
+        const opt = payload.optimization;
+        const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
+        const toMb = (opt.finalBytes / (1024 * 1024)).toFixed(2);
+        const mode = opt.mode || "procesado";
+        setAdminMessage(`Audio reemplazado (${mode}): ${fromMb}MB -> ${toMb}MB`);
+      } else {
+        setAdminMessage("Audio reemplazado.");
+      }
     } catch (error) {
       setAdminStatus("ready");
       setAdminMessage(error?.message || "No se pudo reemplazar el audio.");

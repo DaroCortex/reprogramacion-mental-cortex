@@ -1,5 +1,6 @@
 import { readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
 import { verifyAdminPassword } from "../../lib/auth.js";
+import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 
 export default async function handler(req, res) {
   try {
@@ -17,14 +18,13 @@ export default async function handler(req, res) {
     }
 
     let nextAudioKey = audioKey;
+    let optimization = null;
     if (!nextAudioKey && audioBase64 && fileName) {
-      const safeName = String(fileName)
-        .trim()
-        .replace(/\s+/g, "_")
-        .replace(/[^a-zA-Z0-9._-]/g, "");
-      nextAudioKey = `audios/${Date.now()}-${safeName}`;
-      const buffer = Buffer.from(String(audioBase64), "base64");
-      await uploadObject(nextAudioKey, buffer, contentType);
+      const inputBuffer = Buffer.from(String(audioBase64), "base64");
+      const optimized = await optimizeAudioBuffer({ inputBuffer, fileName });
+      optimization = optimized.optimization;
+      nextAudioKey = buildAudioKey(fileName, optimized.extension || "mp3");
+      await uploadObject(nextAudioKey, optimized.buffer, optimized.contentType || contentType);
     }
 
     const students = await readStudents();
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     });
 
     await writeStudents(next);
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, optimization });
   } catch (error) {
     console.error("update-student error:", error);
     return res.status(500).json({
