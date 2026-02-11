@@ -278,6 +278,8 @@ export default function App() {
   const preCueGainRef = useRef(null);
   const finalCueSourceNodeRef = useRef(null);
   const finalCueGainRef = useRef(null);
+  const bosqueFadeStopRef = useRef(null);
+  const septasyncFadeStopRef = useRef(null);
 
   const getEffectiveReverbMix = useCallback((cfg) => {
     if (cfg.reverbMode === "off") return 0;
@@ -372,6 +374,14 @@ export default function App() {
     } catch (error) {
       return false;
     }
+  }, []);
+
+  const smoothGainTo = useCallback((gainNode, target, seconds = 0.3) => {
+    if (!gainNode) return;
+    const now = gainNode.context.currentTime;
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+    gainNode.gain.linearRampToValueAtTime(Math.max(0, Number(target) || 0), now + Math.max(0.01, seconds));
   }, []);
 
   useEffect(() => {
@@ -501,11 +511,11 @@ export default function App() {
   useEffect(() => {
     if (!bosqueAudioRef.current) return;
     if (bosqueGainRef.current) {
-      bosqueGainRef.current.gain.value = Math.min(1, Math.max(0, config.bosqueVolume));
+      smoothGainTo(bosqueGainRef.current, Math.min(1, Math.max(0, config.bosqueVolume)), 0.2);
     } else {
       bosqueAudioRef.current.volume = Math.min(1, Math.max(0, config.bosqueVolume));
     }
-  }, [config.bosqueVolume]);
+  }, [config.bosqueVolume, smoothGainTo]);
 
   useEffect(() => {
     setAudioSrc("");
@@ -618,11 +628,11 @@ export default function App() {
   useEffect(() => {
     if (!septasyncAudioRef.current) return;
     if (septasyncGainRef.current) {
-      septasyncGainRef.current.gain.value = Math.min(1, Math.max(0, config.septasyncVolume));
+      smoothGainTo(septasyncGainRef.current, Math.min(1, Math.max(0, config.septasyncVolume)), 0.2);
     } else {
       septasyncAudioRef.current.volume = Math.min(1, Math.max(0, config.septasyncVolume));
     }
-  }, [config.septasyncVolume]);
+  }, [config.septasyncVolume, smoothGainTo]);
 
   useEffect(() => {
     const shouldKeepPlaying = isRunning || (phase === "complete" && isAwaitingFinalClose);
@@ -724,12 +734,20 @@ export default function App() {
     cancelEndApneaHold();
     cancelStopHold();
     cancelFinalizeHold();
+    if (bosqueFadeStopRef.current) {
+      clearTimeout(bosqueFadeStopRef.current);
+      bosqueFadeStopRef.current = null;
+    }
+    if (septasyncFadeStopRef.current) {
+      clearTimeout(septasyncFadeStopRef.current);
+      septasyncFadeStopRef.current = null;
+    }
     releaseWakeLock();
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-  }, []);
+  }, [smoothGainTo]);
 
   const handlePhaseAdvance = () => {
     if (phase === "breathing") {
@@ -1044,21 +1062,43 @@ export default function App() {
   const playBosque = () => {
     if (!bosqueAudioRef.current) return;
     if (!selectedAmbientUrl) return;
+    if (bosqueFadeStopRef.current) {
+      clearTimeout(bosqueFadeStopRef.current);
+      bosqueFadeStopRef.current = null;
+    }
+    const targetGain = Math.min(1, Math.max(0, config.bosqueVolume));
     ensureAuxGainGraph(
       bosqueAudioRef.current,
       bosqueSourceNodeRef,
       bosqueGainRef,
-      Math.min(1, Math.max(0, config.bosqueVolume))
+      0
     );
     if (bosqueAudioRef.current.src !== selectedAmbientUrl) {
       bosqueAudioRef.current.src = selectedAmbientUrl;
     }
     bosqueAudioRef.current.loop = true;
-    bosqueAudioRef.current.play().catch(() => {});
+    bosqueAudioRef.current.play().then(() => {
+      if (bosqueGainRef.current) {
+        smoothGainTo(bosqueGainRef.current, targetGain, 0.35);
+      }
+    }).catch(() => {});
   };
 
   const stopBosque = () => {
     if (!bosqueAudioRef.current) return;
+    if (bosqueGainRef.current) {
+      smoothGainTo(bosqueGainRef.current, 0, 0.35);
+      if (bosqueFadeStopRef.current) {
+        clearTimeout(bosqueFadeStopRef.current);
+      }
+      bosqueFadeStopRef.current = setTimeout(() => {
+        if (!bosqueAudioRef.current) return;
+        bosqueAudioRef.current.pause();
+        bosqueAudioRef.current.currentTime = 0;
+        bosqueFadeStopRef.current = null;
+      }, 380);
+      return;
+    }
     bosqueAudioRef.current.pause();
     bosqueAudioRef.current.currentTime = 0;
   };
@@ -1066,21 +1106,43 @@ export default function App() {
   const playSeptasync = () => {
     if (!septasyncAudioRef.current) return;
     if (!selectedSeptasyncUrl) return;
+    if (septasyncFadeStopRef.current) {
+      clearTimeout(septasyncFadeStopRef.current);
+      septasyncFadeStopRef.current = null;
+    }
+    const targetGain = Math.min(1, Math.max(0, config.septasyncVolume));
     ensureAuxGainGraph(
       septasyncAudioRef.current,
       septasyncSourceNodeRef,
       septasyncGainRef,
-      Math.min(1, Math.max(0, config.septasyncVolume))
+      0
     );
     if (septasyncAudioRef.current.src !== selectedSeptasyncUrl) {
       septasyncAudioRef.current.src = selectedSeptasyncUrl;
     }
     septasyncAudioRef.current.loop = true;
-    septasyncAudioRef.current.play().catch(() => {});
+    septasyncAudioRef.current.play().then(() => {
+      if (septasyncGainRef.current) {
+        smoothGainTo(septasyncGainRef.current, targetGain, 0.35);
+      }
+    }).catch(() => {});
   };
 
   const stopSeptasync = () => {
     if (!septasyncAudioRef.current) return;
+    if (septasyncGainRef.current) {
+      smoothGainTo(septasyncGainRef.current, 0, 0.35);
+      if (septasyncFadeStopRef.current) {
+        clearTimeout(septasyncFadeStopRef.current);
+      }
+      septasyncFadeStopRef.current = setTimeout(() => {
+        if (!septasyncAudioRef.current) return;
+        septasyncAudioRef.current.pause();
+        septasyncAudioRef.current.currentTime = 0;
+        septasyncFadeStopRef.current = null;
+      }, 380);
+      return;
+    }
     septasyncAudioRef.current.pause();
     septasyncAudioRef.current.currentTime = 0;
   };
@@ -1094,7 +1156,7 @@ export default function App() {
 
   const playPreApneaCue = () => {
     if (!preApneaCueAudioRef.current) return;
-    ensureAuxGainGraph(preApneaCueAudioRef.current, preCueSourceNodeRef, preCueGainRef, 1.3);
+    ensureAuxGainGraph(preApneaCueAudioRef.current, preCueSourceNodeRef, preCueGainRef, 1.8);
     preApneaCueAudioRef.current.currentTime = 0;
     preApneaCueAudioRef.current.loop = false;
     preApneaCueAudioRef.current.play().catch(() => {});
@@ -1102,7 +1164,7 @@ export default function App() {
 
   const playFinalApneaCue = () => {
     if (!finalApneaCueAudioRef.current) return;
-    ensureAuxGainGraph(finalApneaCueAudioRef.current, finalCueSourceNodeRef, finalCueGainRef, 1.3);
+    ensureAuxGainGraph(finalApneaCueAudioRef.current, finalCueSourceNodeRef, finalCueGainRef, 1.8);
     finalApneaCueAudioRef.current.currentTime = 0;
     finalApneaCueAudioRef.current.loop = false;
     finalApneaCueAudioRef.current.play().catch(() => {});
