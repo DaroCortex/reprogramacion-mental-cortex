@@ -13,7 +13,8 @@ const DEFAULT_CONFIG = {
   ambientSound: "bosque",
   septasyncTrack: "none",
   septasyncVolume: 0.5,
-  reverbMix: 0.12
+  reverbMix: 0.12,
+  reverbMode: "soft"
 };
 
 const PHASE_LABELS = {
@@ -55,6 +56,11 @@ const BREATH_STYLE_OPTIONS = [
 
 const BREATHS_OPTIONS = [36, 42, 48];
 const CYCLES_OPTIONS = [3, 5, 8, 15];
+const REVERB_MODE_OPTIONS = [
+  { id: "off", label: "Off" },
+  { id: "soft", label: "Suave" },
+  { id: "camera", label: "Camara" }
+];
 const PRACTICE_OPTIONS = [
   { id: "reprogramacion", label: "Practica de Reprogramacion mental", enabled: true },
   { id: "metas", label: "Metas Diarias", enabled: true },
@@ -262,6 +268,22 @@ export default function App() {
   const dryGainRef = useRef(null);
   const wetGainRef = useRef(null);
   const convolverRef = useRef(null);
+  const impulseSoftRef = useRef(null);
+  const impulseCameraRef = useRef(null);
+  const bosqueSourceNodeRef = useRef(null);
+  const bosqueGainRef = useRef(null);
+  const septasyncSourceNodeRef = useRef(null);
+  const septasyncGainRef = useRef(null);
+  const preCueSourceNodeRef = useRef(null);
+  const preCueGainRef = useRef(null);
+  const finalCueSourceNodeRef = useRef(null);
+  const finalCueGainRef = useRef(null);
+
+  const getEffectiveReverbMix = useCallback((cfg) => {
+    if (cfg.reverbMode === "off") return 0;
+    if (cfg.reverbMode === "camera") return Math.min(1, Math.max(0.35, Number(cfg.reverbMix || 0)));
+    return Math.min(1, Math.max(0, Number(cfg.reverbMix || 0)));
+  }, []);
 
   const updateReverbMix = useCallback((mixValue) => {
     const mix = Math.min(1, Math.max(0, Number(mixValue || 0)));
@@ -307,7 +329,15 @@ export default function App() {
       }
 
       audioRef.current.volume = 1;
-      updateReverbMix(config.reverbMix);
+      if (!impulseSoftRef.current) {
+        impulseSoftRef.current = buildImpulseResponse(ctx, 1.4, 2.2);
+      }
+      if (!impulseCameraRef.current) {
+        impulseCameraRef.current = buildImpulseResponse(ctx, 2.2, 2.8);
+      }
+      convolverRef.current.buffer =
+        config.reverbMode === "camera" ? impulseCameraRef.current : impulseSoftRef.current;
+      updateReverbMix(getEffectiveReverbMix(config));
       if (masterGainRef.current) {
         masterGainRef.current.gain.value = Math.min(1, Math.max(0, config.audioVolume));
       }
@@ -315,7 +345,34 @@ export default function App() {
     } catch (error) {
       return false;
     }
-  }, [config.audioVolume, config.reverbMix, updateReverbMix]);
+  }, [config.audioVolume, config.reverbMix, config.reverbMode, getEffectiveReverbMix, updateReverbMix]);
+
+  const ensureAuxGainGraph = useCallback((audioElement, sourceRef, gainRef, baseGain = 1) => {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!audioElement || !Ctx) return false;
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new Ctx();
+      }
+      const ctx = audioContextRef.current;
+      if (!sourceRef.current) {
+        sourceRef.current = ctx.createMediaElementSource(audioElement);
+      }
+      if (!gainRef.current) {
+        gainRef.current = ctx.createGain();
+        sourceRef.current.connect(gainRef.current);
+        gainRef.current.connect(ctx.destination);
+      }
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+      audioElement.volume = 1;
+      gainRef.current.gain.value = Math.max(0, Number(baseGain) || 0);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
     const safeTheme = theme === "dark" ? "dark" : "light";
@@ -434,12 +491,20 @@ export default function App() {
   }, [config.audioVolume]);
 
   useEffect(() => {
-    updateReverbMix(config.reverbMix);
-  }, [config.reverbMix, updateReverbMix]);
+    if (convolverRef.current && impulseSoftRef.current && impulseCameraRef.current) {
+      convolverRef.current.buffer =
+        config.reverbMode === "camera" ? impulseCameraRef.current : impulseSoftRef.current;
+    }
+    updateReverbMix(getEffectiveReverbMix(config));
+  }, [config.reverbMix, config.reverbMode, config, getEffectiveReverbMix, updateReverbMix]);
 
   useEffect(() => {
     if (!bosqueAudioRef.current) return;
-    bosqueAudioRef.current.volume = Math.min(1, Math.max(0, config.bosqueVolume));
+    if (bosqueGainRef.current) {
+      bosqueGainRef.current.gain.value = Math.min(1, Math.max(0, config.bosqueVolume));
+    } else {
+      bosqueAudioRef.current.volume = Math.min(1, Math.max(0, config.bosqueVolume));
+    }
   }, [config.bosqueVolume]);
 
   useEffect(() => {
@@ -552,7 +617,11 @@ export default function App() {
 
   useEffect(() => {
     if (!septasyncAudioRef.current) return;
-    septasyncAudioRef.current.volume = Math.min(1, Math.max(0, config.septasyncVolume));
+    if (septasyncGainRef.current) {
+      septasyncGainRef.current.gain.value = Math.min(1, Math.max(0, config.septasyncVolume));
+    } else {
+      septasyncAudioRef.current.volume = Math.min(1, Math.max(0, config.septasyncVolume));
+    }
   }, [config.septasyncVolume]);
 
   useEffect(() => {
@@ -846,7 +915,14 @@ export default function App() {
     setTimeLeftMs(0);
     stopBreathSound();
     loadSignedAudio().then((url) => {
-      if (url) playAudio();
+      if (url) {
+        playAudio();
+        setTimeout(() => {
+          if (!isRunningRef.current || isPausedRef.current) return;
+          if (selectedAmbientUrl) playBosque();
+          if (selectedSeptasyncUrl) playSeptasync();
+        }, 250);
+      }
     });
   };
 
@@ -968,6 +1044,12 @@ export default function App() {
   const playBosque = () => {
     if (!bosqueAudioRef.current) return;
     if (!selectedAmbientUrl) return;
+    ensureAuxGainGraph(
+      bosqueAudioRef.current,
+      bosqueSourceNodeRef,
+      bosqueGainRef,
+      Math.min(1, Math.max(0, config.bosqueVolume))
+    );
     if (bosqueAudioRef.current.src !== selectedAmbientUrl) {
       bosqueAudioRef.current.src = selectedAmbientUrl;
     }
@@ -984,6 +1066,12 @@ export default function App() {
   const playSeptasync = () => {
     if (!septasyncAudioRef.current) return;
     if (!selectedSeptasyncUrl) return;
+    ensureAuxGainGraph(
+      septasyncAudioRef.current,
+      septasyncSourceNodeRef,
+      septasyncGainRef,
+      Math.min(1, Math.max(0, config.septasyncVolume))
+    );
     if (septasyncAudioRef.current.src !== selectedSeptasyncUrl) {
       septasyncAudioRef.current.src = selectedSeptasyncUrl;
     }
@@ -1006,6 +1094,7 @@ export default function App() {
 
   const playPreApneaCue = () => {
     if (!preApneaCueAudioRef.current) return;
+    ensureAuxGainGraph(preApneaCueAudioRef.current, preCueSourceNodeRef, preCueGainRef, 1.3);
     preApneaCueAudioRef.current.currentTime = 0;
     preApneaCueAudioRef.current.loop = false;
     preApneaCueAudioRef.current.play().catch(() => {});
@@ -1013,6 +1102,7 @@ export default function App() {
 
   const playFinalApneaCue = () => {
     if (!finalApneaCueAudioRef.current) return;
+    ensureAuxGainGraph(finalApneaCueAudioRef.current, finalCueSourceNodeRef, finalCueGainRef, 1.3);
     finalApneaCueAudioRef.current.currentTime = 0;
     finalApneaCueAudioRef.current.loop = false;
     finalApneaCueAudioRef.current.play().catch(() => {});
@@ -2374,12 +2464,30 @@ export default function App() {
               </label>
               <label>
                 Reverb audio apnea
+                <div className="preset-row" style={{ marginBottom: 8 }}>
+                  {REVERB_MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`chip ${config.reverbMode === option.id ? "active" : ""}`}
+                      onClick={() =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          reverbMode: option.id
+                        }))
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="range"
                   min="0"
                   max="1"
                   step="0.05"
                   value={config.reverbMix}
+                  disabled={config.reverbMode === "off"}
                   onChange={(event) =>
                     setConfig((prev) => ({
                       ...prev,
@@ -2387,6 +2495,13 @@ export default function App() {
                     }))
                   }
                 />
+                <span className="muted">
+                  {config.reverbMode === "camera"
+                    ? "Modo camara: reverb mas notorio."
+                    : config.reverbMode === "soft"
+                      ? "Modo suave: reverb ligero."
+                      : "Off: sin reverb."}
+                </span>
               </label>
             </div>
           )}
