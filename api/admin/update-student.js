@@ -42,8 +42,11 @@ export default async function handler(req, res) {
 
     await writeStudents(next);
     if (previousAudioKey && nextAudioKey && previousAudioKey !== nextAudioKey) {
+      const isStillReferenced = next.some((item) => item.slug !== slug && item.audioKey === previousAudioKey);
       try {
-        await deleteObject(previousAudioKey);
+        if (!isStillReferenced) {
+          await deleteObject(previousAudioKey);
+        }
       } catch (cleanupError) {
         console.warn("update-student audio cleanup warning:", cleanupError?.message || cleanupError);
       }

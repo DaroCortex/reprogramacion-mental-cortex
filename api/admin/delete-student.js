@@ -21,8 +21,11 @@ export default async function handler(req, res) {
     const next = students.filter((item) => item.slug !== slug);
 
     if (target?.audioKey) {
+      const isStillReferenced = next.some((item) => item.audioKey === target.audioKey);
       try {
-        await deleteObject(target.audioKey);
+        if (!isStillReferenced) {
+          await deleteObject(target.audioKey);
+        }
       } catch (cleanupError) {
         console.warn("delete-student audio cleanup warning:", cleanupError?.message || cleanupError);
       }
