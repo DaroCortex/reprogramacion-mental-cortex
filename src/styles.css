@@ -208,6 +208,19 @@ body {
   letter-spacing: -0.02em;
 }
 
+.timer-wrap {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.timer-sub {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
 /* ── Breath visual ─────────────────────────────────── */
 
 .breath-visual {

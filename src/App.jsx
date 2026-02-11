@@ -28,6 +28,9 @@ const TICK_MS = 100;
 const DOUBLE_TAP_MS = 280;
 const NOSTRIL_PREVIEW_MS = 500;
 const DIRECT_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
+const STOP_HOLD_MS = 1000;
+const FINALIZE_HOLD_MS = 1500;
+const PRE_APNEA_BREATHS_LEFT = 2;
 
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
@@ -212,7 +215,11 @@ export default function App() {
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isAwaitingFinalClose, setIsAwaitingFinalClose] = useState(false);
   const [endHoldProgress, setEndHoldProgress] = useState(0);
+  const [stopHoldProgress, setStopHoldProgress] = useState(0);
+  const [finalHoldProgress, setFinalHoldProgress] = useState(0);
+  const [previousApneaSeconds, setPreviousApneaSeconds] = useState(0);
 
   const [progress, setProgress] = useState({
     totalSessions: 0,
@@ -229,6 +236,8 @@ export default function App() {
   const bosqueAudioRef = useRef(null);
   const endApneaAudioRef = useRef(null);
   const septasyncAudioRef = useRef(null);
+  const preApneaCueAudioRef = useRef(null);
+  const finalApneaCueAudioRef = useRef(null);
   const replaceInputRef = useRef(null);
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
@@ -236,12 +245,17 @@ export default function App() {
   const hiddenAtRef = useRef(null);
   const endHoldTimeoutRef = useRef(null);
   const endHoldIntervalRef = useRef(null);
+  const stopHoldTimeoutRef = useRef(null);
+  const stopHoldIntervalRef = useRef(null);
+  const finalHoldTimeoutRef = useRef(null);
+  const finalHoldIntervalRef = useRef(null);
   const phaseRef = useRef(phase);
   const isRunningRef = useRef(isRunning);
   const isPausedRef = useRef(isPaused);
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
+  const preApneaCueCycleRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioSourceNodeRef = useRef(null);
   const masterGainRef = useRef(null);
@@ -517,12 +531,13 @@ export default function App() {
   }, [selectedAmbientUrl]);
 
   useEffect(() => {
-    if (!isRunning || isPaused) {
+    const shouldKeepPlaying = isRunning || (phase === "complete" && isAwaitingFinalClose);
+    if (!shouldKeepPlaying || isPaused) {
       stopBosque();
       return;
     }
     playBosque();
-  }, [phase, isRunning, isPaused, selectedAmbientUrl]);
+  }, [phase, isRunning, isPaused, selectedAmbientUrl, isAwaitingFinalClose]);
 
   useEffect(() => {
     if (!septasyncAudioRef.current) return;
@@ -541,15 +556,16 @@ export default function App() {
   }, [config.septasyncVolume]);
 
   useEffect(() => {
-    if (!isRunning || isPaused) {
+    const shouldKeepPlaying = isRunning || (phase === "complete" && isAwaitingFinalClose);
+    if (!shouldKeepPlaying || isPaused) {
       stopSeptasync();
       return;
     }
     playSeptasync();
-  }, [isRunning, isPaused, selectedSeptasyncUrl]);
+  }, [isRunning, isPaused, selectedSeptasyncUrl, phase, isAwaitingFinalClose]);
 
   useEffect(() => {
-    if (!isRunning || isPaused) return;
+    if (!isRunning || isPaused || phase === "complete") return;
 
     intervalRef.current = setInterval(() => {
       if (phase === "apnea") {
@@ -637,6 +653,8 @@ export default function App() {
 
   useEffect(() => () => {
     cancelEndApneaHold();
+    cancelStopHold();
+    cancelFinalizeHold();
     releaseWakeLock();
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
@@ -659,10 +677,16 @@ export default function App() {
         return;
       }
 
+      const upcomingBreath = nextBreaths + 1;
+      const cueBreath = Math.max(1, config.breathsPerCycle - PRE_APNEA_BREATHS_LEFT);
+      if (upcomingBreath === cueBreath && preApneaCueCycleRef.current !== cycleIndex) {
+        playPreApneaCue();
+        preApneaCueCycleRef.current = cycleIndex;
+      }
+
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
       setCurrentBreathNumber(nextBreaths + 1);
-      playBreathSound((config.inhaleSeconds + config.exhaleSeconds) * 1000);
       setTimeLeftMs(config.inhaleSeconds * 1000);
       return;
     }
@@ -678,7 +702,7 @@ export default function App() {
         setBreathsDone(0);
         setSubphase("inhale");
         setCurrentBreathNumber(1);
-        playBreathSound((config.inhaleSeconds + config.exhaleSeconds) * 1000);
+        playBreathSound();
         setPhase("breathing");
         setTimeLeftMs(config.inhaleSeconds * 1000);
         return;
@@ -726,6 +750,8 @@ export default function App() {
     if (apneaUrl && audioRef.current) checks.push(waitForAudioReady(audioRef.current));
     if (breathAudioRef.current?.src) checks.push(waitForAudioReady(breathAudioRef.current));
     if (endApneaAudioRef.current?.src) checks.push(waitForAudioReady(endApneaAudioRef.current));
+    if (preApneaCueAudioRef.current?.src) checks.push(waitForAudioReady(preApneaCueAudioRef.current));
+    if (finalApneaCueAudioRef.current?.src) checks.push(waitForAudioReady(finalApneaCueAudioRef.current));
     if (selectedAmbientUrl && bosqueAudioRef.current?.src) checks.push(waitForAudioReady(bosqueAudioRef.current));
     if (selectedSeptasyncUrl && septasyncAudioRef.current?.src) checks.push(waitForAudioReady(septasyncAudioRef.current));
 
@@ -760,12 +786,15 @@ export default function App() {
     sessionStartRef.current = Date.now();
     setIsRunning(true);
     setIsPaused(false);
+    setIsAwaitingFinalClose(false);
+    setPreviousApneaSeconds(0);
+    preApneaCueCycleRef.current = null;
     setPhase("breathing");
     setCycleIndex(1);
     setBreathsDone(0);
     setCurrentBreathNumber(1);
     setSubphase("inhale");
-    playBreathSound((config.inhaleSeconds + config.exhaleSeconds) * 1000);
+    playBreathSound();
     unlockApneaAudio();
     setTimeLeftMs(config.inhaleSeconds * 1000);
   };
@@ -773,17 +802,25 @@ export default function App() {
   const pauseSession = () => {
     setIsPaused(true);
     pauseAudio();
+    stopBreathSound();
   };
 
   const resumeSession = () => {
     setIsPaused(false);
     if (phase === "apnea") playAudio();
-    if (phase === "breathing") playBosque();
+    if (phase === "breathing") {
+      playBosque();
+      playBreathSound();
+    }
   };
 
   const stopSession = () => {
+    cancelStopHold();
+    cancelFinalizeHold();
+    cancelEndApneaHold();
     setIsRunning(false);
     setIsPaused(false);
+    setIsAwaitingFinalClose(false);
     setPhase("idle");
     setTimeLeftMs(0);
     setBreathsDone(0);
@@ -794,11 +831,20 @@ export default function App() {
     stopBosque();
     stopSeptasync();
     stopBreathSound();
+    if (preApneaCueAudioRef.current) {
+      preApneaCueAudioRef.current.pause();
+      preApneaCueAudioRef.current.currentTime = 0;
+    }
+    if (finalApneaCueAudioRef.current) {
+      finalApneaCueAudioRef.current.pause();
+      finalApneaCueAudioRef.current.currentTime = 0;
+    }
   };
 
   const startApnea = () => {
     setPhase("apnea");
     setTimeLeftMs(0);
+    stopBreathSound();
     loadSignedAudio().then((url) => {
       if (url) playAudio();
     });
@@ -807,20 +853,25 @@ export default function App() {
   const startRecovery = () => {
     if (phase === "apnea") {
       lastApneaMsRef.current = timeLeftMs;
+      setPreviousApneaSeconds(Math.round((timeLeftMs || 0) / 1000));
       playEndApnea();
+      if (cycleIndex >= config.cycles) {
+        playFinalApneaCue();
+      }
     }
     setPhase("recovery");
     setTimeLeftMs(config.recoverySeconds * 1000);
     stopAudio();
-    stopSeptasync();
   };
 
   const finishSession = () => {
     setPhase("complete");
-    setIsRunning(false);
+    setIsRunning(true);
     setIsPaused(false);
+    setIsAwaitingFinalClose(true);
     setTimeLeftMs(0);
     stopAudio();
+    stopBreathSound();
 
     const today = getTodayKey();
     const yesterday = getYesterdayKey();
@@ -892,21 +943,16 @@ export default function App() {
       });
   };
 
-  const playBreathSound = (durationMs) => {
+  const playBreathSound = () => {
     if (!breathAudioRef.current) return;
     if (breathStopTimerRef.current) {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
+    if (!breathAudioRef.current.paused) return;
     breathAudioRef.current.currentTime = 0;
-    breathAudioRef.current.loop = false;
+    breathAudioRef.current.loop = true;
     breathAudioRef.current.play().catch(() => {});
-    const totalMs = Number.isFinite(durationMs)
-      ? durationMs
-      : (config.inhaleSeconds + config.exhaleSeconds) * 1000;
-    breathStopTimerRef.current = setTimeout(() => {
-      stopBreathSound();
-    }, Math.max(0, totalMs));
   };
 
   const stopBreathSound = () => {
@@ -956,6 +1002,20 @@ export default function App() {
     endApneaAudioRef.current.currentTime = 0;
     endApneaAudioRef.current.loop = false;
     endApneaAudioRef.current.play().catch(() => {});
+  };
+
+  const playPreApneaCue = () => {
+    if (!preApneaCueAudioRef.current) return;
+    preApneaCueAudioRef.current.currentTime = 0;
+    preApneaCueAudioRef.current.loop = false;
+    preApneaCueAudioRef.current.play().catch(() => {});
+  };
+
+  const playFinalApneaCue = () => {
+    if (!finalApneaCueAudioRef.current) return;
+    finalApneaCueAudioRef.current.currentTime = 0;
+    finalApneaCueAudioRef.current.loop = false;
+    finalApneaCueAudioRef.current.play().catch(() => {});
   };
 
   const loadSignedAudio = async () => {
@@ -1039,6 +1099,86 @@ export default function App() {
   const endApneaEarly = () => {
     if (phase !== "apnea") return;
     startRecovery();
+  };
+
+  const cancelStopHold = () => {
+    if (stopHoldTimeoutRef.current) {
+      clearTimeout(stopHoldTimeoutRef.current);
+      stopHoldTimeoutRef.current = null;
+    }
+    if (stopHoldIntervalRef.current) {
+      clearInterval(stopHoldIntervalRef.current);
+      stopHoldIntervalRef.current = null;
+    }
+    setStopHoldProgress(0);
+  };
+
+  const startStopHold = (event) => {
+    if (!isRunning || phase === "apnea" || phase === "complete") return;
+    event.preventDefault();
+    cancelStopHold();
+    const startAt = Date.now();
+    stopHoldIntervalRef.current = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - startAt) / STOP_HOLD_MS) * 100);
+      setStopHoldProgress(pct);
+    }, 30);
+    stopHoldTimeoutRef.current = setTimeout(() => {
+      cancelStopHold();
+      stopSession();
+    }, STOP_HOLD_MS);
+  };
+
+  const cancelFinalizeHold = () => {
+    if (finalHoldTimeoutRef.current) {
+      clearTimeout(finalHoldTimeoutRef.current);
+      finalHoldTimeoutRef.current = null;
+    }
+    if (finalHoldIntervalRef.current) {
+      clearInterval(finalHoldIntervalRef.current);
+      finalHoldIntervalRef.current = null;
+    }
+    setFinalHoldProgress(0);
+  };
+
+  const finalizeCompleteSession = () => {
+    cancelFinalizeHold();
+    cancelEndApneaHold();
+    cancelStopHold();
+    setIsAwaitingFinalClose(false);
+    setIsRunning(false);
+    setIsPaused(false);
+    setPhase("idle");
+    setTimeLeftMs(0);
+    setBreathsDone(0);
+    setCycleIndex(1);
+    setCurrentBreathNumber(1);
+    setSubphase("inhale");
+    stopAudio();
+    stopBreathSound();
+    stopBosque();
+    stopSeptasync();
+    if (preApneaCueAudioRef.current) {
+      preApneaCueAudioRef.current.pause();
+      preApneaCueAudioRef.current.currentTime = 0;
+    }
+    if (finalApneaCueAudioRef.current) {
+      finalApneaCueAudioRef.current.pause();
+      finalApneaCueAudioRef.current.currentTime = 0;
+    }
+  };
+
+  const startFinalizeHold = (event) => {
+    if (phase !== "complete" || !isAwaitingFinalClose) return;
+    event.preventDefault();
+    cancelFinalizeHold();
+    const startAt = Date.now();
+    finalHoldIntervalRef.current = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - startAt) / FINALIZE_HOLD_MS) * 100);
+      setFinalHoldProgress(pct);
+    }, 30);
+    finalHoldTimeoutRef.current = setTimeout(() => {
+      finalizeCompleteSession();
+    }, FINALIZE_HOLD_MS);
   };
 
   const formatSeconds = (ms) => {
@@ -1822,8 +1962,13 @@ export default function App() {
               <p className="eyebrow">{PHASE_LABELS[phase]}</p>
               <h2>{phase === "complete" ? "Buen trabajo" : "Sesión en curso"}</h2>
             </div>
-            <div className="timer">
-              {phase === "idle" || phase === "complete" ? "--:--" : formatSeconds(timeLeftMs)}
+            <div className="timer-wrap">
+              <div className="timer">
+                {phase === "idle" || phase === "complete" ? "--:--" : formatSeconds(timeLeftMs)}
+              </div>
+              {phase === "apnea" && previousApneaSeconds > 0 && (
+                <div className="timer-sub">Apnea anterior: {previousApneaSeconds}s</div>
+              )}
             </div>
           </div>
 
@@ -1885,14 +2030,23 @@ export default function App() {
                 {audioCheckStatus === "checking" ? "Chequeando audio..." : "Iniciar sesión"}
               </button>
             )}
-            {isRunning && !isPaused && (
+            {isRunning && !isPaused && phase !== "complete" && (
               <button className="secondary" onClick={pauseSession}>Pausar</button>
             )}
-            {isRunning && isPaused && (
+            {isRunning && isPaused && phase !== "complete" && (
               <button className="secondary" onClick={resumeSession}>Reanudar</button>
             )}
-            {isRunning && (
-              <button className="ghost" onClick={stopSession}>Detener</button>
+            {isRunning && phase !== "complete" && phase !== "apnea" && (
+              <button
+                className="ghost hold-to-end"
+                style={{ "--hold-pct": `${stopHoldProgress}%` }}
+                onPointerDown={startStopHold}
+                onPointerUp={cancelStopHold}
+                onPointerLeave={cancelStopHold}
+                onPointerCancel={cancelStopHold}
+              >
+                <span>Mantener 1s para detener</span>
+              </button>
             )}
             {phase === "apnea" && (
               <button
@@ -1906,6 +2060,18 @@ export default function App() {
                 <span>Mantener 1.5s para terminar apnea</span>
               </button>
             )}
+            {phase === "complete" && isAwaitingFinalClose && (
+              <button
+                className="primary hold-to-end"
+                style={{ "--hold-pct": `${finalHoldProgress}%` }}
+                onPointerDown={startFinalizeHold}
+                onPointerUp={cancelFinalizeHold}
+                onPointerLeave={cancelFinalizeHold}
+                onPointerCancel={cancelFinalizeHold}
+              >
+                <span>Mantener 1.5s para finalizar ejercicio</span>
+              </button>
+            )}
           </div>
 
           <audio ref={audioRef} src={audioSrc} preload="auto" />
@@ -1913,6 +2079,8 @@ export default function App() {
           <audio ref={bosqueAudioRef} preload="auto" />
           <audio ref={endApneaAudioRef} preload="auto" />
           <audio ref={septasyncAudioRef} preload="auto" />
+          <audio ref={preApneaCueAudioRef} src="/pre-apnea-cue.mp3" preload="auto" />
+          <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" />
         </section>
 
         <section className="card">
