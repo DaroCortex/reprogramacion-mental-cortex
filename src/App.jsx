@@ -281,6 +281,8 @@ export default function App() {
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
   const roundApneaByCycleRef = useRef([]);
+  const audioCheckNonceRef = useRef(0);
+  const unlockNonceRef = useRef(0);
   const preApneaCueCycleRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioSourceNodeRef = useRef(null);
@@ -906,10 +908,19 @@ export default function App() {
     });
 
   const runAudioCheck = async () => {
+    const checkNonce = Date.now();
+    audioCheckNonceRef.current = checkNonce;
+    unlockNonceRef.current += 1;
     setAudioCheckStatus("checking");
     setAudioCheckMessage("Chequeando audios...");
     await loadSystemAudio();
     const apneaUrl = await loadSignedAudio();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.loop = false;
+      audioRef.current.muted = true;
+    }
     const checks = [];
     if (apneaUrl && audioRef.current) checks.push(waitForAudioReady(audioRef.current));
     if (breathAudioRef.current?.src) checks.push(waitForAudioReady(breathAudioRef.current));
@@ -923,6 +934,7 @@ export default function App() {
     const okCount = results.filter(Boolean).length;
     const allOk = results.length > 0 && okCount === results.length;
 
+    if (audioCheckNonceRef.current !== checkNonce) return false;
     if (allOk || (apneaUrl && okCount >= 1)) {
       setAudioCheckStatus("ready");
       setAudioCheckMessage(`Audio OK (${okCount}/${results.length})`);
@@ -930,6 +942,7 @@ export default function App() {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
         audioRef.current.loop = false;
+        audioRef.current.muted = false;
       }
       return true;
     }
@@ -940,6 +953,7 @@ export default function App() {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       audioRef.current.loop = false;
+      audioRef.current.muted = false;
     }
     return true;
   };
@@ -1127,6 +1141,7 @@ export default function App() {
   const playAudio = () => {
     if (!audioRef.current) return;
     ensureReverbGraph();
+    audioRef.current.muted = false;
     audioRef.current.currentTime = 0;
     audioRef.current.loop = true;
     audioRef.current.play().catch(() => {
@@ -1138,17 +1153,23 @@ export default function App() {
     if (!audioRef.current) return;
     ensureReverbGraph();
     const el = audioRef.current;
-    const prevMuted = el.muted;
+    const unlockNonce = Date.now();
+    unlockNonceRef.current = unlockNonce;
+    const cleanup = () => {
+      if (unlockNonceRef.current !== unlockNonce) return;
+      el.pause();
+      el.currentTime = 0;
+      el.loop = false;
+      el.muted = false;
+    };
     el.muted = true;
+    el.loop = false;
+    el.currentTime = 0;
     el.play()
       .then(() => {
-        el.pause();
-        el.currentTime = 0;
-        el.muted = prevMuted;
+        setTimeout(cleanup, 120);
       })
-      .catch(() => {
-        el.muted = prevMuted;
-      });
+      .catch(cleanup);
   };
 
   const playBreathSound = () => {
@@ -1332,6 +1353,8 @@ export default function App() {
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
+    audioRef.current.loop = false;
+    audioRef.current.muted = false;
   };
 
   const cancelEndApneaHold = () => {
