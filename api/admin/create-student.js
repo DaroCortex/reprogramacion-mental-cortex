@@ -64,7 +64,18 @@ export default async function handler(req, res) {
       token,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      lastAudioAccessAt: new Date().toISOString()
+      lastAudioAccessAt: new Date().toISOString(),
+      usage: {
+        firstSessionAt: "",
+        lastSessionAt: "",
+        totalSessions: 0,
+        totalRounds: 0,
+        totalBreaths: 0,
+        sessionsByDay: {},
+        apneaRoundSums: [0, 0, 0, 0, 0],
+        apneaRoundCounts: [0, 0, 0, 0, 0],
+        lastSession: null
+      }
     };
 
     const next = [...students, student];

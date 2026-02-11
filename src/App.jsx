@@ -32,6 +32,8 @@ const DIRECT_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const STOP_HOLD_MS = 1000;
 const FINALIZE_HOLD_MS = 1500;
 const PRE_APNEA_BREATHS_LEFT = 2;
+const ALERT_WARNING_HOURS = 48;
+const ALERT_CRITICAL_HOURS = 72;
 
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
@@ -70,6 +72,22 @@ const PRACTICE_OPTIONS = [
   { id: "telekinesis", label: "Practica de telekinesis", enabled: false },
   { id: "magia", label: "Sesion de magia blanca", enabled: false }
 ];
+
+const MS_PER_HOUR = 1000 * 60 * 60;
+
+const toIsoDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeRoundArray = (value, limit = 5) => {
+  const list = Array.isArray(value) ? value : [];
+  return list
+    .slice(0, limit)
+    .map((item) => (Number.isFinite(Number(item)) ? Number(item) : 0));
+};
 
 const getSlugFromLocation = () => {
   const params = new URLSearchParams(window.location.search);
@@ -187,6 +205,7 @@ export default function App() {
   const [adminName, setAdminName] = useState("");
   const [adminFile, setAdminFile] = useState(null);
   const [adminLink, setAdminLink] = useState("");
+  const [adminView, setAdminView] = useState("students");
   const [adminsList, setAdminsList] = useState([]);
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminPassword, setNewAdminPassword] = useState("");
@@ -261,6 +280,7 @@ export default function App() {
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
+  const roundApneaByCycleRef = useRef([]);
   const preApneaCueCycleRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioSourceNodeRef = useRef(null);
@@ -451,6 +471,63 @@ export default function App() {
       String(item.audioKey || "").toLowerCase().includes(term)
     ));
   }, [adminStudents, searchTerm]);
+
+  const adminAnalytics = useMemo(() => {
+    const now = Date.now();
+    const rows = adminStudents.map((item) => {
+      const usage = item.usage || {};
+      const sessionsByDay = usage.sessionsByDay || {};
+      const lastSessionAt = usage.lastSessionAt || "";
+      const lastMs = lastSessionAt ? Date.parse(lastSessionAt) : 0;
+      const inactiveHours = lastMs ? (now - lastMs) / MS_PER_HOUR : Number.POSITIVE_INFINITY;
+      const isActive = Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
+      const alertLevel = !Number.isFinite(inactiveHours)
+        ? "warning"
+        : inactiveHours >= ALERT_CRITICAL_HOURS
+          ? "critical"
+          : inactiveHours >= ALERT_WARNING_HOURS
+            ? "warning"
+            : "ok";
+      const today = toIsoDate(new Date().toISOString());
+      const todaySessions = Number(sessionsByDay[today] || 0);
+      const roundSums = normalizeRoundArray(usage.apneaRoundSums, 5);
+      const roundCounts = normalizeRoundArray(usage.apneaRoundCounts, 5);
+      const roundAvg = roundSums.map((sum, idx) => {
+        const count = roundCounts[idx] || 0;
+        return count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
+      });
+      return {
+        ...item,
+        usage,
+        isActive,
+        alertLevel,
+        inactiveHours,
+        todaySessions,
+        totalSessions: Number(usage.totalSessions || 0),
+        totalRounds: Number(usage.totalRounds || 0),
+        roundAvg,
+        lastSessionAt
+      };
+    });
+
+    const active = rows.filter((item) => item.isActive);
+    const warning = rows.filter((item) => item.alertLevel === "warning");
+    const critical = rows.filter((item) => item.alertLevel === "critical");
+    const moreThanOnceToday = rows.filter((item) => item.todaySessions > 1);
+    const abandoned = rows.filter((item) => item.alertLevel === "critical");
+    const practicingDaily = rows.filter((item) => item.todaySessions >= 1);
+
+    return {
+      rows,
+      active,
+      warning,
+      critical,
+      moreThanOnceToday,
+      abandoned,
+      practicingDaily,
+      hasAttention: critical.length > 0 || warning.length > 0
+    };
+  }, [adminStudents]);
 
   useEffect(() => {
     if (!slug) return;
@@ -871,6 +948,7 @@ export default function App() {
     if (!student) return;
     await runAudioCheck();
     sessionStartRef.current = Date.now();
+    roundApneaByCycleRef.current = [];
     setIsRunning(true);
     setIsPaused(false);
     setIsAwaitingFinalClose(false);
@@ -914,6 +992,7 @@ export default function App() {
     setCycleIndex(1);
     setCurrentBreathNumber(1);
     setSubphase("inhale");
+    roundApneaByCycleRef.current = [];
     stopAudio();
     stopBosque();
     stopSeptasync();
@@ -946,8 +1025,10 @@ export default function App() {
 
   const startRecovery = () => {
     if (phase === "apnea") {
+      const apneaSeconds = Math.round((timeLeftMs || 0) / 1000);
       lastApneaMsRef.current = timeLeftMs;
-      setPreviousApneaSeconds(Math.round((timeLeftMs || 0) / 1000));
+      setPreviousApneaSeconds(apneaSeconds);
+      roundApneaByCycleRef.current[cycleIndex - 1] = apneaSeconds;
       playEndApnea();
       if (cycleIndex >= config.cycles) {
         playFinalApneaCue();
@@ -956,6 +1037,29 @@ export default function App() {
     setPhase("recovery");
     setTimeLeftMs(config.recoverySeconds * 1000);
     stopAudio();
+  };
+
+  const recordSessionMetrics = async ({ completedRounds, plannedRounds, breathsPerCycle, apneaByRound }) => {
+    if (!student?.slug || !token) return;
+    try {
+      await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: student.slug,
+          token,
+          session: {
+            completedRounds,
+            plannedRounds,
+            breathsPerCycle,
+            apneaByRound,
+            completedAt: new Date().toISOString()
+          }
+        })
+      });
+    } catch (error) {
+      console.warn("session metrics warning:", error?.message || error);
+    }
   };
 
   const finishSession = () => {
@@ -970,6 +1074,16 @@ export default function App() {
     const today = getTodayKey();
     const yesterday = getYesterdayKey();
     const addedBreaths = config.breathsPerCycle * config.cycles;
+    const apneaByRound = roundApneaByCycleRef.current
+      .slice(0, config.cycles)
+      .map((value) => Math.max(0, Number(value || 0)));
+
+    recordSessionMetrics({
+      completedRounds: cycleIndex,
+      plannedRounds: config.cycles,
+      breathsPerCycle: config.breathsPerCycle,
+      apneaByRound
+    });
 
     setProgress((prev) => {
       const lastDate = prev.lastSessionDate || "";
@@ -1799,6 +1913,18 @@ export default function App() {
     }
   };
 
+  const adminRowsForView = useMemo(() => {
+    if (adminView === "active") return adminAnalytics.active;
+    if (adminView === "alerts") {
+      return [...adminAnalytics.critical, ...adminAnalytics.warning]
+        .sort((a, b) => b.inactiveHours - a.inactiveHours);
+    }
+    return filteredAdminStudents.map((item) => {
+      const found = adminAnalytics.rows.find((row) => row.slug === item.slug);
+      return found || item;
+    });
+  }, [adminAnalytics, adminView, filteredAdminStudents]);
+
   if (loading) {
     return (
       <div className="app">
@@ -1840,6 +1966,36 @@ export default function App() {
 
         {adminStatus === "ready" && (
           <>
+            <div className={`card admin-overview-card ${adminAnalytics.hasAttention ? "attention" : ""}`}>
+              <div className="admin-overview-head">
+                <h3>Panel de control</h3>
+                <span className={`alert-pill ${adminAnalytics.hasAttention ? "critical" : "ok"}`}>
+                  {adminAnalytics.hasAttention ? "Revisar alertas" : "Todo en orden"}
+                </span>
+              </div>
+              <div className="stats-grid">
+                <div>
+                  <span>Estudiantes activos</span>
+                  <strong>{adminAnalytics.active.length}</strong>
+                </div>
+                <div>
+                  <span>Alerta 48h</span>
+                  <strong>{adminAnalytics.warning.length}</strong>
+                </div>
+                <div>
+                  <span>Alerta 72h</span>
+                  <strong>{adminAnalytics.critical.length}</strong>
+                </div>
+                <div>
+                  <span>Más de 1 sesión hoy</span>
+                  <strong>{adminAnalytics.moreThanOnceToday.length}</strong>
+                </div>
+              </div>
+              <div className="muted">
+                Diario: {adminAnalytics.practicingDaily.length} practicaron hoy. Abandono potencial: {adminAnalytics.abandoned.length}.
+              </div>
+            </div>
+
             <div className="card">
               <h3>Administradores (v2)</h3>
               <p className="muted">Solo el administrador principal puede crear o eliminar administradores secundarios.</p>
@@ -1938,7 +2094,29 @@ export default function App() {
             </div>
 
             <div className="card">
-              <h3>Estudiantes</h3>
+              <div className="panel-actions">
+                <h3>Estudiantes</h3>
+                <div className="admin-tabs">
+                  <button
+                    className={`chip ${adminView === "students" ? "active" : ""}`}
+                    onClick={() => setAdminView("students")}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    className={`chip ${adminView === "active" ? "active" : ""}`}
+                    onClick={() => setAdminView("active")}
+                  >
+                    Activos
+                  </button>
+                  <button
+                    className={`chip ${adminView === "alerts" ? "active" : ""}`}
+                    onClick={() => setAdminView("alerts")}
+                  >
+                    Alertas
+                  </button>
+                </div>
+              </div>
               <div className="panel-actions">
                 <input
                   type="search"
@@ -1947,18 +2125,37 @@ export default function App() {
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
                 <span className="muted">
-                  {filteredAdminStudents.length} / {adminStudents.length}
+                  {adminRowsForView.length} / {adminStudents.length}
                 </span>
               </div>
               <div className="link-list">
-                {filteredAdminStudents
+                {adminRowsForView
                   .map((item) => (
-                    <div key={item.slug} className="link-row">
+                    <div key={item.slug} className={`link-row ${item.alertLevel === "critical" ? "row-critical" : ""}`}>
                       <div>
                         <strong>{item.name}</strong>
                         <div className="muted">{item.slug}</div>
                         {item.createdAt && (
                           <div className="muted">Creado: {new Date(item.createdAt).toLocaleDateString()}</div>
+                        )}
+                        {item.usage?.lastSessionAt && (
+                          <div className="muted">
+                            Última práctica: {new Date(item.usage.lastSessionAt).toLocaleString()}
+                          </div>
+                        )}
+                        {adminView !== "students" && (
+                          <div className="muted">
+                            Sesiones: {item.totalSessions || 0} · Rondas: {item.totalRounds || 0}
+                            {Array.isArray(item.roundAvg) && item.roundAvg.length > 0
+                              ? ` · Promedio apnea R1-R5: ${item.roundAvg.map((v, idx) => `R${idx + 1}:${v || 0}s`).join(" | ")}`
+                              : ""}
+                          </div>
+                        )}
+                        {item.alertLevel === "warning" && (
+                          <div className="warn">Alerta 48h sin práctica</div>
+                        )}
+                        {item.alertLevel === "critical" && (
+                          <div className="warn">Alerta roja 72h sin práctica</div>
                         )}
                       </div>
                       <div className="link-actions">
@@ -2003,11 +2200,11 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                {filteredAdminStudents.length === 0 && (
+                {adminRowsForView.length === 0 && (
                   <p className="muted">
                     {adminStudents.length === 0
                       ? "Aún no hay estudiantes cargados."
-                      : "Sin resultados para esa búsqueda."}
+                      : "Sin resultados para esa vista."}
                   </p>
                 )}
               </div>
