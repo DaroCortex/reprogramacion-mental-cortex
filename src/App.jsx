@@ -1247,6 +1247,35 @@ export default function App() {
     return signPayload.key;
   };
 
+  const optimizeStudentAudioDeferred = async (slugToOptimize) => {
+    if (!slugToOptimize || !adminPassword) return;
+    try {
+      const response = await fetch("/api/admin/optimize-student-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          slug: slugToOptimize
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "No se pudo optimizar");
+      }
+      await ensureAdminList(adminPassword);
+      const opt = payload?.optimization;
+      if (opt?.applied) {
+        const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
+        const toMb = (opt.finalBytes / (1024 * 1024)).toFixed(2);
+        setAdminMessage(`Audio optimizado en segundo plano: ${fromMb}MB -> ${toMb}MB`);
+      } else {
+        setAdminMessage("Audio procesado en segundo plano.");
+      }
+    } catch (error) {
+      setAdminMessage("Audio subido, pero no se pudo optimizar automáticamente.");
+    }
+  };
+
   const handleAdminCreate = async () => {
     if (!adminPassword || !adminName || !adminFile) {
       setAdminMessage("Completa nombre y audio.");
@@ -1290,7 +1319,8 @@ export default function App() {
       await ensureAdminList(adminPassword);
       setAdminStatus("ready");
       if (isLarge) {
-        setAdminMessage("Estudiante creado. Audio grande subido directo (sin compresión automática).");
+        setAdminMessage("Estudiante creado. Audio grande subido. Iniciando optimización automática...");
+        optimizeStudentAudioDeferred(created.slug);
       } else if (payload?.optimization) {
         const opt = payload.optimization;
         const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
@@ -1339,16 +1369,17 @@ export default function App() {
     setAdminStatus("loading");
     setAdminMessage("");
     try {
+      const slugToReplace = replaceSlug;
       const isLarge = file.size > DIRECT_UPLOAD_THRESHOLD_BYTES;
       const payloadBody = isLarge
         ? {
             password: adminPassword,
-            slug: replaceSlug,
+            slug: slugToReplace,
             audioKey: await directUploadToR2(file)
           }
         : {
             password: adminPassword,
-            slug: replaceSlug,
+            slug: slugToReplace,
             fileName: file.name,
             contentType: file.type || "audio/mpeg",
             audioBase64: await readFileBase64(file)
@@ -1366,7 +1397,8 @@ export default function App() {
       await ensureAdminList(adminPassword);
       setAdminStatus("ready");
       if (isLarge) {
-        setAdminMessage("Audio reemplazado. Archivo grande subido directo (sin compresión automática).");
+        setAdminMessage("Audio reemplazado. Iniciando optimización automática...");
+        optimizeStudentAudioDeferred(slugToReplace);
       } else if (payload?.optimization) {
         const opt = payload.optimization;
         const fromMb = (opt.originalBytes / (1024 * 1024)).toFixed(2);
