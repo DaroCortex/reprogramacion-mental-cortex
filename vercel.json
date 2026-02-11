@@ -1,4 +1,7 @@
 {
+  "crons": [
+    { "path": "/api/admin/cleanup-audios", "schedule": "0 3 * * *" }
+  ],
   "rewrites": [
     { "source": "/s/:slug", "destination": "/" },
     { "source": "/:path((?!api).*)", "destination": "/" }

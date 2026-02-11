@@ -1,5 +1,5 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { getBucket, getS3Client, readStudents } from "../lib/r2.js";
+import { getBucket, getS3Client, readStudents, writeStudents } from "../lib/r2.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
 
@@ -30,6 +30,22 @@ export default async function handler(req, res) {
     const isPublicAudio = PUBLIC_AUDIO_SLUGS.has(slug);
     if (!isPublicAudio && (!token || token !== String(student.token || ""))) {
       return res.status(403).json({ error: "Token inválido" });
+    }
+
+    // Marca uso real del audio para limpieza automática a 90 días.
+    // Se limita la frecuencia para evitar escrituras excesivas por requests de rango.
+    const nowIso = new Date().toISOString();
+    const lastSeen = student.lastAudioAccessAt ? Date.parse(student.lastAudioAccessAt) : 0;
+    const shouldStampAccess = !lastSeen || Number.isNaN(lastSeen) || Date.now() - lastSeen > 10 * 60 * 1000;
+    if (shouldStampAccess) {
+      const nextStudents = students.map((item) =>
+        item.slug === slug ? { ...item, lastAudioAccessAt: nowIso, updatedAt: nowIso } : item
+      );
+      try {
+        await writeStudents(nextStudents);
+      } catch (trackError) {
+        console.warn("audio-file access tracking warning:", trackError?.message || trackError);
+      }
     }
 
     const client = getS3Client();

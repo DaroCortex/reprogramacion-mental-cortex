@@ -62,7 +62,9 @@ export default async function handler(req, res) {
       audioKey: key,
       slug,
       token,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastAudioAccessAt: new Date().toISOString()
     };
 
     const next = [...students, student];

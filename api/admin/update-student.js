@@ -1,4 +1,4 @@
-import { readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
+import { deleteObject, readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
 import { verifyAdminPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 
@@ -28,16 +28,27 @@ export default async function handler(req, res) {
     }
 
     const students = await readStudents();
+    const current = students.find((item) => item.slug === slug);
+    const previousAudioKey = current?.audioKey || "";
     const next = students.map((item) => {
       if (item.slug !== slug) return item;
       return {
         ...item,
         audioKey: nextAudioKey || item.audioKey,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        lastAudioAccessAt: item.lastAudioAccessAt || new Date().toISOString()
       };
     });
 
     await writeStudents(next);
+    if (previousAudioKey && nextAudioKey && previousAudioKey !== nextAudioKey) {
+      try {
+        await deleteObject(previousAudioKey);
+      } catch (cleanupError) {
+        console.warn("update-student audio cleanup warning:", cleanupError?.message || cleanupError);
+      }
+    }
+
     return res.status(200).json({ ok: true, optimization });
   } catch (error) {
     console.error("update-student error:", error);
