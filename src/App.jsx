@@ -12,7 +12,8 @@ const DEFAULT_CONFIG = {
   bosqueVolume: 0.5,
   ambientSound: "bosque",
   septasyncTrack: "none",
-  septasyncVolume: 0.5
+  septasyncVolume: 0.5,
+  reverbMix: 0.12
 };
 
 const PHASE_LABELS = {
@@ -143,6 +144,21 @@ const fetchJsonWithTimeout = async (url, timeoutMs = 3000) => {
   }
 };
 
+const buildImpulseResponse = (audioContext, seconds = 1.4, decay = 2.2) => {
+  const rate = audioContext.sampleRate;
+  const length = Math.floor(rate * seconds);
+  const impulse = audioContext.createBuffer(2, length, rate);
+  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+    const data = impulse.getChannelData(channel);
+    for (let i = 0; i < length; i += 1) {
+      const t = i / length;
+      // Cola de reverb suave, más intensa al inicio y difuminada al final.
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+    }
+  }
+  return impulse;
+};
+
 export default function App() {
   const [theme, setTheme] = useState(
     localStorage.getItem("rmcortex_theme") || "light"
@@ -226,6 +242,66 @@ export default function App() {
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
+  const audioContextRef = useRef(null);
+  const audioSourceNodeRef = useRef(null);
+  const masterGainRef = useRef(null);
+  const dryGainRef = useRef(null);
+  const wetGainRef = useRef(null);
+  const convolverRef = useRef(null);
+
+  const updateReverbMix = useCallback((mixValue) => {
+    const mix = Math.min(1, Math.max(0, Number(mixValue || 0)));
+    if (dryGainRef.current) dryGainRef.current.gain.value = 1 - mix;
+    if (wetGainRef.current) wetGainRef.current.gain.value = mix;
+  }, []);
+
+  const ensureReverbGraph = useCallback(() => {
+    if (!audioRef.current) return false;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return false;
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new Ctx();
+      }
+      const ctx = audioContextRef.current;
+
+      if (!audioSourceNodeRef.current) {
+        const source = ctx.createMediaElementSource(audioRef.current);
+        const master = ctx.createGain();
+        const dryGain = ctx.createGain();
+        const wetGain = ctx.createGain();
+        const convolver = ctx.createConvolver();
+        convolver.buffer = buildImpulseResponse(ctx);
+
+        source.connect(dryGain);
+        source.connect(convolver);
+        convolver.connect(wetGain);
+        dryGain.connect(master);
+        wetGain.connect(master);
+        master.connect(ctx.destination);
+
+        audioSourceNodeRef.current = source;
+        masterGainRef.current = master;
+        dryGainRef.current = dryGain;
+        wetGainRef.current = wetGain;
+        convolverRef.current = convolver;
+      }
+
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+
+      audioRef.current.volume = 1;
+      updateReverbMix(config.reverbMix);
+      if (masterGainRef.current) {
+        masterGainRef.current.gain.value = Math.min(1, Math.max(0, config.audioVolume));
+      }
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }, [config.audioVolume, config.reverbMix, updateReverbMix]);
 
   useEffect(() => {
     const safeTheme = theme === "dark" ? "dark" : "light";
@@ -334,8 +410,18 @@ export default function App() {
 
   useEffect(() => {
     if (!audioRef.current) return;
+    const hasGraph = Boolean(audioSourceNodeRef.current);
+    if (hasGraph && masterGainRef.current) {
+      audioRef.current.volume = 1;
+      masterGainRef.current.gain.value = Math.min(1, Math.max(0, config.audioVolume));
+      return;
+    }
     audioRef.current.volume = Math.min(1, Math.max(0, config.audioVolume));
   }, [config.audioVolume]);
+
+  useEffect(() => {
+    updateReverbMix(config.reverbMix);
+  }, [config.reverbMix, updateReverbMix]);
 
   useEffect(() => {
     if (!bosqueAudioRef.current) return;
@@ -552,6 +638,10 @@ export default function App() {
   useEffect(() => () => {
     cancelEndApneaHold();
     releaseWakeLock();
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
   }, []);
 
   const handlePhaseAdvance = () => {
@@ -777,6 +867,7 @@ export default function App() {
 
   const playAudio = () => {
     if (!audioRef.current) return;
+    ensureReverbGraph();
     audioRef.current.currentTime = 0;
     audioRef.current.loop = true;
     audioRef.current.play().catch(() => {
@@ -786,6 +877,7 @@ export default function App() {
 
   const unlockApneaAudio = () => {
     if (!audioRef.current) return;
+    ensureReverbGraph();
     const el = audioRef.current;
     const prevMuted = el.muted;
     el.muted = true;
@@ -892,6 +984,7 @@ export default function App() {
   const previewAudio = () => {
     loadSignedAudio().then((url) => {
       if (!url || !audioRef.current) return;
+      ensureReverbGraph();
       audioRef.current.currentTime = 0;
       audioRef.current.loop = false;
       audioRef.current.play().catch(() => {
@@ -2107,6 +2200,22 @@ export default function App() {
                     setConfig((prev) => ({
                       ...prev,
                       audioVolume: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Reverb audio apnea
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={config.reverbMix}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      reverbMix: Number(event.target.value)
                     }))
                   }
                 />
