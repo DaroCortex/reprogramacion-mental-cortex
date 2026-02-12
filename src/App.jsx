@@ -283,6 +283,7 @@ export default function App() {
   const roundApneaByCycleRef = useRef([]);
   const audioCheckNonceRef = useRef(0);
   const unlockNonceRef = useRef(0);
+  const handlePhaseAdvanceRef = useRef(() => {});
   const preApneaCueCycleRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioSourceNodeRef = useRef(null);
@@ -800,7 +801,7 @@ export default function App() {
       setTimeLeftMs((prev) => {
         const next = prev - elapsed;
         if (next > 0) return next;
-        handlePhaseAdvance();
+        handlePhaseAdvanceRef.current();
         return 0;
       });
     };
@@ -877,6 +878,10 @@ export default function App() {
       finishSession();
     }
   };
+
+  useEffect(() => {
+    handlePhaseAdvanceRef.current = handlePhaseAdvance;
+  }, [handlePhaseAdvance]);
 
   const waitForAudioReady = (audioElement, timeoutMs = 1200) =>
     new Promise((resolve) => {
@@ -1043,7 +1048,9 @@ export default function App() {
       lastApneaMsRef.current = timeLeftMs;
       setPreviousApneaSeconds(apneaSeconds);
       roundApneaByCycleRef.current[cycleIndex - 1] = apneaSeconds;
-      playEndApnea();
+      if (cycleIndex < config.cycles) {
+        playEndApnea();
+      }
       if (cycleIndex >= config.cycles) {
         playFinalApneaCue();
       }
@@ -2339,7 +2346,7 @@ export default function App() {
                 {phase === "idle" || phase === "complete" ? "--:--" : formatSeconds(timeLeftMs)}
               </div>
               {phase === "apnea" && previousApneaSeconds > 0 && (
-                <div className="timer-sub">Apnea anterior: {previousApneaSeconds}s</div>
+                <div className="timer-sub">Apnea anterior: {formatSeconds(previousApneaSeconds * 1000)}</div>
               )}
             </div>
           </div>
