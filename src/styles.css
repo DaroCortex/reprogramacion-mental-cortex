@@ -97,7 +97,7 @@ body {
   margin-top: 6px;
 }
 
-[data-theme="dark"] .brand-logo {
+[data-theme="light"] .brand-logo {
   filter: invert(1) brightness(1.08);
 }
 
@@ -373,7 +373,7 @@ body {
   pointer-events: none;
 }
 
-[data-theme="dark"] .breath-logo {
+[data-theme="light"] .breath-logo {
   filter: invert(1) brightness(1.08);
 }
 
