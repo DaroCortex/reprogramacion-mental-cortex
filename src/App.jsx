@@ -89,6 +89,16 @@ const normalizeRoundArray = (value, limit = 5) => {
     .map((item) => (Number.isFinite(Number(item)) ? Number(item) : 0));
 };
 
+const getAmbientUrlFromMap = (map, ambientSound) => {
+  if (ambientSound === "none") return "";
+  return map?.[ambientSound] || "";
+};
+
+const getSeptasyncUrlFromMap = (map, septasyncTrack) => {
+  if (septasyncTrack === "none") return "";
+  return map?.[septasyncTrack] || "";
+};
+
 const getSlugFromLocation = () => {
   const params = new URLSearchParams(window.location.search);
   const querySlug = params.get("s");
@@ -677,6 +687,7 @@ export default function App() {
     if (Object.keys(nextSeptasync).length) {
       setSeptasyncAudioMap((prev) => ({ ...prev, ...nextSeptasync }));
     }
+    return { nextAmbient, nextSeptasync };
   }, [config.ambientSound, config.septasyncTrack, fetchAudioUrl]);
 
   useEffect(() => {
@@ -923,7 +934,21 @@ export default function App() {
     unlockNonceRef.current += 1;
     setAudioCheckStatus("checking");
     setAudioCheckMessage("Chequeando audios...");
-    await loadSystemAudio();
+    const loaded = await loadSystemAudio();
+    const effectiveAmbientUrl = getAmbientUrlFromMap(
+      { ...ambientAudioMap, ...(loaded?.nextAmbient || {}) },
+      config.ambientSound
+    );
+    const effectiveSeptasyncUrl = getSeptasyncUrlFromMap(
+      { ...septasyncAudioMap, ...(loaded?.nextSeptasync || {}) },
+      config.septasyncTrack
+    );
+    if (effectiveAmbientUrl && bosqueAudioRef.current) {
+      syncLoopTrackSource(bosqueAudioRef.current, effectiveAmbientUrl);
+    }
+    if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
+      syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
+    }
     const apneaUrl = await loadSignedAudio();
     if (audioRef.current) {
       audioRef.current.pause();
@@ -937,8 +962,8 @@ export default function App() {
     if (endApneaAudioRef.current?.src) checks.push(waitForAudioReady(endApneaAudioRef.current));
     if (preApneaCueAudioRef.current?.src) checks.push(waitForAudioReady(preApneaCueAudioRef.current));
     if (finalApneaCueAudioRef.current?.src) checks.push(waitForAudioReady(finalApneaCueAudioRef.current));
-    if (selectedAmbientUrl && bosqueAudioRef.current?.src) checks.push(waitForAudioReady(bosqueAudioRef.current));
-    if (selectedSeptasyncUrl && septasyncAudioRef.current?.src) checks.push(waitForAudioReady(septasyncAudioRef.current));
+    if (effectiveAmbientUrl && bosqueAudioRef.current?.src) checks.push(waitForAudioReady(bosqueAudioRef.current));
+    if (effectiveSeptasyncUrl && septasyncAudioRef.current?.src) checks.push(waitForAudioReady(septasyncAudioRef.current));
 
     const results = await Promise.all(checks);
     const okCount = results.filter(Boolean).length;
@@ -970,7 +995,23 @@ export default function App() {
 
   const startSession = async () => {
     if (!student) return;
-    await runAudioCheck();
+    const checkOk = await runAudioCheck();
+    if (!checkOk) return;
+    const loaded = await loadSystemAudio();
+    const effectiveAmbientUrl = getAmbientUrlFromMap(
+      { ...ambientAudioMap, ...(loaded?.nextAmbient || {}) },
+      config.ambientSound
+    );
+    const effectiveSeptasyncUrl = getSeptasyncUrlFromMap(
+      { ...septasyncAudioMap, ...(loaded?.nextSeptasync || {}) },
+      config.septasyncTrack
+    );
+    if (effectiveAmbientUrl && bosqueAudioRef.current) {
+      syncLoopTrackSource(bosqueAudioRef.current, effectiveAmbientUrl);
+    }
+    if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
+      syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
+    }
     sessionStartRef.current = Date.now();
     roundApneaByCycleRef.current = [];
     setIsRunning(true);
@@ -983,6 +1024,8 @@ export default function App() {
     setBreathsDone(0);
     setCurrentBreathNumber(1);
     setSubphase("inhale");
+    if (effectiveAmbientUrl) playBosque();
+    if (effectiveSeptasyncUrl) playSeptasync();
     playBreathSound();
     unlockApneaAudio();
     setTimeLeftMs(config.inhaleSeconds * 1000);
