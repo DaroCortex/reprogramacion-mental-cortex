@@ -374,7 +374,7 @@ body {
   pointer-events: none;
 }
 
-[data-theme="light"] .breath-logo {
+[data-theme="dark"] .breath-logo {
   filter: invert(1) brightness(1.08);
 }
 
