@@ -284,6 +284,15 @@ export default function App() {
   const audioCheckNonceRef = useRef(0);
   const unlockNonceRef = useRef(0);
   const handlePhaseAdvanceRef = useRef(() => {});
+
+  const syncLoopTrackSource = (audioEl, url) => {
+    if (!audioEl || !url) return false;
+    const last = audioEl.dataset.trackSrc || "";
+    if (last === url) return false;
+    audioEl.src = url;
+    audioEl.dataset.trackSrc = url;
+    return true;
+  };
   const preApneaCueCycleRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioSourceNodeRef = useRef(null);
@@ -680,9 +689,7 @@ export default function App() {
       stopBosque();
       return;
     }
-    if (bosqueAudioRef.current.src !== selectedAmbientUrl) {
-      bosqueAudioRef.current.src = selectedAmbientUrl;
-    }
+    syncLoopTrackSource(bosqueAudioRef.current, selectedAmbientUrl);
   }, [selectedAmbientUrl]);
 
   useEffect(() => {
@@ -700,9 +707,7 @@ export default function App() {
       stopSeptasync();
       return;
     }
-    if (septasyncAudioRef.current.src !== selectedSeptasyncUrl) {
-      septasyncAudioRef.current.src = selectedSeptasyncUrl;
-    }
+    syncLoopTrackSource(septasyncAudioRef.current, selectedSeptasyncUrl);
   }, [selectedSeptasyncUrl]);
 
   useEffect(() => {
@@ -1204,6 +1209,7 @@ export default function App() {
   const playBosque = () => {
     if (!bosqueAudioRef.current) return;
     if (!selectedAmbientUrl) return;
+    const changedSource = syncLoopTrackSource(bosqueAudioRef.current, selectedAmbientUrl);
     if (bosqueFadeStopRef.current) {
       clearTimeout(bosqueFadeStopRef.current);
       bosqueFadeStopRef.current = null;
@@ -1215,15 +1221,18 @@ export default function App() {
       bosqueGainRef,
       0
     );
-    if (bosqueAudioRef.current.src !== selectedAmbientUrl) {
-      bosqueAudioRef.current.src = selectedAmbientUrl;
-    }
     bosqueAudioRef.current.loop = true;
-    bosqueAudioRef.current.play().then(() => {
-      if (bosqueGainRef.current) {
-        smoothGainTo(bosqueGainRef.current, targetGain, 0.35);
-      }
-    }).catch(() => {});
+    if (bosqueAudioRef.current.paused || changedSource) {
+      bosqueAudioRef.current.play().then(() => {
+        if (bosqueGainRef.current) {
+          smoothGainTo(bosqueGainRef.current, targetGain, 0.35);
+        }
+      }).catch(() => {});
+      return;
+    }
+    if (bosqueGainRef.current) {
+      smoothGainTo(bosqueGainRef.current, targetGain, 0.35);
+    }
   };
 
   const stopBosque = () => {
@@ -1248,6 +1257,7 @@ export default function App() {
   const playSeptasync = () => {
     if (!septasyncAudioRef.current) return;
     if (!selectedSeptasyncUrl) return;
+    const changedSource = syncLoopTrackSource(septasyncAudioRef.current, selectedSeptasyncUrl);
     if (septasyncFadeStopRef.current) {
       clearTimeout(septasyncFadeStopRef.current);
       septasyncFadeStopRef.current = null;
@@ -1259,15 +1269,18 @@ export default function App() {
       septasyncGainRef,
       0
     );
-    if (septasyncAudioRef.current.src !== selectedSeptasyncUrl) {
-      septasyncAudioRef.current.src = selectedSeptasyncUrl;
-    }
     septasyncAudioRef.current.loop = true;
-    septasyncAudioRef.current.play().then(() => {
-      if (septasyncGainRef.current) {
-        smoothGainTo(septasyncGainRef.current, targetGain, 0.35);
-      }
-    }).catch(() => {});
+    if (septasyncAudioRef.current.paused || changedSource) {
+      septasyncAudioRef.current.play().then(() => {
+        if (septasyncGainRef.current) {
+          smoothGainTo(septasyncGainRef.current, targetGain, 0.35);
+        }
+      }).catch(() => {});
+      return;
+    }
+    if (septasyncGainRef.current) {
+      smoothGainTo(septasyncGainRef.current, targetGain, 0.35);
+    }
   };
 
   const stopSeptasync = () => {
