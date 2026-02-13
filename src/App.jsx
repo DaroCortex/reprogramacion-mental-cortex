@@ -232,6 +232,7 @@ export default function App() {
   const [audioStatus, setAudioStatus] = useState("idle");
   const [audioCheckStatus, setAudioCheckStatus] = useState("idle");
   const [audioCheckMessage, setAudioCheckMessage] = useState("");
+  const [startCountdown, setStartCountdown] = useState(0);
   const [ambientAudioMap, setAmbientAudioMap] = useState({
     bosque: "",
     oceano: ""
@@ -294,6 +295,7 @@ export default function App() {
   const audioCheckNonceRef = useRef(0);
   const unlockNonceRef = useRef(0);
   const handlePhaseAdvanceRef = useRef(() => {});
+  const countdownAbortRef = useRef(false);
 
   const syncLoopTrackSource = (audioEl, url) => {
     if (!audioEl || !url) return false;
@@ -928,6 +930,87 @@ export default function App() {
       audioElement.load();
     });
 
+  const sleep = (ms) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const warmupAudioElement = async (audioElement, durationMs = 140) => {
+    if (!audioElement || !audioElement.src) return false;
+    const wasMuted = audioElement.muted;
+    const wasLoop = audioElement.loop;
+    try {
+      audioElement.muted = true;
+      audioElement.loop = false;
+      audioElement.currentTime = 0;
+      await audioElement.play();
+      await sleep(durationMs);
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      return true;
+    } catch (_error) {
+      return false;
+    } finally {
+      audioElement.muted = wasMuted;
+      audioElement.loop = wasLoop;
+    }
+  };
+
+  const warmupAllAudios = async (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
+    if (effectiveAmbientUrl && bosqueAudioRef.current) {
+      syncLoopTrackSource(bosqueAudioRef.current, effectiveAmbientUrl);
+    }
+    if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
+      syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
+    }
+
+    const targets = [
+      audioRef.current,
+      breathAudioRef.current,
+      endApneaAudioRef.current,
+      preApneaCueAudioRef.current,
+      finalApneaCueAudioRef.current,
+      effectiveAmbientUrl ? bosqueAudioRef.current : null,
+      effectiveSeptasyncUrl ? septasyncAudioRef.current : null
+    ].filter(Boolean);
+
+    await Promise.all(targets.map((audioEl) => warmupAudioElement(audioEl)));
+  };
+
+  const runStartCountdown = async (seconds = 3) => {
+    countdownAbortRef.current = false;
+    for (let value = seconds; value >= 1; value -= 1) {
+      if (countdownAbortRef.current) {
+        setStartCountdown(0);
+        return false;
+      }
+      setStartCountdown(value);
+      await sleep(1000);
+    }
+    setStartCountdown(0);
+    return !countdownAbortRef.current;
+  };
+
+  const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
+    sessionStartRef.current = Date.now();
+    roundApneaByCycleRef.current = [];
+    setIsRunning(true);
+    setIsPaused(false);
+    setIsAwaitingFinalClose(false);
+    setPreviousApneaSeconds(0);
+    preApneaCueCycleRef.current = null;
+    setPhase("breathing");
+    setCycleIndex(1);
+    setBreathsDone(0);
+    setCurrentBreathNumber(1);
+    setSubphase("inhale");
+    if (effectiveAmbientUrl) playBosque();
+    if (effectiveSeptasyncUrl) playSeptasync();
+    playBreathSound();
+    unlockApneaAudio();
+    setTimeLeftMs(config.inhaleSeconds * 1000);
+  };
+
   const runAudioCheck = async () => {
     const checkNonce = Date.now();
     audioCheckNonceRef.current = checkNonce;
@@ -1012,23 +1095,11 @@ export default function App() {
     if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
       syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
     }
-    sessionStartRef.current = Date.now();
-    roundApneaByCycleRef.current = [];
-    setIsRunning(true);
-    setIsPaused(false);
-    setIsAwaitingFinalClose(false);
-    setPreviousApneaSeconds(0);
-    preApneaCueCycleRef.current = null;
-    setPhase("breathing");
-    setCycleIndex(1);
-    setBreathsDone(0);
-    setCurrentBreathNumber(1);
-    setSubphase("inhale");
-    if (effectiveAmbientUrl) playBosque();
-    if (effectiveSeptasyncUrl) playSeptasync();
-    playBreathSound();
-    unlockApneaAudio();
-    setTimeLeftMs(config.inhaleSeconds * 1000);
+    setAudioCheckMessage("Preparando audios...");
+    await warmupAllAudios(effectiveAmbientUrl, effectiveSeptasyncUrl);
+    const shouldStart = await runStartCountdown(3);
+    if (!shouldStart) return;
+    beginSession(effectiveAmbientUrl, effectiveSeptasyncUrl);
   };
 
   const pauseSession = () => {
@@ -1047,6 +1118,8 @@ export default function App() {
   };
 
   const stopSession = () => {
+    countdownAbortRef.current = true;
+    setStartCountdown(0);
     cancelStopHold();
     cancelFinalizeHold();
     cancelEndApneaHold();
@@ -1659,6 +1732,8 @@ export default function App() {
   };
 
   const handleBackToMenu = () => {
+    countdownAbortRef.current = true;
+    setStartCountdown(0);
     if (isRunningRef.current) {
       stopSession();
     }
@@ -2401,6 +2476,9 @@ export default function App() {
               <div className="timer">
                 {phase === "idle" || phase === "complete" ? "--:--" : formatSeconds(timeLeftMs)}
               </div>
+              {!isRunning && startCountdown > 0 && (
+                <div className="timer-sub">Comienza en {startCountdown}...</div>
+              )}
               {phase === "apnea" && previousApneaSeconds > 0 && (
                 <div className="timer-sub">Apnea anterior: {formatSeconds(previousApneaSeconds * 1000)}</div>
               )}
@@ -2460,9 +2538,13 @@ export default function App() {
               <button
                 className="primary"
                 onClick={startSession}
-                disabled={audioCheckStatus === "checking"}
+                disabled={audioCheckStatus === "checking" || startCountdown > 0}
               >
-                {audioCheckStatus === "checking" ? "Chequeando audio..." : "Iniciar sesión"}
+                {audioCheckStatus === "checking"
+                  ? "Chequeando audio..."
+                  : startCountdown > 0
+                    ? `Inicia en ${startCountdown}...`
+                    : "Iniciar sesión"}
               </button>
             )}
             {isRunning && !isPaused && phase !== "complete" && (
