@@ -90,6 +90,12 @@ const normalizeRoundArray = (value, limit = 5) => {
     .map((item) => (Number.isFinite(Number(item)) ? Number(item) : 0));
 };
 
+const clampPercent = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(100, Math.round(num)));
+};
+
 const getAmbientUrlFromMap = (map, ambientSound) => {
   if (ambientSound === "none") return "";
   return map?.[ambientSound] || "";
@@ -267,6 +273,41 @@ export default function App() {
     lastApneaSeconds: 0,
     apneaHistory: []
   });
+
+  const submitColorVisionSession = useCallback(
+    async (payload, flowStage = "practice") => {
+      if (!student?.slug || !token) return;
+      const hits = Number(payload?.hits || 0);
+      const misses = Number(payload?.misses || 0);
+      const total = Math.max(0, hits + misses);
+      const accuracy = total > 0 ? clampPercent((hits / total) * 100) : 0;
+      try {
+        await fetch("/api/students", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: student.slug,
+            token,
+            session: {
+              sessionType: "colorVision",
+              flowStage,
+              completedAt: new Date().toISOString(),
+              colorVision: {
+                hits,
+                misses,
+                total,
+                accuracy,
+                colorsCalibrated: Number(payload?.colorsCalibrated || 0)
+              }
+            }
+          })
+        });
+      } catch (_error) {
+        // no-op
+      }
+    },
+    [student?.slug, token]
+  );
 
   const audioRef = useRef(null);
   const breathAudioRef = useRef(null);
@@ -467,6 +508,26 @@ export default function App() {
     loadStudents();
   }, []);
 
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (!event?.data || typeof event.data !== "object") return;
+      const eventType = String(event.data?.type || "");
+      if (eventType === "COLOR_SESSION_REPORT") {
+        submitColorVisionSession(event.data?.payload || {}, "practice");
+        return;
+      }
+      if (eventType === "COLOR_FLOW_EVENT") {
+        const stage = String(event.data?.stage || "").toLowerCase();
+        if (stage === "onboarding" || stage === "pre-practice" || stage === "prepractice") {
+          const normalized = stage === "onboarding" ? "onboarding" : "prepractice";
+          submitColorVisionSession(event.data?.payload || {}, normalized);
+        }
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [submitColorVisionSession]);
+
   const studentsWithSlugs = useMemo(() => withGeneratedSlugs(students), [students]);
 
   const student = useMemo(() => {
@@ -531,6 +592,8 @@ export default function App() {
       const todaySessions = Number(sessionsByDay[today] || 0);
       const roundSums = normalizeRoundArray(usage.apneaRoundSums, 5);
       const roundCounts = normalizeRoundArray(usage.apneaRoundCounts, 5);
+      const flowStats = usage.flowStats || {};
+      const colorVisionUsage = usage.colorVisionUsage || {};
       const roundAvg = roundSums.map((sum, idx) => {
         const count = roundCounts[idx] || 0;
         return count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
@@ -544,6 +607,11 @@ export default function App() {
         todaySessions,
         totalSessions: Number(usage.totalSessions || 0),
         totalRounds: Number(usage.totalRounds || 0),
+        onboardingSessions: Number(flowStats.onboarding || 0),
+        prePracticeSessions: Number(flowStats.prePractice || 0),
+        practiceSessions: Number(flowStats.practice || 0),
+        colorVisionSessions: Number(colorVisionUsage.totalSessions || 0),
+        colorVisionAccuracy: Number(colorVisionUsage.averageAccuracy || 0),
         roundAvg,
         lastSessionAt
       };
@@ -2366,6 +2434,12 @@ export default function App() {
                               : ""}
                           </div>
                         )}
+                        <div className="muted">
+                          Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}
+                          {item.colorVisionSessions
+                            ? ` · Color: ${item.colorVisionSessions} sesiones (${Math.round(item.colorVisionAccuracy || 0)}% prom.)`
+                            : ""}
+                        </div>
                         {item.alertLevel === "warning" && (
                           <div className="warn">Alerta 48h sin práctica</div>
                         )}
@@ -2551,7 +2625,7 @@ export default function App() {
             className="color-practice-iframe"
             src={`/cartulinas/index.html?student=${encodeURIComponent(student?.name || "")}&slug=${encodeURIComponent(
               student?.slug || ""
-            )}`}
+            )}&token=${encodeURIComponent(token || "")}`}
             title="Practica de visualizacion de colores"
             allow="camera; microphone"
           />

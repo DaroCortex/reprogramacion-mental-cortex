@@ -619,6 +619,7 @@ const state = {
     history: [],          // [{color, correct, thumbnail, audioBlob, timestamp}]
     hits: 0,
     misses: 0,
+    startedAt: null,
   },
   detection: {
     active: false,
@@ -914,6 +915,24 @@ function attachVideoStream(videoEl) {
   }
 }
 
+function notifyParentFlowEvent(stage, payload = {}) {
+  try {
+    if (!window.parent || window.parent === window) return;
+    window.parent.postMessage({
+      type: 'COLOR_FLOW_EVENT',
+      stage,
+      payload: {
+        studentName: state.studentName || '',
+        colorsCalibrated: Array.isArray(state.colors) ? state.colors.length : 0,
+        timestamp: new Date().toISOString(),
+        ...payload
+      }
+    }, '*');
+  } catch (err) {
+    // no-op
+  }
+}
+
 // ======================================================================
 // PHASE: WELCOME
 // ======================================================================
@@ -936,6 +955,9 @@ dom.btnStartCalibration.addEventListener('click', async () => {
     return;
   }
 
+  notifyParentFlowEvent('onboarding', {
+    requestedColorCount: Number(state.colorCount || 0)
+  });
   startCalibration();
 });
 
@@ -1089,6 +1111,11 @@ function confirmColor() {
     // Calibration complete
     const names = state.colors.map(c => c.name).join(', ');
     speak(`Calibración completa. Configuraste: ${names}. Podés empezar.`);
+    if (!state.session.startedAt) {
+      notifyParentFlowEvent('pre-practice', {
+        calibratedColorNames: names
+      });
+    }
     setTimeout(startSession, 1500);
   }
 }
@@ -1098,6 +1125,9 @@ function confirmColor() {
 // ======================================================================
 function startSession() {
   state.phase = 'session';
+  if (!state.session.startedAt) {
+    state.session.startedAt = Date.now();
+  }
   dom.calibrationModal.classList.add('hidden');
   dom.sessionScreen.classList.add('active');
 
@@ -1352,6 +1382,29 @@ document.addEventListener('keydown', e => {
 // ======================================================================
 dom.btnFinishSession.addEventListener('click', finishSession);
 
+function notifyParentSessionReport() {
+  try {
+    const hits = Number(state.session.hits || 0);
+    const misses = Number(state.session.misses || 0);
+    const total = hits + misses;
+    const accuracy = total > 0 ? Math.round((hits / total) * 100) : 0;
+    const payload = {
+      studentName: state.studentName || "",
+      hits,
+      misses,
+      total,
+      accuracy,
+      colorsCalibrated: Array.isArray(state.colors) ? state.colors.length : 0,
+      timestamp: new Date().toISOString()
+    };
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'COLOR_SESSION_REPORT', payload }, '*');
+    }
+  } catch (err) {
+    // no-op
+  }
+}
+
 function finishSession() {
   if (state.session.history.length === 0) {
     // Sin registros, volver al inicio directamente
@@ -1369,6 +1422,7 @@ function finishSession() {
   state.phase = 'report';
   dom.sessionScreen.classList.remove('active');
   dom.reportScreen.classList.add('active');
+  notifyParentSessionReport();
 
   speak('Sesi\u00f3n finalizada. Generando reporte.');
   generateReport();

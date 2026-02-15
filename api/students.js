@@ -16,12 +16,34 @@ const normalizeSessionPayload = (payload) => {
   const completedAtIso = Number.isNaN(completedAt.getTime())
     ? new Date().toISOString()
     : completedAt.toISOString();
+  const safeType = String(payload?.sessionType || "breathing").trim();
+  const flowStageRaw = String(payload?.flowStage || "").trim().toLowerCase();
+  const flowStageNormalized =
+    flowStageRaw === "pre-practice" || flowStageRaw === "pre_practice" || flowStageRaw === "pre-practica"
+      ? "prepractice"
+      : flowStageRaw;
+  const flowStage =
+    flowStageNormalized === "onboarding" || flowStageNormalized === "prepractice" || flowStageNormalized === "practice"
+      ? flowStageNormalized
+      : "";
+  const colorVision = payload?.colorVision && typeof payload.colorVision === "object"
+    ? {
+        hits: clampNumber(payload.colorVision.hits, 0, 100000, 0),
+        misses: clampNumber(payload.colorVision.misses, 0, 100000, 0),
+        total: clampNumber(payload.colorVision.total, 0, 100000, 0),
+        accuracy: clampNumber(payload.colorVision.accuracy, 0, 100, 0),
+        colorsCalibrated: clampNumber(payload.colorVision.colorsCalibrated, 0, 1000, 0)
+      }
+    : null;
   return {
+    sessionType: safeType,
+    flowStage,
     completedRounds,
     plannedRounds,
     breathsPerCycle,
     apneaByRound,
-    completedAt: completedAtIso
+    completedAt: completedAtIso,
+    colorVision
   };
 };
 
@@ -82,12 +104,61 @@ export default async function handler(req, res) {
         sessionsByDay: nextByDay,
         apneaRoundSums: nextSums,
         apneaRoundCounts: nextCounts,
+        flowStats: {
+          onboarding:
+            clampNumber(prevUsage?.flowStats?.onboarding, 0, 1e9, 0) +
+            (parsed.flowStage === "onboarding" ? 1 : 0),
+          prePractice:
+            clampNumber(prevUsage?.flowStats?.prePractice, 0, 1e9, 0) +
+            (parsed.flowStage === "prepractice" ? 1 : 0),
+          practice:
+            clampNumber(prevUsage?.flowStats?.practice, 0, 1e9, 0) +
+            (parsed.flowStage === "practice" ? 1 : 0)
+        },
+        colorVisionUsage: (() => {
+          const prevColor = prevUsage?.colorVisionUsage || {};
+          if (parsed.sessionType !== "colorVision" || !parsed.colorVision) {
+            return {
+              totalSessions: clampNumber(prevColor.totalSessions, 0, 1e9, 0),
+              totalHits: clampNumber(prevColor.totalHits, 0, 1e9, 0),
+              totalMisses: clampNumber(prevColor.totalMisses, 0, 1e9, 0),
+              totalDetections: clampNumber(prevColor.totalDetections, 0, 1e9, 0),
+              averageAccuracy: clampNumber(prevColor.averageAccuracy, 0, 100, 0),
+              lastSessionAt: prevColor.lastSessionAt || "",
+              lastSession: prevColor.lastSession || null
+            };
+          }
+          const prevTotalSessions = clampNumber(prevColor.totalSessions, 0, 1e9, 0);
+          const prevHits = clampNumber(prevColor.totalHits, 0, 1e9, 0);
+          const prevMisses = clampNumber(prevColor.totalMisses, 0, 1e9, 0);
+          const prevDetections = clampNumber(prevColor.totalDetections, 0, 1e9, 0);
+          const nextSessions = prevTotalSessions + 1;
+          const nextHits = prevHits + clampNumber(parsed.colorVision.hits, 0, 1e9, 0);
+          const nextMisses = prevMisses + clampNumber(parsed.colorVision.misses, 0, 1e9, 0);
+          const nextDetections = prevDetections + clampNumber(parsed.colorVision.total, 0, 1e9, 0);
+          const avg = nextDetections > 0 ? Math.round((nextHits / nextDetections) * 100) : 0;
+          return {
+            totalSessions: nextSessions,
+            totalHits: nextHits,
+            totalMisses: nextMisses,
+            totalDetections: nextDetections,
+            averageAccuracy: avg,
+            lastSessionAt: parsed.completedAt,
+            lastSession: {
+              ...parsed.colorVision,
+              completedAt: parsed.completedAt
+            }
+          };
+        })(),
         lastSession: {
+          sessionType: parsed.sessionType,
+          flowStage: parsed.flowStage,
           completedRounds: parsed.completedRounds,
           plannedRounds: parsed.plannedRounds,
           breathsPerCycle: parsed.breathsPerCycle,
           apneaByRound: parsed.apneaByRound,
-          completedAt: parsed.completedAt
+          completedAt: parsed.completedAt,
+          colorVision: parsed.colorVision
         }
       };
 
@@ -110,7 +181,10 @@ export default async function handler(req, res) {
     const students = await readStudents();
     const safe = students.map((item) => ({
       name: item.name,
-      slug: item.slug
+      slug: item.slug,
+      features: {
+        colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled)
+      }
     }));
     return res.status(200).json({ students: safe });
   } catch (error) {
