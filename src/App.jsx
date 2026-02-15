@@ -34,6 +34,7 @@ const FINALIZE_HOLD_MS = 1500;
 const PRE_APNEA_BREATHS_LEFT = 2;
 const ALERT_WARNING_HOURS = 48;
 const ALERT_CRITICAL_HOURS = 72;
+const SEGUIMIENTO_DASHBOARD_URL = "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/";
 
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
@@ -229,6 +230,8 @@ export default function App() {
   const [newAdminConfirmation, setNewAdminConfirmation] = useState("");
   const [newAdminConfirmedTwice, setNewAdminConfirmedTwice] = useState(false);
   const [adminManagerMessage, setAdminManagerMessage] = useState("");
+  const [adminBridgeMessage, setAdminBridgeMessage] = useState("");
+  const [adminBridgeLoading, setAdminBridgeLoading] = useState(false);
   const [replaceSlug, setReplaceSlug] = useState("");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
   const [practiceScreen, setPracticeScreen] = useState("menu");
@@ -1966,6 +1969,39 @@ export default function App() {
     }
   };
 
+  const handleImportSeguimiento = async () => {
+    if (!adminPassword) {
+      setAdminBridgeMessage("Ingresa password de admin.");
+      return;
+    }
+    const confirmImport = window.confirm(
+      "Esto sincroniza estudiantes desde Seguimiento v2 a Cortex. ¿Continuar?"
+    );
+    if (!confirmImport) return;
+
+    setAdminBridgeLoading(true);
+    setAdminBridgeMessage("");
+    try {
+      const response = await fetch("/api/admin/admins", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo sincronizar");
+      }
+      await ensureAdminList(adminPassword);
+      setAdminBridgeMessage(
+        `Sincronizado: ${data.created || 0} nuevos, ${data.updated || 0} actualizados, total ${data.totalStudents || 0}.`
+      );
+    } catch (error) {
+      setAdminBridgeMessage(error?.message || "No se pudo sincronizar.");
+    } finally {
+      setAdminBridgeLoading(false);
+    }
+  };
+
   const readFileBase64 = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -2285,6 +2321,18 @@ export default function App() {
             <div className="card">
               <h3>Administradores (v2)</h3>
               <p className="muted">Solo el administrador principal puede crear o eliminar administradores secundarios.</p>
+              <div className="audio-tools">
+                <button
+                  className="ghost"
+                  onClick={() => window.open(SEGUIMIENTO_DASHBOARD_URL, "_blank", "noopener,noreferrer")}
+                >
+                  Abrir dashboard Seguimiento
+                </button>
+                <button className="secondary" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
+                  {adminBridgeLoading ? "Sincronizando..." : "Importar alumnos de Seguimiento"}
+                </button>
+                {adminBridgeMessage && <span className="muted">{adminBridgeMessage}</span>}
+              </div>
               <div className="form-grid">
                 <label>
                   Nombre admin
