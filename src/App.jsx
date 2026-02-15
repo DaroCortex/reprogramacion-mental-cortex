@@ -276,7 +276,7 @@ export default function App() {
 
   const submitColorVisionSession = useCallback(
     async (payload, flowStage = "practice") => {
-      if (!student?.slug || !token) return;
+      if (!slug || !token) return;
       const hits = Number(payload?.hits || 0);
       const misses = Number(payload?.misses || 0);
       const total = Math.max(0, hits + misses);
@@ -286,7 +286,7 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            slug: student.slug,
+            slug,
             token,
             session: {
               sessionType: "colorVision",
@@ -306,7 +306,7 @@ export default function App() {
         // no-op
       }
     },
-    [student?.slug, token]
+    [slug, token]
   );
 
   const audioRef = useRef(null);

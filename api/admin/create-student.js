@@ -74,6 +74,20 @@ export default async function handler(req, res) {
         sessionsByDay: {},
         apneaRoundSums: [0, 0, 0, 0, 0],
         apneaRoundCounts: [0, 0, 0, 0, 0],
+        flowStats: {
+          onboarding: 0,
+          prePractice: 0,
+          practice: 0
+        },
+        colorVisionUsage: {
+          totalSessions: 0,
+          totalHits: 0,
+          totalMisses: 0,
+          totalDetections: 0,
+          averageAccuracy: 0,
+          lastSessionAt: "",
+          lastSession: null
+        },
         lastSession: null
       },
       features: {
