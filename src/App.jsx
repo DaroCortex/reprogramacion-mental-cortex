@@ -2328,9 +2328,11 @@ export default function App() {
                 >
                   Abrir dashboard Seguimiento
                 </button>
-                <button className="secondary" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
-                  {adminBridgeLoading ? "Sincronizando..." : "Importar alumnos de Seguimiento"}
-                </button>
+                {adminStudents.length === 0 && (
+                  <button className="secondary" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
+                    {adminBridgeLoading ? "Sincronizando..." : "Importacion inicial de alumnos"}
+                  </button>
+                )}
                 {adminBridgeMessage && <span className="muted">{adminBridgeMessage}</span>}
               </div>
               <div className="form-grid">
