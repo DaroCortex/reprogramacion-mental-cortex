@@ -75,6 +75,9 @@ export default async function handler(req, res) {
         apneaRoundSums: [0, 0, 0, 0, 0],
         apneaRoundCounts: [0, 0, 0, 0, 0],
         lastSession: null
+      },
+      features: {
+        colorVisionEnabled: false
       }
     };
 

@@ -8,18 +8,20 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const { password, slug, audioKey, audioBase64, fileName, contentType } = req.body || {};
+    const { password, slug, audioKey, audioBase64, fileName, contentType, settings } = req.body || {};
     if (!(await verifyAdminPassword(password))) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    if (!slug || (!audioKey && !audioBase64)) {
+    const hasAudioUpdate = Boolean(audioKey || audioBase64);
+    const hasSettingsUpdate = Boolean(settings && typeof settings === "object");
+    if (!slug || (!hasAudioUpdate && !hasSettingsUpdate)) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
     let nextAudioKey = audioKey;
     let optimization = null;
-    if (!nextAudioKey && audioBase64 && fileName) {
+    if (hasAudioUpdate && !nextAudioKey && audioBase64 && fileName) {
       const inputBuffer = Buffer.from(String(audioBase64), "base64");
       const optimized = await optimizeAudioBuffer({ inputBuffer, fileName });
       optimization = optimized.optimization;
@@ -32,9 +34,14 @@ export default async function handler(req, res) {
     const previousAudioKey = current?.audioKey || "";
     const next = students.map((item) => {
       if (item.slug !== slug) return item;
+      const nextFeatures = {
+        ...(item.features || {}),
+        ...(settings?.features || {})
+      };
       return {
         ...item,
-        audioKey: nextAudioKey || item.audioKey,
+        audioKey: hasAudioUpdate ? (nextAudioKey || item.audioKey) : item.audioKey,
+        features: nextFeatures,
         updatedAt: new Date().toISOString(),
         lastAudioAccessAt: item.lastAudioAccessAt || new Date().toISOString()
       };

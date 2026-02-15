@@ -465,6 +465,19 @@ body {
   gap: 8px;
 }
 
+.color-practice-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.color-practice-iframe {
+  width: 100%;
+  min-height: 78vh;
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: var(--bg-soft);
+}
+
 .menu-button {
   width: 100%;
   border-radius: 14px;
@@ -986,6 +999,10 @@ input[type="range"]:focus {
 
   .practice-nav .ghost {
     width: 100%;
+  }
+
+  .color-practice-iframe {
+    min-height: 70vh;
   }
 
   .session-meta {

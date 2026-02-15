@@ -74,6 +74,7 @@ const PRACTICE_OPTIONS = [
 ];
 
 const MS_PER_HOUR = 1000 * 60 * 60;
+const hasColorPracticeAccess = (studentItem) => Boolean(studentItem?.features?.colorVisionEnabled);
 
 const toIsoDate = (value) => {
   if (!value) return "";
@@ -472,6 +473,20 @@ export default function App() {
     if (!slug) return null;
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
+
+  const practiceOptions = useMemo(
+    () =>
+      PRACTICE_OPTIONS.map((item) => {
+        if (item.id === "colores") {
+          return {
+            ...item,
+            enabled: hasColorPracticeAccess(student)
+          };
+        }
+        return item;
+      }),
+    [student]
+  );
 
   const selectedAmbientUrl = useMemo(() => {
     if (config.ambientSound === "none") return "";
@@ -1661,7 +1676,11 @@ export default function App() {
     <header className="header">
       <div>
         <p className="eyebrow">
-          {practiceScreen === "daily-goals" ? "Metas Diarias" : "Reprogramación mental"}
+          {practiceScreen === "daily-goals"
+            ? "Metas Diarias"
+            : practiceScreen === "color-vision"
+              ? "Visualizacion de colores"
+              : "Reprogramación mental"}
         </p>
         {!brandLogoMissing && (
           <img
@@ -1743,6 +1762,11 @@ export default function App() {
   const openPracticeOption = (practiceId) => {
     if (practiceId === "metas") {
       setPracticeScreen("daily-goals");
+      return;
+    }
+    if (practiceId === "colores") {
+      if (!hasColorPracticeAccess(student)) return;
+      setPracticeScreen("color-vision");
       return;
     }
     setPracticeScreen("practice");
@@ -2074,6 +2098,33 @@ export default function App() {
     }
   };
 
+  const handleToggleColorPractice = async (slugToUpdate, enabled) => {
+    if (!adminPassword || !slugToUpdate) return;
+    try {
+      const response = await fetch("/api/admin/update-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          slug: slugToUpdate,
+          settings: {
+            features: {
+              colorVisionEnabled: enabled
+            }
+          }
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "No se pudo actualizar acceso");
+      }
+      await ensureAdminList(adminPassword);
+      setAdminMessage(enabled ? "Color habilitado para estudiante." : "Color deshabilitado para estudiante.");
+    } catch (error) {
+      setAdminMessage(error?.message || "No se pudo cambiar acceso de color.");
+    }
+  };
+
   const adminRowsForView = useMemo(() => {
     if (adminView === "active") return adminAnalytics.active;
     if (adminView === "alerts") {
@@ -2299,6 +2350,9 @@ export default function App() {
                         {item.createdAt && (
                           <div className="muted">Creado: {new Date(item.createdAt).toLocaleDateString()}</div>
                         )}
+                        <div className="muted">
+                          Visualizacion de colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}
+                        </div>
                         {item.usage?.lastSessionAt && (
                           <div className="muted">
                             Última práctica: {new Date(item.usage.lastSessionAt).toLocaleString()}
@@ -2351,6 +2405,14 @@ export default function App() {
                           onClick={() => handleReplaceClick(item.slug)}
                         >
                           Reemplazar audio
+                        </button>
+                        <button
+                          className={item.features?.colorVisionEnabled ? "primary" : "secondary"}
+                          onClick={() =>
+                            handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled)
+                          }
+                        >
+                          {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
                         </button>
                         <button
                           className="ghost"
@@ -2414,9 +2476,9 @@ export default function App() {
         {renderHeader()}
         <div className="card menu-card">
           <h2>Selecciona practica</h2>
-          <p className="muted">Puedes entrar en Reprogramacion mental o Metas Diarias. El resto queda en Proximamente.</p>
+          <p className="muted">Reprogramacion mental y Metas Diarias están activas. Visualizacion de colores depende del permiso por estudiante.</p>
           <div className="practice-menu">
-            {PRACTICE_OPTIONS.map((item) => (
+            {practiceOptions.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -2425,7 +2487,7 @@ export default function App() {
                 disabled={!item.enabled}
               >
                 {item.label}
-                {!item.enabled && <span>Proximamente</span>}
+                {!item.enabled && <span>{item.id === "colores" ? "Bloqueado" : "Proximamente"}</span>}
               </button>
             ))}
           </div>
@@ -2452,6 +2514,48 @@ export default function App() {
             token
           }}
         />
+      </div>
+    );
+  }
+
+  if (practiceScreen === "color-vision") {
+    if (!hasColorPracticeAccess(student)) {
+      return (
+        <div className="app">
+          {renderHeader()}
+          <div className="practice-nav">
+            <button type="button" className="ghost" onClick={handleBackToMenu}>
+              Volver al menu
+            </button>
+          </div>
+          <section className="card">
+            <h3>Visualizacion de colores</h3>
+            <p className="muted">Tu acceso no está activado todavía. Pide habilitación al administrador.</p>
+          </section>
+        </div>
+      );
+    }
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="practice-nav">
+          <button type="button" className="ghost" onClick={handleBackToMenu}>
+            Volver al menu
+          </button>
+        </div>
+        <section className="card color-practice-shell">
+          <p className="eyebrow">Visualizacion de colores</p>
+          <h3>Entrenamiento de cartulinas</h3>
+          <p className="muted">Detector con cámara, calibración por color y reporte final.</p>
+          <iframe
+            className="color-practice-iframe"
+            src={`/cartulinas/index.html?student=${encodeURIComponent(student?.name || "")}&slug=${encodeURIComponent(
+              student?.slug || ""
+            )}`}
+            title="Practica de visualizacion de colores"
+            allow="camera; microphone"
+          />
+        </section>
       </div>
     );
   }
