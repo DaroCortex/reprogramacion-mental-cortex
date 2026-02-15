@@ -598,6 +598,11 @@ export default function App() {
         const count = roundCounts[idx] || 0;
         return count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
       });
+      const flowState = {
+        onboarding: Number(flowStats.onboarding || 0) > 0,
+        prePractice: Number(flowStats.prePractice || 0) > 0,
+        practice: Number(flowStats.practice || 0) > 0
+      };
       return {
         ...item,
         usage,
@@ -612,6 +617,7 @@ export default function App() {
         practiceSessions: Number(flowStats.practice || 0),
         colorVisionSessions: Number(colorVisionUsage.totalSessions || 0),
         colorVisionAccuracy: Number(colorVisionUsage.averageAccuracy || 0),
+        flowState,
         roundAvg,
         lastSessionAt
       };
@@ -2439,6 +2445,12 @@ export default function App() {
                           {item.colorVisionSessions
                             ? ` · Color: ${item.colorVisionSessions} sesiones (${Math.round(item.colorVisionAccuracy || 0)}% prom.)`
                             : ""}
+                        </div>
+                        <div className="flow-semaforo" aria-label="Estado de flujo del alumno">
+                          <span className={`flow-dot ${item.flowState?.onboarding ? "on" : "off"}`} />
+                          <span className={`flow-dot ${item.flowState?.prePractice ? "on" : "off"}`} />
+                          <span className={`flow-dot ${item.flowState?.practice ? "on" : "off"}`} />
+                          <span className="muted flow-legend">Onboarding · Pre-práctica · Práctica</span>
                         </div>
                         {item.alertLevel === "warning" && (
                           <div className="warn">Alerta 48h sin práctica</div>

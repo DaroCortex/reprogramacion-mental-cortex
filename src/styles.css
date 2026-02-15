@@ -899,6 +899,35 @@ input[type="range"]:focus {
   color: #b33b3b;
 }
 
+.flow-semaforo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.flow-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: color-mix(in srgb, var(--bg-soft) 70%, var(--ink) 30%);
+}
+
+.flow-dot.on {
+  border-color: color-mix(in srgb, var(--accent) 70%, #16a34a 30%);
+  background: linear-gradient(135deg, var(--accent), #16a34a);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.flow-dot.off {
+  opacity: 0.45;
+}
+
+.flow-legend {
+  margin-left: 4px;
+}
+
 .link-actions {
   display: flex;
   gap: 8px;
