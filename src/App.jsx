@@ -242,6 +242,7 @@ export default function App() {
   const [audioStatus, setAudioStatus] = useState("idle");
   const [audioCheckStatus, setAudioCheckStatus] = useState("idle");
   const [audioCheckMessage, setAudioCheckMessage] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
   const [startCountdown, setStartCountdown] = useState(0);
   const [ambientAudioMap, setAmbientAudioMap] = useState({
     bosque: "",
@@ -341,6 +342,7 @@ export default function App() {
   const countdownAbortRef = useRef(false);
   const phaseDeadlineRef = useRef(0);
   const apneaStartedAtRef = useRef(0);
+  const startRequestRef = useRef(0);
 
   const syncLoopTrackSource = (audioEl, url) => {
     if (!audioEl || !url) return false;
@@ -834,6 +836,23 @@ export default function App() {
   }, [isRunning, isPaused, selectedSeptasyncUrl, phase, isAwaitingFinalClose]);
 
   useEffect(() => {
+    if (!isRunning || isPaused || phase === "idle") return;
+    const watchdog = setInterval(() => {
+      if (!isRunningRef.current || isPausedRef.current) return;
+      if (selectedAmbientUrl && bosqueAudioRef.current?.paused) {
+        playBosque();
+      }
+      if (selectedSeptasyncUrl && septasyncAudioRef.current?.paused) {
+        playSeptasync();
+      }
+      if (phaseRef.current === "breathing" && breathAudioRef.current?.paused) {
+        playBreathSound();
+      }
+    }, 1200);
+    return () => clearInterval(watchdog);
+  }, [isRunning, isPaused, phase, selectedAmbientUrl, selectedSeptasyncUrl]);
+
+  useEffect(() => {
     if (!isRunning || isPaused || phase === "complete") return;
 
     intervalRef.current = setInterval(() => {
@@ -1227,33 +1246,52 @@ export default function App() {
   };
 
   const startSession = async () => {
-    if (!student) return;
+    if (!student || isRunningRef.current || isStarting) return;
+    setIsStarting(true);
     await requestWakeLock();
-    const immediateAmbientUrl = getAmbientUrlFromMap(ambientAudioMap, config.ambientSound);
-    const immediateSeptasyncUrl = getSeptasyncUrlFromMap(septasyncAudioMap, config.septasyncTrack);
-    primeAllSessionAudios(immediateAmbientUrl, immediateSeptasyncUrl);
+    const startNonce = Date.now();
+    startRequestRef.current = startNonce;
+    try {
+      const immediateAmbientUrl = getAmbientUrlFromMap(ambientAudioMap, config.ambientSound);
+      const immediateSeptasyncUrl = getSeptasyncUrlFromMap(septasyncAudioMap, config.septasyncTrack);
+      primeAllSessionAudios(immediateAmbientUrl, immediateSeptasyncUrl);
 
-    const checkOk = await runAudioCheck();
-    if (!checkOk) return;
-    const loaded = await loadSystemAudio();
-    const effectiveAmbientUrl = getAmbientUrlFromMap(
-      { ...ambientAudioMap, ...(loaded?.nextAmbient || {}) },
-      config.ambientSound
-    );
-    const effectiveSeptasyncUrl = getSeptasyncUrlFromMap(
-      { ...septasyncAudioMap, ...(loaded?.nextSeptasync || {}) },
-      config.septasyncTrack
-    );
-    if (effectiveAmbientUrl && bosqueAudioRef.current) {
-      syncLoopTrackSource(bosqueAudioRef.current, effectiveAmbientUrl);
+      setAudioCheckStatus("checking");
+      setAudioCheckMessage("Preparando audios...");
+
+      const loaded = await loadSystemAudio();
+      if (startRequestRef.current !== startNonce) return;
+
+      const effectiveAmbientUrl = getAmbientUrlFromMap(
+        { ...ambientAudioMap, ...(loaded?.nextAmbient || {}) },
+        config.ambientSound
+      );
+      const effectiveSeptasyncUrl = getSeptasyncUrlFromMap(
+        { ...septasyncAudioMap, ...(loaded?.nextSeptasync || {}) },
+        config.septasyncTrack
+      );
+
+      const apneaUrl = await loadSignedAudio();
+      if (startRequestRef.current !== startNonce) return;
+
+      await warmupAllAudios(effectiveAmbientUrl, effectiveSeptasyncUrl);
+      if (startRequestRef.current !== startNonce) return;
+
+      if (apneaUrl) {
+        setAudioCheckStatus("ready");
+        setAudioCheckMessage("Audio OK");
+      } else {
+        setAudioCheckStatus("warning");
+        setAudioCheckMessage("Audio estudiante no disponible, iniciando igual");
+      }
+
+      beginSession(effectiveAmbientUrl, effectiveSeptasyncUrl);
+    } catch (_error) {
+      setAudioCheckStatus("warning");
+      setAudioCheckMessage("No se pudo preparar todo el audio. Reintenta.");
+    } finally {
+      setIsStarting(false);
     }
-    if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
-      syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
-    }
-    setAudioCheckMessage("Preparando audios...");
-    await warmupAllAudios(effectiveAmbientUrl, effectiveSeptasyncUrl);
-    setStartCountdown(0);
-    beginSession(effectiveAmbientUrl, effectiveSeptasyncUrl);
   };
 
   const pauseSession = () => {
@@ -2844,10 +2882,12 @@ export default function App() {
               <button
                 className="primary"
                 onClick={startSession}
-                disabled={audioCheckStatus === "checking" || startCountdown > 0}
+                disabled={audioCheckStatus === "checking" || isStarting || startCountdown > 0}
               >
                 {audioCheckStatus === "checking"
                   ? "Chequeando audio..."
+                  : isStarting
+                    ? "Iniciando..."
                   : startCountdown > 0
                     ? `Inicia en ${startCountdown}...`
                     : "Iniciar sesión"}
@@ -2897,13 +2937,13 @@ export default function App() {
             )}
           </div>
 
-          <audio ref={audioRef} src={audioSrc} preload="auto" />
-          <audio ref={breathAudioRef} preload="auto" />
-          <audio ref={bosqueAudioRef} preload="auto" />
-          <audio ref={endApneaAudioRef} preload="auto" />
-          <audio ref={septasyncAudioRef} preload="auto" />
-          <audio ref={preApneaCueAudioRef} src="/pre-apnea-cue.mp3" preload="auto" />
-          <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" />
+          <audio ref={audioRef} src={audioSrc} preload="auto" playsInline />
+          <audio ref={breathAudioRef} preload="auto" playsInline />
+          <audio ref={bosqueAudioRef} preload="auto" playsInline />
+          <audio ref={endApneaAudioRef} preload="auto" playsInline />
+          <audio ref={septasyncAudioRef} preload="auto" playsInline />
+          <audio ref={preApneaCueAudioRef} src="/pre-apnea-cue.mp3" preload="auto" playsInline />
+          <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" playsInline />
         </section>
 
         <section className="card">
