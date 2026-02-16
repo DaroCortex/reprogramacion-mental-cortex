@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import NoSleep from "nosleep.js";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 
 const DEFAULT_CONFIG = {
@@ -323,6 +324,7 @@ export default function App() {
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
   const wakeLockRef = useRef(null);
+  const noSleepRef = useRef(null);
   const pauseStartedAtRef = useRef(0);
   const endHoldTimeoutRef = useRef(null);
   const endHoldIntervalRef = useRef(null);
@@ -860,12 +862,23 @@ export default function App() {
   }, [isRunning, isPaused, phase]);
 
   const requestWakeLock = async () => {
-    if (!("wakeLock" in navigator) || wakeLockRef.current) return;
+    if ("wakeLock" in navigator) {
+      if (wakeLockRef.current) return;
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => {
+          wakeLockRef.current = null;
+        });
+        return;
+      } catch (error) {
+        // fallback abajo
+      }
+    }
     try {
-      wakeLockRef.current = await navigator.wakeLock.request("screen");
-      wakeLockRef.current.addEventListener("release", () => {
-        wakeLockRef.current = null;
-      });
+      if (!noSleepRef.current) {
+        noSleepRef.current = new NoSleep();
+      }
+      noSleepRef.current.enable();
     } catch (error) {
       // ignore unsupported/blocked
     }
@@ -879,6 +892,11 @@ export default function App() {
       // ignore
     } finally {
       wakeLockRef.current = null;
+    }
+    try {
+      noSleepRef.current?.disable();
+    } catch (error) {
+      // ignore
     }
   };
 
@@ -904,6 +922,20 @@ export default function App() {
       }
       if (document.visibilityState === "visible" && audioContextRef.current?.state === "suspended") {
         audioContextRef.current.resume().catch(() => {});
+      }
+      if (document.visibilityState === "visible" && isRunningRef.current && !isPausedRef.current) {
+        const safePlay = (audioEl) => {
+          if (!audioEl || !audioEl.src) return;
+          audioEl.play().catch(() => {});
+        };
+        if (phaseRef.current === "apnea") {
+          safePlay(audioRef.current);
+        }
+        if (phaseRef.current === "breathing") {
+          safePlay(breathAudioRef.current);
+        }
+        safePlay(bosqueAudioRef.current);
+        safePlay(septasyncAudioRef.current);
       }
     };
 
@@ -1218,6 +1250,7 @@ export default function App() {
 
   const startSession = async () => {
     if (!student) return;
+    await requestWakeLock();
     const immediateAmbientUrl = getAmbientUrlFromMap(ambientAudioMap, config.ambientSound);
     const immediateSeptasyncUrl = getSeptasyncUrlFromMap(septasyncAudioMap, config.septasyncTrack);
     primeAllSessionAudios(immediateAmbientUrl, immediateSeptasyncUrl);
@@ -1629,7 +1662,6 @@ export default function App() {
   const stopAudio = () => {
     if (!audioRef.current) return;
     audioRef.current.pause();
-    audioRef.current.currentTime = 0;
     audioRef.current.loop = false;
     audioRef.current.muted = false;
   };
