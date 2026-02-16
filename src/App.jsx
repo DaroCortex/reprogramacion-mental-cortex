@@ -336,6 +336,7 @@ export default function App() {
   const isPausedRef = useRef(isPaused);
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
+  const lastDoubleTapActionRef = useRef(0);
   const lastApneaMsRef = useRef(0);
   const roundApneaByCycleRef = useRef([]);
   const handlePhaseAdvanceRef = useRef(() => {});
@@ -1968,7 +1969,11 @@ export default function App() {
     }
   };
 
-  const handleDoubleTap = () => {
+  const executeDoubleTapAction = () => {
+    const now = Date.now();
+    if (now - lastDoubleTapActionRef.current < 420) return;
+    lastDoubleTapActionRef.current = now;
+
     if (phase === "recovery") return;
     if (!isRunning) {
       startSession();
@@ -2009,11 +2014,16 @@ export default function App() {
     if (event.pointerType && event.pointerType !== "touch") return;
     const now = Date.now();
     if (now - lastTapRef.current < DOUBLE_TAP_MS) {
-      handleDoubleTap();
+      executeDoubleTapAction();
       lastTapRef.current = 0;
       return;
     }
     lastTapRef.current = now;
+  };
+
+  const onAppDoubleClick = (event) => {
+    event.preventDefault();
+    executeDoubleTapAction();
   };
 
   const isAdminRoute = window.location.pathname.startsWith("/admin");
@@ -2853,7 +2863,7 @@ export default function App() {
   }
 
   return (
-    <div className="app" onPointerUp={onPointerUp} onDoubleClick={handleDoubleTap}>
+    <div className="app" onPointerUp={onPointerUp} onDoubleClick={onAppDoubleClick}>
       {renderHeader()}
       <div className="practice-nav">
         <button type="button" className="ghost" onClick={handleBackToMenu}>
