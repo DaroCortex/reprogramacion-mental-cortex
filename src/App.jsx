@@ -323,7 +323,7 @@ export default function App() {
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
   const wakeLockRef = useRef(null);
-  const hiddenAtRef = useRef(null);
+  const pauseStartedAtRef = useRef(0);
   const endHoldTimeoutRef = useRef(null);
   const endHoldIntervalRef = useRef(null);
   const stopHoldTimeoutRef = useRef(null);
@@ -338,9 +338,10 @@ export default function App() {
   const lastApneaMsRef = useRef(0);
   const roundApneaByCycleRef = useRef([]);
   const audioCheckNonceRef = useRef(0);
-  const unlockNonceRef = useRef(0);
   const handlePhaseAdvanceRef = useRef(() => {});
   const countdownAbortRef = useRef(false);
+  const phaseDeadlineRef = useRef(0);
+  const apneaStartedAtRef = useRef(0);
 
   const syncLoopTrackSource = (audioEl, url) => {
     if (!audioEl || !url) return false;
@@ -837,22 +838,26 @@ export default function App() {
     if (!isRunning || isPaused || phase === "complete") return;
 
     intervalRef.current = setInterval(() => {
-      if (phase === "apnea") {
-        setTimeLeftMs((prev) => prev + TICK_MS);
+      if (phaseRef.current === "apnea") {
+        const elapsed = Math.max(0, Date.now() - (apneaStartedAtRef.current || Date.now()));
+        setTimeLeftMs(elapsed);
         return;
       }
-      setTimeLeftMs((prev) => {
-        const next = prev - TICK_MS;
-        if (next > 0) return next;
-        handlePhaseAdvance();
-        return 0;
-      });
+
+      const remaining = Math.max(0, (phaseDeadlineRef.current || 0) - Date.now());
+      if (remaining > 0) {
+        setTimeLeftMs(remaining);
+        return;
+      }
+
+      setTimeLeftMs(0);
+      handlePhaseAdvanceRef.current();
     }, TICK_MS);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning, isPaused, phase, subphase, breathsDone, cycleIndex, config]);
+  }, [isRunning, isPaused, phase]);
 
   const requestWakeLock = async () => {
     if (!("wakeLock" in navigator) || wakeLockRef.current) return;
@@ -887,33 +892,19 @@ export default function App() {
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        if (isRunningRef.current && !isPausedRef.current) {
-          hiddenAtRef.current = Date.now();
-        }
-        return;
-      }
-
       if (isRunningRef.current && !isPausedRef.current) {
         requestWakeLock();
+        if (phaseRef.current === "apnea") {
+          const elapsed = Math.max(0, Date.now() - (apneaStartedAtRef.current || Date.now()));
+          setTimeLeftMs(elapsed);
+        } else {
+          const remaining = Math.max(0, (phaseDeadlineRef.current || 0) - Date.now());
+          setTimeLeftMs(remaining);
+        }
       }
-
-      if (!hiddenAtRef.current) return;
-      const elapsed = Date.now() - hiddenAtRef.current;
-      hiddenAtRef.current = null;
-      if (elapsed <= 0) return;
-
-      if (phaseRef.current === "apnea") {
-        setTimeLeftMs((prev) => prev + elapsed);
-        return;
+      if (document.visibilityState === "visible" && audioContextRef.current?.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
       }
-
-      setTimeLeftMs((prev) => {
-        const next = prev - elapsed;
-        if (next > 0) return next;
-        handlePhaseAdvanceRef.current();
-        return 0;
-      });
     };
 
     document.addEventListener("visibilitychange", onVisibility);
@@ -943,7 +934,9 @@ export default function App() {
     if (phase === "breathing") {
       if (subphase === "inhale") {
         setSubphase("exhale");
-        setTimeLeftMs(config.exhaleSeconds * 1000);
+        const exhaleMs = config.exhaleSeconds * 1000;
+        phaseDeadlineRef.current = Date.now() + exhaleMs;
+        setTimeLeftMs(exhaleMs);
         return;
       }
 
@@ -964,7 +957,9 @@ export default function App() {
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
       setCurrentBreathNumber(nextBreaths + 1);
-      setTimeLeftMs(config.inhaleSeconds * 1000);
+      const inhaleMs = config.inhaleSeconds * 1000;
+      phaseDeadlineRef.current = Date.now() + inhaleMs;
+      setTimeLeftMs(inhaleMs);
       return;
     }
 
@@ -981,7 +976,9 @@ export default function App() {
         setCurrentBreathNumber(1);
         playBreathSound();
         setPhase("breathing");
-        setTimeLeftMs(config.inhaleSeconds * 1000);
+        const inhaleMs = config.inhaleSeconds * 1000;
+        phaseDeadlineRef.current = Date.now() + inhaleMs;
+        setTimeLeftMs(inhaleMs);
         return;
       }
 
@@ -1069,23 +1066,73 @@ export default function App() {
     await Promise.all(targets.map((audioEl) => warmupAudioElement(audioEl)));
   };
 
-  const runStartCountdown = async (seconds = 3) => {
-    countdownAbortRef.current = false;
-    for (let value = seconds; value >= 1; value -= 1) {
-      if (countdownAbortRef.current) {
-        setStartCountdown(0);
-        return false;
+  const primeAudioElementFromGesture = (audioElement) => {
+    if (!audioElement || !audioElement.src) return;
+    const wasMuted = audioElement.muted;
+    const wasLoop = audioElement.loop;
+    try {
+      audioElement.muted = true;
+      audioElement.loop = false;
+      audioElement.currentTime = 0;
+      const playResult = audioElement.play();
+      if (playResult && typeof playResult.then === "function") {
+        playResult
+          .then(() => {
+            audioElement.pause();
+            audioElement.currentTime = 0;
+            audioElement.muted = wasMuted;
+            audioElement.loop = wasLoop;
+          })
+          .catch(() => {
+            audioElement.muted = wasMuted;
+            audioElement.loop = wasLoop;
+          });
+      } else {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+        audioElement.muted = wasMuted;
+        audioElement.loop = wasLoop;
       }
-      setStartCountdown(value);
-      await sleep(1000);
+    } catch (_error) {
+      audioElement.muted = wasMuted;
+      audioElement.loop = wasLoop;
     }
-    setStartCountdown(0);
-    return !countdownAbortRef.current;
   };
+
+  const primeAllSessionAudios = useCallback((effectiveAmbientUrl, effectiveSeptasyncUrl) => {
+    if (effectiveAmbientUrl && bosqueAudioRef.current) {
+      syncLoopTrackSource(bosqueAudioRef.current, effectiveAmbientUrl);
+    }
+    if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
+      syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
+    }
+
+    ensureReverbGraph();
+    ensureAuxGainGraph(bosqueAudioRef.current, bosqueSourceNodeRef, bosqueGainRef, 0);
+    ensureAuxGainGraph(septasyncAudioRef.current, septasyncSourceNodeRef, septasyncGainRef, 0);
+    ensureAuxGainGraph(preApneaCueAudioRef.current, preCueSourceNodeRef, preCueGainRef, 1.8);
+    ensureAuxGainGraph(finalApneaCueAudioRef.current, finalCueSourceNodeRef, finalCueGainRef, 1.8);
+
+    const targets = [
+      audioRef.current,
+      breathAudioRef.current,
+      endApneaAudioRef.current,
+      preApneaCueAudioRef.current,
+      finalApneaCueAudioRef.current,
+      effectiveAmbientUrl ? bosqueAudioRef.current : null,
+      effectiveSeptasyncUrl ? septasyncAudioRef.current : null
+    ].filter(Boolean);
+
+    targets.forEach((audioEl) => primeAudioElementFromGesture(audioEl));
+    setTimeout(() => {
+      targets.forEach((audioEl) => primeAudioElementFromGesture(audioEl));
+    }, 120);
+  }, [ensureAuxGainGraph, ensureReverbGraph]);
 
   const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
     sessionStartRef.current = Date.now();
     roundApneaByCycleRef.current = [];
+    pauseStartedAtRef.current = 0;
     setIsRunning(true);
     setIsPaused(false);
     setIsAwaitingFinalClose(false);
@@ -1099,14 +1146,15 @@ export default function App() {
     if (effectiveAmbientUrl) playBosque();
     if (effectiveSeptasyncUrl) playSeptasync();
     playBreathSound();
-    unlockApneaAudio();
-    setTimeLeftMs(config.inhaleSeconds * 1000);
+    const inhaleMs = config.inhaleSeconds * 1000;
+    phaseDeadlineRef.current = Date.now() + inhaleMs;
+    apneaStartedAtRef.current = 0;
+    setTimeLeftMs(inhaleMs);
   };
 
   const runAudioCheck = async () => {
     const checkNonce = Date.now();
     audioCheckNonceRef.current = checkNonce;
-    unlockNonceRef.current += 1;
     setAudioCheckStatus("checking");
     setAudioCheckMessage("Chequeando audios...");
     const loaded = await loadSystemAudio();
@@ -1170,6 +1218,10 @@ export default function App() {
 
   const startSession = async () => {
     if (!student) return;
+    const immediateAmbientUrl = getAmbientUrlFromMap(ambientAudioMap, config.ambientSound);
+    const immediateSeptasyncUrl = getSeptasyncUrlFromMap(septasyncAudioMap, config.septasyncTrack);
+    primeAllSessionAudios(immediateAmbientUrl, immediateSeptasyncUrl);
+
     const checkOk = await runAudioCheck();
     if (!checkOk) return;
     const loaded = await loadSystemAudio();
@@ -1189,18 +1241,27 @@ export default function App() {
     }
     setAudioCheckMessage("Preparando audios...");
     await warmupAllAudios(effectiveAmbientUrl, effectiveSeptasyncUrl);
-    const shouldStart = await runStartCountdown(3);
-    if (!shouldStart) return;
+    setStartCountdown(0);
     beginSession(effectiveAmbientUrl, effectiveSeptasyncUrl);
   };
 
   const pauseSession = () => {
+    pauseStartedAtRef.current = Date.now();
     setIsPaused(true);
     pauseAudio();
     stopBreathSound();
   };
 
   const resumeSession = () => {
+    const pausedMs = pauseStartedAtRef.current ? Math.max(0, Date.now() - pauseStartedAtRef.current) : 0;
+    pauseStartedAtRef.current = 0;
+    if (pausedMs > 0) {
+      if (phaseRef.current === "apnea") {
+        apneaStartedAtRef.current += pausedMs;
+      } else if (phaseDeadlineRef.current) {
+        phaseDeadlineRef.current += pausedMs;
+      }
+    }
     setIsPaused(false);
     if (phase === "apnea") playAudio();
     if (phase === "breathing") {
@@ -1218,6 +1279,9 @@ export default function App() {
     setIsRunning(false);
     setIsPaused(false);
     setIsAwaitingFinalClose(false);
+    pauseStartedAtRef.current = 0;
+    phaseDeadlineRef.current = 0;
+    apneaStartedAtRef.current = 0;
     setPhase("idle");
     setTimeLeftMs(0);
     setBreathsDone(0);
@@ -1241,6 +1305,8 @@ export default function App() {
 
   const startApnea = () => {
     setPhase("apnea");
+    apneaStartedAtRef.current = Date.now();
+    phaseDeadlineRef.current = 0;
     setTimeLeftMs(0);
     stopBreathSound();
     loadSignedAudio().then((url) => {
@@ -1257,8 +1323,9 @@ export default function App() {
 
   const startRecovery = () => {
     if (phase === "apnea") {
-      const apneaSeconds = Math.round((timeLeftMs || 0) / 1000);
-      lastApneaMsRef.current = timeLeftMs;
+      const apneaMs = Math.max(0, Date.now() - (apneaStartedAtRef.current || Date.now()));
+      const apneaSeconds = Math.round(apneaMs / 1000);
+      lastApneaMsRef.current = apneaMs;
       setPreviousApneaSeconds(apneaSeconds);
       roundApneaByCycleRef.current[cycleIndex - 1] = apneaSeconds;
       if (cycleIndex < config.cycles) {
@@ -1269,7 +1336,9 @@ export default function App() {
       }
     }
     setPhase("recovery");
-    setTimeLeftMs(config.recoverySeconds * 1000);
+    const recoveryMs = config.recoverySeconds * 1000;
+    phaseDeadlineRef.current = Date.now() + recoveryMs;
+    setTimeLeftMs(recoveryMs);
     stopAudio();
   };
 
@@ -1301,6 +1370,9 @@ export default function App() {
     setIsRunning(true);
     setIsPaused(false);
     setIsAwaitingFinalClose(true);
+    pauseStartedAtRef.current = 0;
+    phaseDeadlineRef.current = 0;
+    apneaStartedAtRef.current = 0;
     setTimeLeftMs(0);
     stopAudio();
     stopBreathSound();
@@ -1367,29 +1439,6 @@ export default function App() {
     audioRef.current.play().catch(() => {
       // Autoplay might be blocked until user gesture
     });
-  };
-
-  const unlockApneaAudio = () => {
-    if (!audioRef.current) return;
-    ensureReverbGraph();
-    const el = audioRef.current;
-    const unlockNonce = Date.now();
-    unlockNonceRef.current = unlockNonce;
-    const cleanup = () => {
-      if (unlockNonceRef.current !== unlockNonce) return;
-      el.pause();
-      el.currentTime = 0;
-      el.loop = false;
-      el.muted = false;
-    };
-    el.muted = true;
-    el.loop = false;
-    el.currentTime = 0;
-    el.play()
-      .then(() => {
-        setTimeout(cleanup, 120);
-      })
-      .catch(cleanup);
   };
 
   const playBreathSound = () => {
