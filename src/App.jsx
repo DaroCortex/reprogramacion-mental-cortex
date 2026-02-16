@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import NoSleep from "nosleep.js";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 
 const DEFAULT_CONFIG = {
@@ -324,7 +323,6 @@ export default function App() {
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
   const wakeLockRef = useRef(null);
-  const noSleepRef = useRef(null);
   const pauseStartedAtRef = useRef(0);
   const endHoldTimeoutRef = useRef(null);
   const endHoldIntervalRef = useRef(null);
@@ -339,7 +337,6 @@ export default function App() {
   const lastTapRef = useRef(0);
   const lastApneaMsRef = useRef(0);
   const roundApneaByCycleRef = useRef([]);
-  const audioCheckNonceRef = useRef(0);
   const handlePhaseAdvanceRef = useRef(() => {});
   const countdownAbortRef = useRef(false);
   const phaseDeadlineRef = useRef(0);
@@ -862,23 +859,12 @@ export default function App() {
   }, [isRunning, isPaused, phase]);
 
   const requestWakeLock = async () => {
-    if ("wakeLock" in navigator) {
-      if (wakeLockRef.current) return;
-      try {
-        wakeLockRef.current = await navigator.wakeLock.request("screen");
-        wakeLockRef.current.addEventListener("release", () => {
-          wakeLockRef.current = null;
-        });
-        return;
-      } catch (error) {
-        // fallback abajo
-      }
-    }
+    if (!("wakeLock" in navigator) || wakeLockRef.current) return;
     try {
-      if (!noSleepRef.current) {
-        noSleepRef.current = new NoSleep();
-      }
-      noSleepRef.current.enable();
+      wakeLockRef.current = await navigator.wakeLock.request("screen");
+      wakeLockRef.current.addEventListener("release", () => {
+        wakeLockRef.current = null;
+      });
     } catch (error) {
       // ignore unsupported/blocked
     }
@@ -892,11 +878,6 @@ export default function App() {
       // ignore
     } finally {
       wakeLockRef.current = null;
-    }
-    try {
-      noSleepRef.current?.disable();
-    } catch (error) {
-      // ignore
     }
   };
 
@@ -1185,8 +1166,6 @@ export default function App() {
   };
 
   const runAudioCheck = async () => {
-    const checkNonce = Date.now();
-    audioCheckNonceRef.current = checkNonce;
     setAudioCheckStatus("checking");
     setAudioCheckMessage("Chequeando audios...");
     const loaded = await loadSystemAudio();
@@ -1224,7 +1203,6 @@ export default function App() {
     const okCount = results.filter(Boolean).length;
     const allOk = results.length > 0 && okCount === results.length;
 
-    if (audioCheckNonceRef.current !== checkNonce) return false;
     if (allOk || (apneaUrl && okCount >= 1)) {
       setAudioCheckStatus("ready");
       setAudioCheckMessage(`Audio OK (${okCount}/${results.length})`);
@@ -1342,15 +1320,22 @@ export default function App() {
     phaseDeadlineRef.current = 0;
     setTimeLeftMs(0);
     stopBreathSound();
+    const startPlayback = () => {
+      playAudio();
+      setTimeout(() => {
+        if (!isRunningRef.current || isPausedRef.current) return;
+        if (selectedAmbientUrl) playBosque();
+        if (selectedSeptasyncUrl) playSeptasync();
+      }, 250);
+    };
+
+    if (audioRef.current?.src || audioSrc) {
+      startPlayback();
+      return;
+    }
+
     loadSignedAudio().then((url) => {
-      if (url) {
-        playAudio();
-        setTimeout(() => {
-          if (!isRunningRef.current || isPausedRef.current) return;
-          if (selectedAmbientUrl) playBosque();
-          if (selectedSeptasyncUrl) playSeptasync();
-        }, 250);
-      }
+      if (url) startPlayback();
     });
   };
 
