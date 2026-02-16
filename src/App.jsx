@@ -343,6 +343,7 @@ export default function App() {
   const phaseDeadlineRef = useRef(0);
   const apneaStartedAtRef = useRef(0);
   const startRequestRef = useRef(0);
+  const phaseTransitionLockRef = useRef(false);
 
   const syncLoopTrackSource = (audioEl, url) => {
     if (!audioEl || !url) return false;
@@ -492,6 +493,10 @@ export default function App() {
   useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
+
+  useEffect(() => {
+    phaseTransitionLockRef.current = false;
+  }, [phase, subphase, breathsDone, cycleIndex, isRunning, isPaused]);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -793,11 +798,15 @@ export default function App() {
   useEffect(() => {
     if (!bosqueAudioRef.current) return;
     if (!selectedAmbientUrl) {
+      const keepSessionLoop =
+        (isRunningRef.current || (phaseRef.current === "complete" && isAwaitingFinalClose)) &&
+        Boolean(bosqueAudioRef.current.dataset.trackSrc);
+      if (keepSessionLoop) return;
       stopBosque();
       return;
     }
     syncLoopTrackSource(bosqueAudioRef.current, selectedAmbientUrl);
-  }, [selectedAmbientUrl]);
+  }, [selectedAmbientUrl, isAwaitingFinalClose]);
 
   useEffect(() => {
     const shouldKeepPlaying = isRunning || (phase === "complete" && isAwaitingFinalClose);
@@ -811,11 +820,15 @@ export default function App() {
   useEffect(() => {
     if (!septasyncAudioRef.current) return;
     if (!selectedSeptasyncUrl) {
+      const keepSessionLoop =
+        (isRunningRef.current || (phaseRef.current === "complete" && isAwaitingFinalClose)) &&
+        Boolean(septasyncAudioRef.current.dataset.trackSrc);
+      if (keepSessionLoop) return;
       stopSeptasync();
       return;
     }
     syncLoopTrackSource(septasyncAudioRef.current, selectedSeptasyncUrl);
-  }, [selectedSeptasyncUrl]);
+  }, [selectedSeptasyncUrl, isAwaitingFinalClose]);
 
   useEffect(() => {
     if (!septasyncAudioRef.current) return;
@@ -848,7 +861,7 @@ export default function App() {
       if (phaseRef.current === "breathing" && breathAudioRef.current?.paused) {
         playBreathSound();
       }
-    }, 1200);
+    }, 600);
     return () => clearInterval(watchdog);
   }, [isRunning, isPaused, phase, selectedAmbientUrl, selectedSeptasyncUrl]);
 
@@ -869,6 +882,8 @@ export default function App() {
       }
 
       setTimeLeftMs(0);
+      if (phaseTransitionLockRef.current) return;
+      phaseTransitionLockRef.current = true;
       handlePhaseAdvanceRef.current();
     }, TICK_MS);
 
@@ -1156,12 +1171,10 @@ export default function App() {
     ].filter(Boolean);
 
     targets.forEach((audioEl) => primeAudioElementFromGesture(audioEl));
-    setTimeout(() => {
-      targets.forEach((audioEl) => primeAudioElementFromGesture(audioEl));
-    }, 120);
   }, [ensureAuxGainGraph, ensureReverbGraph]);
 
   const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
+    phaseTransitionLockRef.current = false;
     sessionStartRef.current = Date.now();
     roundApneaByCycleRef.current = [];
     pauseStartedAtRef.current = 0;
@@ -1331,6 +1344,7 @@ export default function App() {
     pauseStartedAtRef.current = 0;
     phaseDeadlineRef.current = 0;
     apneaStartedAtRef.current = 0;
+    phaseTransitionLockRef.current = false;
     setPhase("idle");
     setTimeLeftMs(0);
     setBreathsDone(0);
@@ -1429,6 +1443,7 @@ export default function App() {
     pauseStartedAtRef.current = 0;
     phaseDeadlineRef.current = 0;
     apneaStartedAtRef.current = 0;
+    phaseTransitionLockRef.current = false;
     setTimeLeftMs(0);
     stopAudio();
     stopBreathSound();
@@ -1615,11 +1630,34 @@ export default function App() {
     septasyncAudioRef.current.currentTime = 0;
   };
 
+  const reviveAmbientIfNeeded = () => {
+    if (!isRunningRef.current || isPausedRef.current) return;
+    if (!selectedAmbientUrl) return;
+    if (bosqueAudioRef.current?.paused) {
+      playBosque();
+    }
+  };
+
+  const reviveSeptasyncIfNeeded = () => {
+    if (!isRunningRef.current || isPausedRef.current) return;
+    if (!selectedSeptasyncUrl) return;
+    if (septasyncAudioRef.current?.paused) {
+      playSeptasync();
+    }
+  };
+
   const playEndApnea = () => {
     if (!endApneaAudioRef.current) return;
     endApneaAudioRef.current.currentTime = 0;
     endApneaAudioRef.current.loop = false;
-    endApneaAudioRef.current.play().catch(() => {});
+    endApneaAudioRef.current.play().catch(() => {
+      try {
+        const fallback = new Audio(endApneaAudioRef.current.src);
+        fallback.play().catch(() => {});
+      } catch (_error) {
+        // ignore
+      }
+    });
   };
 
   const playPreApneaCue = () => {
@@ -1627,7 +1665,14 @@ export default function App() {
     ensureAuxGainGraph(preApneaCueAudioRef.current, preCueSourceNodeRef, preCueGainRef, 1.8);
     preApneaCueAudioRef.current.currentTime = 0;
     preApneaCueAudioRef.current.loop = false;
-    preApneaCueAudioRef.current.play().catch(() => {});
+    preApneaCueAudioRef.current.play().catch(() => {
+      try {
+        const fallback = new Audio(preApneaCueAudioRef.current.src);
+        fallback.play().catch(() => {});
+      } catch (_error) {
+        // ignore
+      }
+    });
   };
 
   const playFinalApneaCue = () => {
@@ -1635,7 +1680,14 @@ export default function App() {
     ensureAuxGainGraph(finalApneaCueAudioRef.current, finalCueSourceNodeRef, finalCueGainRef, 1.8);
     finalApneaCueAudioRef.current.currentTime = 0;
     finalApneaCueAudioRef.current.loop = false;
-    finalApneaCueAudioRef.current.play().catch(() => {});
+    finalApneaCueAudioRef.current.play().catch(() => {
+      try {
+        const fallback = new Audio(finalApneaCueAudioRef.current.src);
+        fallback.play().catch(() => {});
+      } catch (_error) {
+        // ignore
+      }
+    });
   };
 
   const loadSignedAudio = async () => {
@@ -2939,9 +2991,25 @@ export default function App() {
 
           <audio ref={audioRef} src={audioSrc} preload="auto" playsInline />
           <audio ref={breathAudioRef} preload="auto" playsInline />
-          <audio ref={bosqueAudioRef} preload="auto" playsInline />
+          <audio
+            ref={bosqueAudioRef}
+            preload="auto"
+            playsInline
+            onEnded={reviveAmbientIfNeeded}
+            onPause={() => {
+              setTimeout(reviveAmbientIfNeeded, 120);
+            }}
+          />
           <audio ref={endApneaAudioRef} preload="auto" playsInline />
-          <audio ref={septasyncAudioRef} preload="auto" playsInline />
+          <audio
+            ref={septasyncAudioRef}
+            preload="auto"
+            playsInline
+            onEnded={reviveSeptasyncIfNeeded}
+            onPause={() => {
+              setTimeout(reviveSeptasyncIfNeeded, 120);
+            }}
+          />
           <audio ref={preApneaCueAudioRef} src="/pre-apnea-cue.mp3" preload="auto" playsInline />
           <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" playsInline />
         </section>
