@@ -370,7 +370,12 @@ function tierProgressPct(avg, currentTier, nextTier) {
   return Math.max(0, Math.min(100, Math.round(((avg - start) / span) * 100)));
 }
 
-function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
+function DailyGoalsModule({
+  allowAdmin = false,
+  fixedStudent = null,
+  onMagicUnlockChange = null,
+  magicUnlockScore = 82
+}) {
   const fixedId = fixedStudent?.id ? toId(fixedStudent.id) : "";
   const fixedName = fixedStudent?.name || "Estudiante";
   const cloudSlug = fixedStudent?.slug || "";
@@ -571,6 +576,16 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
   const nextTier = WEEK_TIERS.find((t) => t.minAvg > (weeklyStats.tier?.minAvg ?? 0)) || null;
   const lvlPct = levelProgressPct(xp, level);
   const tierPct = tierProgressPct(weeklyStats.avg, weeklyStats.tier, nextTier);
+  const whiteMagicUnlocked = weeklyStats.avg >= magicUnlockScore;
+
+  useEffect(() => {
+    if (typeof onMagicUnlockChange !== "function") return;
+    onMagicUnlockChange({
+      unlocked: whiteMagicUnlocked,
+      score: weeklyStats.avg,
+      xp
+    });
+  }, [onMagicUnlockChange, whiteMagicUnlocked, weeklyStats.avg, xp]);
 
   const setStatus = (itemId, status) => {
     setRecentItemId(itemId);
@@ -1093,6 +1108,22 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
               </ul>
             </section>
           )}
+
+          <section className="panel manual-panel">
+            <header className="panel-head">
+              <h3>Guía rápida</h3>
+            </header>
+            <ul className="manual-list">
+              <li><strong>Estados:</strong> Hecho suma completo, Parcial suma la mitad, No hecho no suma.</li>
+              <li><strong>Rutina de hoy:</strong> lo que cargas hoy aparece en el Check diario cuando pase al día siguiente.</li>
+              <li><strong>XP:</strong> al llenar la barra subes de nivel y desbloqueas beneficios.</li>
+              <li>
+                <strong>Magia blanca:</strong> se habilita con score semanal de {magicUnlockScore}%.
+                {" "}
+                Tu score actual: {weeklyStats.avg}% ({whiteMagicUnlocked ? "desbloqueada" : "aún bloqueada"}).
+              </li>
+            </ul>
+          </section>
         </main>
       )}
 

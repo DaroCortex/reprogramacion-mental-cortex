@@ -829,6 +829,32 @@ input[type="range"]:focus {
   margin-bottom: 12px;
 }
 
+.magic-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.magic-row {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--card) 88%, var(--bg) 12%);
+}
+
+.magic-row strong {
+  display: block;
+  font-size: 14px;
+}
+
+.magic-row small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .alert-pill {
   font-size: 11px;
   font-weight: 700;

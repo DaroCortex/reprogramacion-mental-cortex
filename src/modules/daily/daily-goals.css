@@ -665,6 +665,27 @@ button.ghost:hover {
   color: var(--good);
 }
 
+.manual-panel {
+  border-style: dashed;
+}
+
+.manual-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.manual-list li {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.manual-list strong {
+  color: var(--ink);
+}
+
 /* ── Flash message ─────────────────────────────────── */
 
 .flash {

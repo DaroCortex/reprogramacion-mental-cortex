@@ -34,7 +34,70 @@ const FINALIZE_HOLD_MS = 1500;
 const PRE_APNEA_BREATHS_LEFT = 1;
 const ALERT_WARNING_HOURS = 48;
 const ALERT_CRITICAL_HOURS = 72;
+const WHITE_MAGIC_UNLOCK_SCORE = 82;
 const SEGUIMIENTO_DASHBOARD_URL = "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/";
+const WHITE_MAGIC_BONUS = [
+  {
+    month: "Enero",
+    title: "El Decreto del Guerrero",
+    goal: "Escribir 10 metas concretas del año y verlas todos los días."
+  },
+  {
+    month: "Febrero",
+    title: "El Espejo del Amor Propio",
+    goal: "7 días seguidos diciendo 3 cosas que amas de vos frente al espejo."
+  },
+  {
+    month: "Marzo",
+    title: "El Billete Magnético",
+    goal: "Ahorrar durante 21 días consecutivos, aunque sean monedas."
+  },
+  {
+    month: "Abril",
+    title: "El Escudo de Ropa",
+    goal: "Eliminar 3 fuentes de energía negativa (hábitos, personas o espacios)."
+  },
+  {
+    month: "Mayo",
+    title: "La Carta al Futuro",
+    goal: "Actualizar CV/portfolio o dar un paso real a un nuevo proyecto."
+  },
+  {
+    month: "Junio",
+    title: "El Baño del Sol Interior",
+    goal: "14 días seguidos de actividad física."
+  },
+  {
+    month: "Julio",
+    title: "El Círculo de Fuego",
+    goal: "Reconectar con 3 personas."
+  },
+  {
+    month: "Agosto",
+    title: "El Libro de las Sombras",
+    goal: "Escribir diario personal durante 10 días."
+  },
+  {
+    month: "Septiembre",
+    title: "La Balanza de Cristal",
+    goal: "Ordenar a fondo un espacio abandonado de tu casa."
+  },
+  {
+    month: "Octubre",
+    title: "La Carta de Fuego",
+    goal: "Escribir una carta de perdón y leerla en voz alta."
+  },
+  {
+    month: "Noviembre",
+    title: "El Altar de Gratitud Viviente",
+    goal: "Enviar agradecimiento real a 3 personas."
+  },
+  {
+    month: "Diciembre",
+    title: "El Gran Sello del Año",
+    goal: "Completar 12 mensuales + al menos 6 bonus."
+  }
+];
 
 const SYSTEM_AUDIO = {
   respirax1: { slug: "respira" },
@@ -235,6 +298,8 @@ export default function App() {
   const [replaceSlug, setReplaceSlug] = useState("");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
   const [practiceScreen, setPracticeScreen] = useState("menu");
+  const [whiteMagicUnlocked, setWhiteMagicUnlocked] = useState(false);
+  const [whiteMagicScore, setWhiteMagicScore] = useState(0);
   const [brandLogoMissing, setBrandLogoMissing] = useState(false);
   const [breathLogoMissing, setBreathLogoMissing] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -546,6 +611,28 @@ export default function App() {
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
 
+  const whiteMagicStorageKey = useMemo(
+    () => `rmcortex_magic_unlock_${slug || "anon"}`,
+    [slug]
+  );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(whiteMagicStorageKey);
+      if (!raw) {
+        setWhiteMagicUnlocked(false);
+        setWhiteMagicScore(0);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      setWhiteMagicUnlocked(Boolean(parsed?.unlocked));
+      setWhiteMagicScore(Number(parsed?.score || 0));
+    } catch (_error) {
+      setWhiteMagicUnlocked(false);
+      setWhiteMagicScore(0);
+    }
+  }, [whiteMagicStorageKey]);
+
   const practiceOptions = useMemo(
     () =>
       PRACTICE_OPTIONS.map((item) => {
@@ -555,9 +642,15 @@ export default function App() {
             enabled: hasColorPracticeAccess(student)
           };
         }
+        if (item.id === "magia") {
+          return {
+            ...item,
+            enabled: whiteMagicUnlocked
+          };
+        }
         return item;
       }),
-    [student]
+    [student, whiteMagicUnlocked]
   );
 
   const selectedAmbientUrl = useMemo(() => {
@@ -2005,6 +2098,25 @@ export default function App() {
     }
   };
 
+  const handleDailyMagicUnlock = useCallback((payload) => {
+    const score = Number(payload?.score || 0);
+    const unlocked = Boolean(payload?.unlocked);
+    setWhiteMagicScore(score);
+    setWhiteMagicUnlocked(unlocked);
+    try {
+      localStorage.setItem(
+        whiteMagicStorageKey,
+        JSON.stringify({
+          unlocked,
+          score,
+          updatedAt: new Date().toISOString()
+        })
+      );
+    } catch (_error) {
+      // ignore
+    }
+  }, [whiteMagicStorageKey]);
+
   const handleBackToMenu = () => {
     countdownAbortRef.current = true;
     setStartCountdown(0);
@@ -2017,6 +2129,11 @@ export default function App() {
   const openPracticeOption = (practiceId) => {
     if (practiceId === "metas") {
       setPracticeScreen("daily-goals");
+      return;
+    }
+    if (practiceId === "magia") {
+      if (!whiteMagicUnlocked) return;
+      setPracticeScreen("magia");
       return;
     }
     if (practiceId === "colores") {
@@ -2795,7 +2912,11 @@ export default function App() {
         {renderHeader()}
         <div className="card menu-card">
           <h2>Selecciona practica</h2>
-          <p className="muted">Reprogramacion mental y Metas Diarias están activas. Visualizacion de colores depende del permiso por estudiante.</p>
+          <p className="muted">
+            Reprogramacion mental y Metas Diarias están activas. Visualizacion de colores depende del permiso por estudiante.
+            {" "}
+            Magia blanca se desbloquea con score semanal de {WHITE_MAGIC_UNLOCK_SCORE}%.
+          </p>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
               <button
@@ -2806,7 +2927,15 @@ export default function App() {
                 disabled={!item.enabled}
               >
                 {item.label}
-                {!item.enabled && <span>{item.id === "colores" ? "Bloqueado" : "Proximamente"}</span>}
+                {!item.enabled && (
+                  <span>
+                    {item.id === "colores"
+                      ? "Bloqueado"
+                      : item.id === "magia"
+                        ? `Bloqueado (${whiteMagicScore}%/${WHITE_MAGIC_UNLOCK_SCORE}%)`
+                        : "Proximamente"}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -2826,6 +2955,8 @@ export default function App() {
         </div>
         <DailyGoalsModule
           allowAdmin={false}
+          onMagicUnlockChange={handleDailyMagicUnlock}
+          magicUnlockScore={WHITE_MAGIC_UNLOCK_SCORE}
           fixedStudent={{
             id: student?.slug || "",
             name: student?.name || "Estudiante",
@@ -2833,6 +2964,39 @@ export default function App() {
             token
           }}
         />
+      </div>
+    );
+  }
+
+  if (practiceScreen === "magia") {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="practice-nav">
+          <button type="button" className="ghost" onClick={handleBackToMenu}>
+            Volver al menu
+          </button>
+        </div>
+        <section className="card">
+          <p className="eyebrow">Magia blanca</p>
+          <h3>Grimorio bonus mensual</h3>
+          <p className="muted">
+            Desbloqueado por score semanal: {whiteMagicScore}% (objetivo {WHITE_MAGIC_UNLOCK_SCORE}%).
+          </p>
+          <p className="muted">
+            Usa este módulo como práctica guiada: cada mes tiene un bonus y una meta concreta para habilitarlo.
+          </p>
+          <ul className="magic-list">
+            {WHITE_MAGIC_BONUS.map((item) => (
+              <li key={item.month} className="magic-row">
+                <div>
+                  <strong>{item.month} · {item.title}</strong>
+                  <small>{item.goal}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     );
   }
