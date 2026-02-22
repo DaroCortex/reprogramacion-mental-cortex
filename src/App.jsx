@@ -1935,7 +1935,7 @@ export default function App() {
         </p>
         {!brandLogoMissing && (
           <img
-            className="brand-logo"
+            className={`brand-logo ${theme === "dark" ? "logo-theme-dark" : "logo-theme-light"}`}
             src="/logo-10.png"
             alt="Cortex"
             onError={() => setBrandLogoMissing(true)}
@@ -2924,7 +2924,7 @@ export default function App() {
             <div className={`breath-orb ${phaseClass()} nostril-${glowNostrilState}`} style={phaseStyle()}>
               {!breathLogoMissing && (
                 <img
-                  className="breath-logo"
+                  className={`breath-logo ${theme === "dark" ? "logo-theme-dark" : "logo-theme-light"}`}
                   src="/logo-05.png"
                   alt="Cortex breath"
                   onError={() => setBreathLogoMissing(true)}

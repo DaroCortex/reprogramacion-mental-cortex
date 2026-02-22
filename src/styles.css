@@ -107,10 +107,6 @@ body {
   margin-top: 6px;
 }
 
-[data-theme="dark"] .brand-logo {
-  filter: invert(1) brightness(1.08);
-}
-
 .brand-fallback {
   display: block;
 }
@@ -384,8 +380,12 @@ body {
   pointer-events: none;
 }
 
-[data-theme="dark"] .breath-logo {
-  filter: invert(1) brightness(1.08);
+.logo-theme-light {
+  filter: none;
+}
+
+.logo-theme-dark {
+  filter: invert(1) brightness(1.1) contrast(1.05);
 }
 
 .breath-logo-fallback {
