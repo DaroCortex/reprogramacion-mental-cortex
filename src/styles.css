@@ -42,6 +42,8 @@
 
 html {
   overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -53,6 +55,10 @@ body {
   min-height: 100vh;
   transition: background var(--transition-med), color var(--transition-fast);
   overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -60,6 +66,8 @@ body {
 #root {
   min-height: 100vh;
   overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* ── App layout ────────────────────────────────────── */
@@ -68,7 +76,9 @@ body {
   max-width: 1100px;
   margin: 0 auto;
   padding: 32px 20px 80px;
-  overflow-x: clip;
+  overflow-x: hidden;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior-x: none;
 }
 
 /* ── Header ────────────────────────────────────────── */

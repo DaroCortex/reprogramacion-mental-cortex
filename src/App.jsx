@@ -31,7 +31,7 @@ const NOSTRIL_PREVIEW_MS = 500;
 const DIRECT_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
 const STOP_HOLD_MS = 1000;
 const FINALIZE_HOLD_MS = 1500;
-const PRE_APNEA_BREATHS_LEFT = 2;
+const PRE_APNEA_BREATHS_LEFT = 1;
 const ALERT_WARNING_HOURS = 48;
 const ALERT_CRITICAL_HOURS = 72;
 const SEGUIMIENTO_DASHBOARD_URL = "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/";
@@ -1399,6 +1399,7 @@ export default function App() {
       lastApneaMsRef.current = apneaMs;
       setPreviousApneaSeconds(apneaSeconds);
       roundApneaByCycleRef.current[cycleIndex - 1] = apneaSeconds;
+      stopAudio();
       if (cycleIndex < config.cycles) {
         playEndApnea();
       }
@@ -1410,7 +1411,6 @@ export default function App() {
     const recoveryMs = config.recoverySeconds * 1000;
     phaseDeadlineRef.current = Date.now() + recoveryMs;
     setTimeLeftMs(recoveryMs);
-    stopAudio();
   };
 
   const recordSessionMetrics = async ({ completedRounds, plannedRounds, breathsPerCycle, apneaByRound }) => {
@@ -1737,9 +1737,26 @@ export default function App() {
 
   const stopAudio = () => {
     if (!audioRef.current) return;
-    audioRef.current.pause();
-    audioRef.current.loop = false;
-    audioRef.current.muted = false;
+    const audioEl = audioRef.current;
+    audioEl.loop = false;
+    audioEl.muted = true;
+    audioEl.pause();
+    try {
+      audioEl.currentTime = 0;
+    } catch (_error) {
+      // iOS puede bloquear currentTime durante cambios de foco.
+    }
+
+    if (masterGainRef.current) {
+      const now = audioContextRef.current?.currentTime || 0;
+      masterGainRef.current.gain.cancelScheduledValues(now);
+      masterGainRef.current.gain.setValueAtTime(Math.min(1, Math.max(0, config.audioVolume)), now);
+    }
+
+    setTimeout(() => {
+      if (!audioRef.current) return;
+      audioRef.current.muted = false;
+    }, 60);
   };
 
   const cancelEndApneaHold = () => {
