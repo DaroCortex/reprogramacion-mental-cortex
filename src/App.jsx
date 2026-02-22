@@ -2075,8 +2075,8 @@ export default function App() {
         </p>
         {!brandLogoMissing && (
           <img
-            className={`brand-logo ${theme === "dark" ? "logo-theme-dark" : "logo-theme-light"}`}
-            src="/logo-10.png"
+            className="brand-logo"
+            src={theme === "dark" ? "/logo-10-dark.png" : "/logo-10-light.png"}
             alt="Cortex"
             onError={() => setBrandLogoMissing(true)}
           />
@@ -3243,13 +3243,13 @@ export default function App() {
             <div className={`breath-orb ${phaseClass()} nostril-${glowNostrilState}`} style={phaseStyle()}>
               {!breathLogoMissing && (
                 <img
-                  className={`breath-logo ${theme === "dark" ? "logo-theme-dark" : "logo-theme-light"}`}
-                  src="/logo-05.png"
+                  className="breath-logo"
+                  src={theme === "dark" ? "/logo-05-dark.png" : "/logo-05-light.png"}
                   alt="Cortex breath"
                   onError={() => setBreathLogoMissing(true)}
                 />
               )}
-              {breathLogoMissing && <div className="breath-logo-fallback">Falta /public/logo-05.png</div>}
+              {breathLogoMissing && <div className="breath-logo-fallback">Falta logo de respiración en /public</div>}
             </div>
             <div className="breath-text">
               {phase === "breathing" && subphase === "inhale" && "Inhala"}

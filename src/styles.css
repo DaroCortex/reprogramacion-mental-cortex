@@ -380,14 +380,6 @@ body {
   pointer-events: none;
 }
 
-.logo-theme-light {
-  filter: none;
-}
-
-.logo-theme-dark {
-  filter: invert(1) brightness(1.1) contrast(1.05);
-}
-
 .breath-logo-fallback {
   width: 82%;
   height: 82%;
