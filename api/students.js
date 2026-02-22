@@ -1,4 +1,4 @@
-import { readStudents, writeStudents } from "../lib/r2.js";
+import { readAppSettings, readStudents, writeStudents } from "../lib/r2.js";
 
 const clampNumber = (value, min, max, fallback = 0) => {
   const num = Number(value);
@@ -178,12 +178,13 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const students = await readStudents();
+    const [students, appSettings] = await Promise.all([readStudents(), readAppSettings()]);
     const safe = students.map((item) => ({
       name: item.name,
       slug: item.slug,
       features: {
-        colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled)
+        colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled),
+        magicUnlockScore: clampNumber(item?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore)
       }
     }));
     return res.status(200).json({ students: safe });

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
+import { readAppSettings, readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
 import { verifyAdminPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       optimization = optimized.optimization;
     }
 
-    const students = await readStudents();
+    const [students, appSettings] = await Promise.all([readStudents(), readAppSettings()]);
     const slug = uniqueSlug(name, students);
     const token = makeToken();
     const student = {
@@ -91,7 +91,8 @@ export default async function handler(req, res) {
         lastSession: null
       },
       features: {
-        colorVisionEnabled: false
+        colorVisionEnabled: false,
+        magicUnlockScore: appSettings.magicUnlockScore
       }
     };
 

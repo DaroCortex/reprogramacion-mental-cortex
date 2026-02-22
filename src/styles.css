@@ -877,6 +877,83 @@ input[type="range"]:focus {
   background: color-mix(in srgb, #c94848 10%, transparent);
 }
 
+.alert-pill.green {
+  border-color: color-mix(in srgb, #22c55e 58%, transparent);
+  color: #22c55e;
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+}
+
+.alert-pill.yellow {
+  border-color: color-mix(in srgb, #f59e0b 58%, transparent);
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
+.alert-pill.red {
+  border-color: color-mix(in srgb, #ef4444 58%, transparent);
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+}
+
+.admin-semaforo-panel {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.admin-semaforo-panel strong {
+  font-size: 13px;
+}
+
+.admin-semaforo-panel small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.semaforo-lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.semaforo-light {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  opacity: 0.35;
+  border: 1px solid color-mix(in srgb, var(--stroke) 70%, transparent);
+  transition: opacity var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.semaforo-light.green {
+  background: #22c55e;
+  color: #22c55e;
+}
+
+.semaforo-light.yellow {
+  background: #f59e0b;
+  color: #f59e0b;
+}
+
+.semaforo-light.red {
+  background: #ef4444;
+  color: #ef4444;
+}
+
+.semaforo-light.on {
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.admin-flow-summary {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
 .admin-tabs {
   display: flex;
   gap: 8px;

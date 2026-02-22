@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { addAdmin, isSuperAdmin, listAdmins, removeAdmin, verifyAdminPassword } from "../../lib/auth.js";
-import { readStudents, writeStudents } from "../../lib/r2.js";
+import { readAppSettings, readStudents, writeAppSettings, writeStudents } from "../../lib/r2.js";
 
 const DEFAULT_SEGUIMIENTO_URL =
   "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/data/students.json";
@@ -75,7 +75,8 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: "No autorizado" });
       }
       const admins = await listAdmins();
-      return res.status(200).json({ admins });
+      const settings = await readAppSettings();
+      return res.status(200).json({ admins, settings });
     }
 
     if (req.method === "POST") {
@@ -123,6 +124,7 @@ export default async function handler(req, res) {
       }
 
       const url = String(sourceUrl || DEFAULT_SEGUIMIENTO_URL).trim();
+      const settings = await readAppSettings();
       const externalResponse = await fetch(url);
       if (!externalResponse.ok) {
         return res.status(400).json({ error: "No se pudo leer la base externa" });
@@ -148,6 +150,12 @@ export default async function handler(req, res) {
         if (byNameIndex >= 0) {
           students[byNameIndex] = {
             ...students[byNameIndex],
+            features: {
+              ...(students[byNameIndex]?.features || {}),
+              magicUnlockScore: Number(
+                students[byNameIndex]?.features?.magicUnlockScore ?? settings.magicUnlockScore
+              )
+            },
             legacyTracking: legacy,
             updatedAt: now
           };
@@ -166,7 +174,8 @@ export default async function handler(req, res) {
           lastAudioAccessAt: "",
           usage: createDefaultUsage(),
           features: {
-            colorVisionEnabled: false
+            colorVisionEnabled: false,
+            magicUnlockScore: settings.magicUnlockScore
           },
           legacyTracking: legacy
         });
@@ -181,6 +190,34 @@ export default async function handler(req, res) {
         created,
         updated,
         totalStudents: students.length
+      });
+    }
+
+    if (req.method === "PATCH") {
+      const { password, magicUnlockScore } = req.body || {};
+      if (!(await verifyAdminPassword(password))) {
+        return res.status(401).json({ error: "No autorizado" });
+      }
+      const nextSettings = await writeAppSettings({ magicUnlockScore });
+
+      const students = await readStudents();
+      if (students.length > 0) {
+        const now = new Date().toISOString();
+        const nextStudents = students.map((item) => ({
+          ...item,
+          features: {
+            ...(item.features || {}),
+            magicUnlockScore: nextSettings.magicUnlockScore
+          },
+          updatedAt: now
+        }));
+        await writeStudents(nextStudents);
+      }
+
+      return res.status(200).json({
+        ok: true,
+        settings: nextSettings,
+        updatedStudents: students.length
       });
     }
 

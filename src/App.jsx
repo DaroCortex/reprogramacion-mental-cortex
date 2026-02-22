@@ -34,7 +34,7 @@ const FINALIZE_HOLD_MS = 1500;
 const PRE_APNEA_BREATHS_LEFT = 1;
 const ALERT_WARNING_HOURS = 48;
 const ALERT_CRITICAL_HOURS = 72;
-const WHITE_MAGIC_UNLOCK_SCORE = 82;
+const DEFAULT_WHITE_MAGIC_UNLOCK_SCORE = 82;
 const SEGUIMIENTO_DASHBOARD_URL = "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/";
 const WHITE_MAGIC_BONUS = [
   {
@@ -158,6 +158,12 @@ const clampPercent = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;
   return Math.max(0, Math.min(100, Math.round(num)));
+};
+
+const normalizeMagicUnlockScore = (value, fallback = DEFAULT_WHITE_MAGIC_UNLOCK_SCORE) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(60, Math.min(98, Math.round(num)));
 };
 
 const getAmbientUrlFromMap = (map, ambientSound) => {
@@ -300,6 +306,10 @@ export default function App() {
   const [practiceScreen, setPracticeScreen] = useState("menu");
   const [whiteMagicUnlocked, setWhiteMagicUnlocked] = useState(false);
   const [whiteMagicScore, setWhiteMagicScore] = useState(0);
+  const [magicUnlockScoreConfig, setMagicUnlockScoreConfig] = useState(DEFAULT_WHITE_MAGIC_UNLOCK_SCORE);
+  const [magicUnlockConfigDraft, setMagicUnlockConfigDraft] = useState(String(DEFAULT_WHITE_MAGIC_UNLOCK_SCORE));
+  const [magicUnlockConfigMessage, setMagicUnlockConfigMessage] = useState("");
+  const [magicUnlockConfigSaving, setMagicUnlockConfigSaving] = useState(false);
   const [brandLogoMissing, setBrandLogoMissing] = useState(false);
   const [breathLogoMissing, setBreathLogoMissing] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -611,10 +621,26 @@ export default function App() {
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
 
+  const magicUnlockScore = useMemo(
+    () => normalizeMagicUnlockScore(student?.features?.magicUnlockScore, magicUnlockScoreConfig),
+    [student?.features?.magicUnlockScore, magicUnlockScoreConfig]
+  );
+
   const whiteMagicStorageKey = useMemo(
     () => `rmcortex_magic_unlock_${slug || "anon"}`,
     [slug]
   );
+
+  useEffect(() => {
+    const saved = localStorage.getItem("rmcortex_magic_unlock_score");
+    const normalized = normalizeMagicUnlockScore(saved, DEFAULT_WHITE_MAGIC_UNLOCK_SCORE);
+    setMagicUnlockScoreConfig(normalized);
+    setMagicUnlockConfigDraft(String(normalized));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("rmcortex_magic_unlock_score", String(magicUnlockScoreConfig));
+  }, [magicUnlockScoreConfig]);
 
   useEffect(() => {
     try {
@@ -733,6 +759,24 @@ export default function App() {
     const moreThanOnceToday = rows.filter((item) => item.todaySessions > 1);
     const abandoned = rows.filter((item) => item.alertLevel === "critical");
     const practicingDaily = rows.filter((item) => item.todaySessions >= 1);
+    const flowCounts = rows.reduce(
+      (acc, item) => {
+        if (item.flowState?.onboarding) acc.onboarding += 1;
+        if (item.flowState?.prePractice) acc.prePractice += 1;
+        if (item.flowState?.practice) acc.practice += 1;
+        if (item.features?.colorVisionEnabled) acc.colorEnabled += 1;
+        return acc;
+      },
+      { onboarding: 0, prePractice: 0, practice: 0, colorEnabled: 0 }
+    );
+    const flowProgressPct = rows.length
+      ? Math.round(
+          ((flowCounts.onboarding + flowCounts.prePractice + flowCounts.practice) /
+            (rows.length * 3)) *
+            100
+        )
+      : 0;
+    const flowSemaforoLevel = flowProgressPct >= 66 ? "green" : flowProgressPct >= 33 ? "yellow" : "red";
 
     return {
       rows,
@@ -742,6 +786,9 @@ export default function App() {
       moreThanOnceToday,
       abandoned,
       practicingDaily,
+      flowCounts,
+      flowProgressPct,
+      flowSemaforoLevel,
       hasAttention: critical.length > 0 || warning.length > 0
     };
   }, [adminStudents]);
@@ -2194,6 +2241,12 @@ export default function App() {
       if (!response.ok) return;
       const data = await response.json();
       setAdminsList(Array.isArray(data.admins) ? data.admins : []);
+      const nextScore = normalizeMagicUnlockScore(
+        data?.settings?.magicUnlockScore,
+        magicUnlockScoreConfig
+      );
+      setMagicUnlockScoreConfig(nextScore);
+      setMagicUnlockConfigDraft(String(nextScore));
     } catch (error) {
       // silent
     }
@@ -2266,6 +2319,41 @@ export default function App() {
       setAdminManagerMessage("Administrador eliminado.");
     } catch (error) {
       setAdminManagerMessage(error?.message || "No se pudo eliminar administrador.");
+    }
+  };
+
+  const handleSaveMagicUnlockScore = async () => {
+    if (!adminPassword) {
+      setMagicUnlockConfigMessage("Ingresa password de admin.");
+      return;
+    }
+    const nextScore = normalizeMagicUnlockScore(magicUnlockConfigDraft, magicUnlockScoreConfig);
+    setMagicUnlockConfigSaving(true);
+    setMagicUnlockConfigMessage("");
+    try {
+      const response = await fetch("/api/admin/admins", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          magicUnlockScore: nextScore
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo guardar configuración.");
+      }
+      const savedScore = normalizeMagicUnlockScore(data?.settings?.magicUnlockScore, nextScore);
+      setMagicUnlockScoreConfig(savedScore);
+      setMagicUnlockConfigDraft(String(savedScore));
+      setMagicUnlockConfigMessage(
+        `Objetivo guardado en ${savedScore}% para Magia Blanca.`
+      );
+      await ensureAdminList(adminPassword);
+    } catch (error) {
+      setMagicUnlockConfigMessage(error?.message || "No se pudo guardar configuración.");
+    } finally {
+      setMagicUnlockConfigSaving(false);
     }
   };
 
@@ -2547,6 +2635,12 @@ export default function App() {
     });
   }, [adminAnalytics, adminView, filteredAdminStudents]);
 
+  const magicPolicyLevel = useMemo(() => {
+    if (magicUnlockScoreConfig >= 88) return "red";
+    if (magicUnlockScoreConfig >= 76) return "yellow";
+    return "green";
+  }, [magicUnlockScoreConfig]);
+
   if (loading) {
     return (
       <div className="app">
@@ -2615,6 +2709,67 @@ export default function App() {
               </div>
               <div className="muted">
                 Diario: {adminAnalytics.practicingDaily.length} practicaron hoy. Abandono potencial: {adminAnalytics.abandoned.length}.
+              </div>
+            </div>
+
+            <div className="card">
+              <h3>Configurar habilitaciones</h3>
+              <p className="muted">
+                Define el score semanal para habilitar Magia Blanca y usa el semáforo para ver en qué etapa está el grupo.
+              </p>
+              <div className="form-grid">
+                <label>
+                  Objetivo Magia Blanca (%)
+                  <input
+                    type="number"
+                    min="60"
+                    max="98"
+                    step="1"
+                    value={magicUnlockConfigDraft}
+                    onChange={(event) => setMagicUnlockConfigDraft(event.target.value)}
+                  />
+                </label>
+                <div className="admin-semaforo-panel">
+                  <strong>Semáforo objetivo</strong>
+                  <div className="semaforo-lights">
+                    <span className={`semaforo-light green ${magicPolicyLevel === "green" ? "on" : ""}`} />
+                    <span className={`semaforo-light yellow ${magicPolicyLevel === "yellow" ? "on" : ""}`} />
+                    <span className={`semaforo-light red ${magicPolicyLevel === "red" ? "on" : ""}`} />
+                  </div>
+                  <small>
+                    {magicPolicyLevel === "green"
+                      ? "Objetivo fácil de alcanzar"
+                      : magicPolicyLevel === "yellow"
+                        ? "Objetivo medio"
+                        : "Objetivo exigente"}
+                  </small>
+                </div>
+              </div>
+              <div className="audio-tools">
+                <button
+                  className="secondary"
+                  onClick={handleSaveMagicUnlockScore}
+                  disabled={magicUnlockConfigSaving}
+                >
+                  {magicUnlockConfigSaving ? "Guardando..." : "Guardar objetivo"}
+                </button>
+                {magicUnlockConfigMessage && <span className="muted">{magicUnlockConfigMessage}</span>}
+              </div>
+              <div className="admin-flow-summary">
+                <div className={`alert-pill ${adminAnalytics.flowSemaforoLevel}`}>
+                  Avance de flujo: {adminAnalytics.flowProgressPct}%
+                </div>
+                <div className="flow-semaforo" aria-label="Semáforo de flujo por etapa">
+                  <span className={`flow-dot ${adminAnalytics.flowCounts.onboarding > 0 ? "on" : "off"}`} />
+                  <span className={`flow-dot ${adminAnalytics.flowCounts.prePractice > 0 ? "on" : "off"}`} />
+                  <span className={`flow-dot ${adminAnalytics.flowCounts.practice > 0 ? "on" : "off"}`} />
+                  <span className="muted flow-legend">
+                    Onboarding {adminAnalytics.flowCounts.onboarding} · Pre-práctica {adminAnalytics.flowCounts.prePractice} · Práctica {adminAnalytics.flowCounts.practice}
+                  </span>
+                </div>
+                <div className="muted">
+                  Color habilitado en {adminAnalytics.flowCounts.colorEnabled} de {adminStudents.length} estudiantes.
+                </div>
               </div>
             </div>
 
@@ -2915,7 +3070,7 @@ export default function App() {
           <p className="muted">
             Reprogramacion mental y Metas Diarias están activas. Visualizacion de colores depende del permiso por estudiante.
             {" "}
-            Magia blanca se desbloquea con score semanal de {WHITE_MAGIC_UNLOCK_SCORE}%.
+            Magia blanca se desbloquea con score semanal de {magicUnlockScore}%.
           </p>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
@@ -2932,7 +3087,7 @@ export default function App() {
                     {item.id === "colores"
                       ? "Bloqueado"
                       : item.id === "magia"
-                        ? `Bloqueado (${whiteMagicScore}%/${WHITE_MAGIC_UNLOCK_SCORE}%)`
+                        ? `Bloqueado (${whiteMagicScore}%/${magicUnlockScore}%)`
                         : "Proximamente"}
                   </span>
                 )}
@@ -2956,7 +3111,7 @@ export default function App() {
         <DailyGoalsModule
           allowAdmin={false}
           onMagicUnlockChange={handleDailyMagicUnlock}
-          magicUnlockScore={WHITE_MAGIC_UNLOCK_SCORE}
+          magicUnlockScore={magicUnlockScore}
           fixedStudent={{
             id: student?.slug || "",
             name: student?.name || "Estudiante",
@@ -2981,7 +3136,7 @@ export default function App() {
           <p className="eyebrow">Magia blanca</p>
           <h3>Grimorio bonus mensual</h3>
           <p className="muted">
-            Desbloqueado por score semanal: {whiteMagicScore}% (objetivo {WHITE_MAGIC_UNLOCK_SCORE}%).
+            Desbloqueado por score semanal: {whiteMagicScore}% (objetivo {magicUnlockScore}%).
           </p>
           <p className="muted">
             Usa este módulo como práctica guiada: cada mes tiene un bonus y una meta concreta para habilitarlo.

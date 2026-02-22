@@ -669,6 +669,72 @@ button.ghost:hover {
   border-style: dashed;
 }
 
+.magic-semaforo-box {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--bg-soft) 75%, var(--card) 25%);
+  display: grid;
+  gap: 6px;
+}
+
+.magic-semaforo-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.magic-semaforo-head strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.magic-semaforo-head span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.magic-semaforo-lights {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.magic-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  opacity: 0.35;
+  border: 1px solid var(--line);
+  transition: opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.magic-light.red {
+  background: #ef4444;
+}
+
+.magic-light.yellow {
+  background: #f59e0b;
+}
+
+.magic-light.green {
+  background: #22c55e;
+}
+
+.magic-light.on {
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.magic-semaforo-box small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .manual-list {
   margin: 0;
   padding-left: 18px;

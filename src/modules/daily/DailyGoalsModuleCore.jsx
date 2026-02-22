@@ -577,6 +577,14 @@ function DailyGoalsModule({
   const lvlPct = levelProgressPct(xp, level);
   const tierPct = tierProgressPct(weeklyStats.avg, weeklyStats.tier, nextTier);
   const whiteMagicUnlocked = weeklyStats.avg >= magicUnlockScore;
+  const magicProgress = magicUnlockScore > 0
+    ? Math.max(0, Math.min(100, Math.round((weeklyStats.avg / magicUnlockScore) * 100)))
+    : 0;
+  const magicSemaforoLevel = whiteMagicUnlocked
+    ? "green"
+    : magicProgress >= 75
+      ? "yellow"
+      : "red";
 
   useEffect(() => {
     if (typeof onMagicUnlockChange !== "function") return;
@@ -1113,6 +1121,24 @@ function DailyGoalsModule({
             <header className="panel-head">
               <h3>Guía rápida</h3>
             </header>
+            <div className="magic-semaforo-box">
+              <div className="magic-semaforo-head">
+                <strong>Semáforo Magia Blanca</strong>
+                <span>{weeklyStats.avg}% / {magicUnlockScore}%</span>
+              </div>
+              <div className="magic-semaforo-lights" aria-label="Semáforo de desbloqueo de Magia Blanca">
+                <span className={`magic-light red ${magicSemaforoLevel === "red" ? "on" : ""}`} />
+                <span className={`magic-light yellow ${magicSemaforoLevel === "yellow" ? "on" : ""}`} />
+                <span className={`magic-light green ${magicSemaforoLevel === "green" ? "on" : ""}`} />
+              </div>
+              <small>
+                {whiteMagicUnlocked
+                  ? "Habilitada"
+                  : magicSemaforoLevel === "yellow"
+                    ? "Te falta poco"
+                    : "Sigue sumando score"}
+              </small>
+            </div>
             <ul className="manual-list">
               <li><strong>Estados:</strong> Hecho suma completo, Parcial suma la mitad, No hecho no suma.</li>
               <li><strong>Rutina de hoy:</strong> lo que cargas hoy aparece en el Check diario cuando pase al día siguiente.</li>
