@@ -7,6 +7,9 @@ const STATUS_OPTIONS = [
   { id: "na", label: "No aplica", color: "neutral" },
   { id: "pending", label: "Pendiente", color: "neutral" }
 ];
+const STATUS_BUTTON_OPTIONS = STATUS_OPTIONS.filter((item) =>
+  item.id === "done" || item.id === "partial" || item.id === "missed"
+);
 
 const STATUS_MULT = {
   done: 1,
@@ -36,6 +39,7 @@ const LEVELS = [
   { id: "claro", label: "Claro", minXp: 900, benefit: "1 check extra opcional sin castigo" },
   { id: "avanzado", label: "Avanzado", minXp: 1500, benefit: "Comodin semanal extra" }
 ];
+const DAILY_ACTION_LIMIT = 10;
 
 const BASE_STUDENTS = [
   {
@@ -198,7 +202,7 @@ function parseChecklistFromReportText(rawText) {
   });
 }
 
-function pickFiveTemplates(templates, dayKey) {
+function pickTemplatesForDay(templates, dayKey, limit = DAILY_ACTION_LIMIT) {
   if (!templates.length) return [];
 
   const critical = templates.filter((t) => t.critical);
@@ -219,15 +223,15 @@ function pickFiveTemplates(templates, dayKey) {
   if (breathing && !selected.find((item) => item.id === breathing.id)) {
     selected[0] = breathing;
   }
-  if (selected.length < 5) {
+  if (selected.length < limit) {
     const filler = rotate(templates, dayHash % Math.max(templates.length, 1));
     for (const t of filler) {
       if (selected.find((s) => s.id === t.id)) continue;
       selected.push(t);
-      if (selected.length === 5) break;
+      if (selected.length === limit) break;
     }
   }
-  return selected.slice(0, 5);
+  return selected.slice(0, limit);
 }
 
 function pointsForItem(item) {
@@ -424,7 +428,7 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
     (baseStore, dayKey) => {
       if (baseStore.days[dayKey]) return baseStore;
 
-      const templatesForDay = pickFiveTemplates(templates, dayKey);
+      const templatesForDay = pickTemplatesForDay(templates, dayKey);
       const items = templatesForDay.map((t) => ({
         id: `${t.id}-${dayKey}`,
         templateId: t.id,
@@ -588,6 +592,12 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
   };
 
   const addCustomTodayItem = () => {
+    const currentCount = (store.days[focusDate]?.items || []).length;
+    if (currentCount >= DAILY_ACTION_LIMIT) {
+      setMessage(`Ya tienes ${DAILY_ACTION_LIMIT} acciones para hoy.`);
+      return;
+    }
+
     const text = prompt("Escribe una ayuda diaria corta para hoy");
     if (!text || text.trim().length < 4) return;
 
@@ -606,7 +616,7 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
         ...prev,
         days: {
           ...prev.days,
-          [focusDate]: { ...day, items: [...day.items, item].slice(0, 5) }
+          [focusDate]: { ...day, items: [...day.items, item].slice(0, DAILY_ACTION_LIMIT) }
         }
       };
     });
@@ -741,7 +751,7 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
           <p className="subtitle">
             {mode === "admin"
               ? "Carga informes y genera checklist asistido sin abrumar"
-              : "Solo 5 acciones claras por dia para mantener foco"}
+              : "Acciones claras por dia para mantener foco"}
           </p>
         </div>
         <div className="topbar-controls">
@@ -755,20 +765,22 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
             </label>
           )}
 
-          <label className="control">
-            Alumno
-            <select
-              value={activeStudentId}
-              onChange={(e) => setActiveStudentId(e.target.value)}
-              disabled={Boolean(fixedId)}
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {mode === "admin" && (
+            <label className="control">
+              Alumno
+              <select
+                value={activeStudentId}
+                onChange={(e) => setActiveStudentId(e.target.value)}
+                disabled={Boolean(fixedId)}
+              >
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       </header>
 
@@ -861,44 +873,42 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
         <main className="content">
           <section className="hero-cards">
             <article className="hero-card">
-              <h2>{activeStudent?.name}</h2>
+              <h2>Plan personal diario</h2>
               <p>{activeStudent?.coachNotes}</p>
-              <small>Menos carga, mas consistencia: 5 checks diarios.</small>
-            </article>
-            <article className="hero-card score-card">
-              <h2>{weeklyStats.avg}%</h2>
-              <p>Promedio semanal</p>
-              <small>
-                Racha: {gamification.streak} dias • Comodines: {gamification.wildcards}
-              </small>
+              <small>Menos carga, mas consistencia: seguimiento diario simple.</small>
             </article>
           </section>
 
-          <section className="gamify-strip">
-            <article className="game-card">
-              <h4>Nivel {level.current.label}</h4>
-              <p>{xp} XP</p>
+          <section className="kpi-grid">
+            <article className="kpi-card accent">
+              <h4>Promedio semanal</h4>
+              <p className="kpi-value">{weeklyStats.avg}%</p>
+              <small>Racha: {gamification.streak} dias</small>
+            </article>
+
+            <article className="kpi-card">
+              <h4>XP total</h4>
+              <p className="kpi-value">{xp}</p>
+              <small>Nivel: {level.current.label}</small>
               <div className="progress-track">
                 <span className="progress-fill" style={{ width: `${lvlPct}%` }} />
               </div>
-              <small>
-                {level.nextAt ? `Faltan ${level.nextAt - xp} XP para subir` : "Nivel maximo"}
-              </small>
+              <small>{level.nextAt ? `Faltan ${level.nextAt - xp} XP` : "Nivel maximo"}</small>
             </article>
 
-            <article className="game-card">
+            <article className="kpi-card">
               <h4>Tier semanal</h4>
-              <p>{weeklyStats.tier ? weeklyStats.tier.label : "Sin tier"}</p>
+              <p className="kpi-value">{weeklyStats.tier ? weeklyStats.tier.label : "Sin tier"}</p>
               <div className="progress-track tier">
                 <span className="progress-fill tier" style={{ width: `${tierPct}%` }} />
               </div>
-              <small>{nextTier ? `Siguiente: ${nextTier.label} (${nextTier.minAvg}%)` : "Tier maximo"}</small>
+              <small>{nextTier ? `Siguiente: ${nextTier.label}` : "Tier maximo"}</small>
             </article>
 
-            <article className="game-card">
-              <h4>Proteccion de racha</h4>
-              <p>{gamification.wildcards} comodines</p>
-              <small>Se usan solo si un dia no llega a valido.</small>
+            <article className="kpi-card">
+              <h4>Comodines</h4>
+              <p className="kpi-value">{gamification.wildcards}</p>
+              <small>Protegen racha si un dia no llega a valido.</small>
             </article>
           </section>
 
@@ -940,8 +950,8 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
                         {item.category} {item.critical ? "• Critico" : ""}
                       </small>
                     </div>
-                    <div className="status-grid squares-5">
-                      {STATUS_OPTIONS.map((s) => (
+                    <div className="status-grid squares-3">
+                      {STATUS_BUTTON_OPTIONS.map((s) => (
                         <button
                           key={s.id}
                           type="button"
@@ -994,7 +1004,7 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
                 <h3>Rutina de hoy</h3>
                 <span>{formatDate(focusDate)}</span>
               </header>
-              <p className="hint">Hoy tienes un maximo de 5 acciones para no saturarte.</p>
+              <p className="hint">Hoy puedes cargar hasta {DAILY_ACTION_LIMIT} acciones.</p>
               <div className="test-actions two">
                 <button type="button" onClick={addCustomTodayItem}>
                   Agregar ayuda de hoy
@@ -1085,13 +1095,6 @@ function DailyGoalsModule({ allowAdmin = false, fixedStudent = null }) {
           )}
         </main>
       )}
-
-      {mode === "student" ? (
-        <div className="wildcard-fab">
-          <span>Comodines</span>
-          <strong>{gamification.wildcards}</strong>
-        </div>
-      ) : null}
 
       {message ? <p className="flash">{message}</p> : null}
     </div>

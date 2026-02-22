@@ -178,24 +178,29 @@ textarea {
   font-weight: 800;
 }
 
-/* ── Gamification strip ────────────────────────────── */
+/* ── KPI grid ─────────────────────────────────────── */
 
-.gamify-strip {
+.kpi-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
 
-.game-card {
+.kpi-card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 12px;
+  aspect-ratio: 1 / 1;
+  min-height: 140px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
   transition: border-color var(--transition-fast);
 }
 
-.game-card h4 {
+.kpi-card h4 {
   margin: 0;
   font-size: 11px;
   text-transform: uppercase;
@@ -204,15 +209,25 @@ textarea {
   font-weight: 700;
 }
 
-.game-card p {
-  margin: 4px 0 6px;
-  font-size: 20px;
+.kpi-value {
+  margin: 0;
+  font-size: 26px;
   font-weight: 800;
+  line-height: 1.1;
 }
 
-.game-card small {
+.kpi-card small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.kpi-card.accent {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line) 75%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-soft) 50%, var(--card) 50%),
+    var(--card)
+  );
 }
 
 .progress-track {
@@ -415,8 +430,8 @@ textarea {
   gap: 5px;
 }
 
-.status-grid.squares-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+.status-grid.squares-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .status {
@@ -712,8 +727,8 @@ button.ghost:hover {
     grid-template-columns: 1fr;
   }
 
-  .game-card p {
-    font-size: 18px;
+  .kpi-value {
+    font-size: 22px;
   }
 
   .wildcard-fab {
@@ -758,10 +773,6 @@ button.ghost:hover {
 
   .hero-cards {
     grid-template-columns: 1fr 240px;
-  }
-
-  .gamify-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .admin-layout {
