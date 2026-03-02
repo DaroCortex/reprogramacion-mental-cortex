@@ -366,6 +366,7 @@ body {
   min-height: 52px;
   font-size: 20px;
   border-radius: 14px;
+  white-space: nowrap;
 }
 
 .precheck-footer {
@@ -1285,12 +1286,15 @@ input[type="range"]:focus {
   }
 
   .precheck-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .precheck-actions .chip {
-    min-height: 46px;
-    font-size: 18px;
+    min-height: 44px;
+    font-size: 14px;
+    padding: 8px 6px;
+    border-radius: 12px;
   }
 
   .precheck-meta strong {
