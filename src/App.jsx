@@ -138,6 +138,8 @@ const PRACTICE_OPTIONS = [
 ];
 
 const MS_PER_HOUR = 1000 * 60 * 60;
+const DAILY_QUICK_LIMIT = 10;
+const DAILY_QUICK_STATUS = ["done", "partial", "missed"];
 const hasColorPracticeAccess = (studentItem) => Boolean(studentItem?.features?.colorVisionEnabled);
 
 const toIsoDate = (value) => {
@@ -158,6 +160,46 @@ const clampPercent = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;
   return Math.max(0, Math.min(100, Math.round(num)));
+};
+
+const dailyDateKey = (input = new Date()) => {
+  if (typeof input === "string") return input.slice(0, 10);
+  return input.toISOString().slice(0, 10);
+};
+
+const shiftDailyDate = (key, days) => {
+  const date = new Date(`${key}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return dailyDateKey(date);
+};
+
+const isBreathingTaskDaily = (item) => /respiraci/i.test(String(item?.text || ""));
+
+const buildQuickChecklistItems = (templates, dayKey) => {
+  const safeTemplates = Array.isArray(templates) ? templates : [];
+  const selected = safeTemplates.slice(0, DAILY_QUICK_LIMIT);
+  return selected.map((template, index) => ({
+    id: `${template.id || `quick-${index}`}-${dayKey}`,
+    templateId: template.id || null,
+    text: template.text || `Acción ${index + 1}`,
+    category: template.category || "Personal",
+    critical: Boolean(template.critical),
+    points: Number(template.points || 8),
+    status: "pending"
+  }));
+};
+
+const applySundayDailyRules = (dayKey, items) => {
+  const date = new Date(`${dayKey}T12:00:00`);
+  if (date.getDay() !== 0) return { changed: false, items };
+  let changed = false;
+  const next = items.map((item) => {
+    if (isBreathingTaskDaily(item)) return item;
+    if (item.status === "na" && item.critical === false) return item;
+    changed = true;
+    return { ...item, status: "na", critical: false };
+  });
+  return { changed, items: next };
 };
 
 const normalizeMagicUnlockScore = (value, fallback = DEFAULT_WHITE_MAGIC_UNLOCK_SCORE) => {
@@ -352,6 +394,13 @@ export default function App() {
     lastApneaSeconds: 0,
     apneaHistory: []
   });
+  const [quickCheckState, setQuickCheckState] = useState({
+    loading: false,
+    error: "",
+    dayKey: "",
+    items: []
+  });
+  const [quickGatePassed, setQuickGatePassed] = useState(false);
 
   const submitColorVisionSession = useCallback(
     async (payload, flowStage = "practice") => {
@@ -448,6 +497,8 @@ export default function App() {
   const finalCueGainRef = useRef(null);
   const bosqueFadeStopRef = useRef(null);
   const septasyncFadeStopRef = useRef(null);
+  const quickDailyPayloadRef = useRef(null);
+  const quickDailySaveTimerRef = useRef(null);
 
   const getEffectiveReverbMix = useCallback((cfg) => {
     if (cfg.reverbMode === "off") return 0;
@@ -557,6 +608,13 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", safeTheme);
     localStorage.setItem("rmcortex_theme", safeTheme);
   }, [theme]);
+
+  useEffect(() => () => {
+    if (quickDailySaveTimerRef.current) {
+      clearTimeout(quickDailySaveTimerRef.current);
+      quickDailySaveTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -1401,6 +1459,11 @@ export default function App() {
 
   const startSession = async () => {
     if (!student || isRunningRef.current || isStarting) return;
+    if (!quickGatePassed) {
+      setAudioCheckStatus("warning");
+      setAudioCheckMessage("Completa el check diario y toca Siguiente.");
+      return;
+    }
     setIsStarting(true);
     await requestWakeLock();
     const startNonce = Date.now();
@@ -2163,6 +2226,135 @@ export default function App() {
       // ignore
     }
   }, [whiteMagicStorageKey]);
+
+  const persistQuickDailyPayload = useCallback(async () => {
+    if (!slug || !token) return;
+    const payload = quickDailyPayloadRef.current;
+    if (!payload) return;
+    try {
+      await fetch("/api/daily/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, token, payload })
+      });
+    } catch (_error) {
+      // silent, se reintenta con próximos cambios
+    }
+  }, [slug, token]);
+
+  const scheduleQuickDailySave = useCallback(() => {
+    if (quickDailySaveTimerRef.current) {
+      clearTimeout(quickDailySaveTimerRef.current);
+    }
+    quickDailySaveTimerRef.current = setTimeout(() => {
+      persistQuickDailyPayload();
+      quickDailySaveTimerRef.current = null;
+    }, 350);
+  }, [persistQuickDailyPayload]);
+
+  const loadQuickDailyChecklist = useCallback(async () => {
+    if (!slug || !token || !student) return;
+    setQuickCheckState((prev) => ({ ...prev, loading: true, error: "" }));
+    try {
+      const response = await fetch(
+        `/api/daily/data?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`
+      );
+      if (!response.ok) throw new Error("No se pudo cargar check diario.");
+      const data = await response.json().catch(() => ({}));
+      const payload = data?.data && typeof data.data === "object" ? data.data : {};
+      const templates = Array.isArray(payload.templates) && payload.templates.length
+        ? payload.templates
+        : [
+            { id: `${slug}-resp`, text: "Respiracion de reprogramacion mental", category: "Salud", critical: true, points: 12 },
+            { id: `${slug}-kpi`, text: "Revision de KPIs", category: "Sistema", critical: true, points: 10 },
+            { id: `${slug}-foco`, text: "Tarea principal completada", category: "Sistema", critical: true, points: 10 },
+            { id: `${slug}-familia`, text: "Momento de presencia personal/familiar", category: "Familia", critical: false, points: 8 },
+            { id: `${slug}-registro`, text: "Registro breve emocional", category: "Salud", critical: false, points: 8 }
+          ];
+      const store = payload.store && typeof payload.store === "object"
+        ? {
+            days: payload.store.days && typeof payload.store.days === "object" ? payload.store.days : {},
+            activeTemplateIds: Array.isArray(payload.store.activeTemplateIds) ? payload.store.activeTemplateIds : null
+          }
+        : { days: {}, activeTemplateIds: null };
+
+      const dayKey = shiftDailyDate(dailyDateKey(), -1);
+      let changed = false;
+      let day = store.days[dayKey];
+      if (!day || !Array.isArray(day.items) || day.items.length === 0) {
+        day = {
+          createdAt: new Date().toISOString(),
+          items: buildQuickChecklistItems(templates, dayKey)
+        };
+        store.days = { ...store.days, [dayKey]: day };
+        changed = true;
+      }
+
+      const sundayAdjusted = applySundayDailyRules(dayKey, day.items);
+      if (sundayAdjusted.changed) {
+        day = { ...day, items: sundayAdjusted.items };
+        store.days = { ...store.days, [dayKey]: day };
+        changed = true;
+      }
+
+      const normalizedPayload = {
+        studentId: payload.studentId || slug,
+        studentName: payload.studentName || student.name || slug,
+        coachNotes: payload.coachNotes || "",
+        templates,
+        store
+      };
+      quickDailyPayloadRef.current = normalizedPayload;
+
+      if (changed) {
+        await fetch("/api/daily/data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug,
+            token,
+            payload: normalizedPayload
+          })
+        });
+      }
+
+      setQuickCheckState({
+        loading: false,
+        error: "",
+        dayKey,
+        items: (store.days[dayKey]?.items || []).filter((item) => item.status !== "na")
+      });
+    } catch (_error) {
+      setQuickCheckState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "No se pudo cargar el check diario."
+      }));
+    }
+  }, [slug, token, student]);
+
+  const setQuickItemStatus = useCallback((itemId, status) => {
+    if (!DAILY_QUICK_STATUS.includes(status)) return;
+    setQuickCheckState((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === itemId ? { ...item, status } : item
+      )
+    }));
+    const payload = quickDailyPayloadRef.current;
+    const dayKey = quickCheckState.dayKey;
+    if (!payload || !dayKey || !payload.store?.days?.[dayKey]?.items) return;
+    payload.store.days[dayKey].items = payload.store.days[dayKey].items.map((item) =>
+      item.id === itemId ? { ...item, status } : item
+    );
+    scheduleQuickDailySave();
+  }, [quickCheckState.dayKey, scheduleQuickDailySave]);
+
+  useEffect(() => {
+    if (practiceScreen !== "practice" || !slug || !token || !student) return;
+    setQuickGatePassed(false);
+    loadQuickDailyChecklist();
+  }, [practiceScreen, slug, token, student, loadQuickDailyChecklist]);
 
   const handleBackToMenu = () => {
     countdownAbortRef.current = true;
@@ -3227,6 +3419,83 @@ export default function App() {
             </div>
           </div>
 
+          {!isRunning && phase === "idle" && !quickGatePassed && (
+            <div className="quick-check-card">
+              <div className="quick-check-head">
+                <strong>Check diario rápido</strong>
+                <span>
+                  {quickCheckState.dayKey
+                    ? new Date(`${quickCheckState.dayKey}T12:00:00`).toLocaleDateString("es-ES", {
+                        day: "2-digit",
+                        month: "short"
+                      })
+                    : "--"}
+                </span>
+              </div>
+              <p className="muted">
+                Marca rápido lo de ayer y toca <strong>Siguiente</strong>. Si quieres editar todo, usa Metas Diarias.
+              </p>
+              {quickCheckState.loading && <p className="muted">Cargando check diario...</p>}
+              {quickCheckState.error && <p className="status error">{quickCheckState.error}</p>}
+              {!quickCheckState.loading && !quickCheckState.error && (
+                <ul className="quick-check-list">
+                  {quickCheckState.items.map((item) => (
+                    <li key={item.id} className="quick-check-row">
+                      <div className="quick-check-meta">
+                        <strong>{item.text}</strong>
+                        <small>{item.category}</small>
+                      </div>
+                      <div className="quick-check-actions">
+                        <button
+                          type="button"
+                          className={item.status === "done" ? "chip active" : "chip"}
+                          onClick={() => setQuickItemStatus(item.id, "done")}
+                        >
+                          Hecho
+                        </button>
+                        <button
+                          type="button"
+                          className={item.status === "partial" ? "chip active" : "chip"}
+                          onClick={() => setQuickItemStatus(item.id, "partial")}
+                        >
+                          Parcial
+                        </button>
+                        <button
+                          type="button"
+                          className={item.status === "missed" ? "chip active" : "chip"}
+                          onClick={() => setQuickItemStatus(item.id, "missed")}
+                        >
+                          No hecho
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                  {quickCheckState.items.length === 0 && (
+                    <li className="muted">No hay acciones cargadas.</li>
+                  )}
+                </ul>
+              )}
+              <div className="quick-check-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setQuickGatePassed(true)}
+                  disabled={quickCheckState.loading}
+                >
+                  Siguiente
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={loadQuickDailyChecklist}
+                  disabled={quickCheckState.loading}
+                >
+                  Recargar
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="breath-visual">
             {phase === "breathing" && (
               <div className="breath-counter-top">
@@ -3280,9 +3549,16 @@ export default function App() {
               <button
                 className="primary"
                 onClick={startSession}
-                disabled={audioCheckStatus === "checking" || isStarting || startCountdown > 0}
+                disabled={
+                  !quickGatePassed ||
+                  audioCheckStatus === "checking" ||
+                  isStarting ||
+                  startCountdown > 0
+                }
               >
-                {audioCheckStatus === "checking"
+                {!quickGatePassed
+                  ? "Completa check rápido"
+                  : audioCheckStatus === "checking"
                   ? "Chequeando audio..."
                   : isStarting
                     ? "Iniciando..."

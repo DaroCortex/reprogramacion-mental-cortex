@@ -441,6 +441,7 @@ function DailyGoalsModule({
         category: t.category,
         critical: t.critical,
         points: t.points,
+        recurringCustom: Boolean(t.recurringCustom),
         status: "pending"
       }));
 
@@ -615,40 +616,108 @@ function DailyGoalsModule({
   };
 
   const addCustomTodayItem = () => {
-    const currentCount = (store.days[focusDate]?.items || []).length;
-    if (currentCount >= DAILY_ACTION_LIMIT) {
-      setMessage(`Ya tienes ${DAILY_ACTION_LIMIT} acciones para hoy.`);
-      return;
+    if (!activeStudent) return;
+    const text = prompt("Escribe una ayuda diaria corta para hoy (quedará para los próximos días).");
+    if (!text || text.trim().length < 4) return;
+    const cleanText = text.trim();
+    const textKey = cleanText.toLowerCase();
+    const currentItems = store.days[focusDate]?.items || [];
+    const duplicatedInToday = currentItems.some(
+      (item) => String(item.text || "").trim().toLowerCase() === textKey
+    );
+
+    const existingTemplate = (activeStudent.templates || []).find(
+      (template) => String(template.text || "").trim().toLowerCase() === textKey
+    );
+
+    const templateId = existingTemplate?.id || `${activeStudent.id}-custom-${Date.now()}`;
+    const customTemplate = existingTemplate || {
+      id: templateId,
+      text: cleanText,
+      category: "Personal",
+      critical: false,
+      points: 8,
+      recurringCustom: true
+    };
+
+    if (!existingTemplate) {
+      setStudents((prev) =>
+        prev.map((studentItem) =>
+          studentItem.id !== activeStudent.id
+            ? studentItem
+            : {
+                ...studentItem,
+                templates: [...studentItem.templates, customTemplate]
+              }
+        )
+      );
     }
 
-    const text = prompt("Escribe una ayuda diaria corta para hoy");
-    if (!text || text.trim().length < 4) return;
+    const canAddToday = !duplicatedInToday && currentItems.length < DAILY_ACTION_LIMIT;
 
     setStore((prev) => {
       const day = prev.days[focusDate] || { createdAt: new Date().toISOString(), items: [] };
       const item = {
-        id: `custom-${Date.now()}`,
-        templateId: null,
-        text: text.trim(),
+        id: `${templateId}-${focusDate}`,
+        templateId,
+        text: cleanText,
         category: "Personal",
         critical: false,
         points: 8,
+        recurringCustom: true,
         status: "pending"
       };
       return {
         ...prev,
+        activeTemplateIds: Array.isArray(prev.activeTemplateIds)
+          ? Array.from(new Set([...prev.activeTemplateIds, templateId]))
+          : prev.activeTemplateIds,
         days: {
           ...prev.days,
-          [focusDate]: { ...day, items: [...day.items, item].slice(0, DAILY_ACTION_LIMIT) }
+          [focusDate]: {
+            ...day,
+            items: canAddToday ? [...day.items, item] : day.items
+          }
         }
       };
     });
+
+    if (canAddToday) {
+      setMessage("Ayuda agregada para hoy y guardada para próximos días.");
+    } else if (duplicatedInToday) {
+      setMessage("Esa ayuda ya está en la rutina de hoy y queda guardada para los próximos días.");
+    } else {
+      setMessage(`Hoy ya tienes ${DAILY_ACTION_LIMIT} acciones. La ayuda quedó guardada para los próximos días.`);
+    }
   };
 
   const removeTodayItem = (id) => {
+    const item = (store.days[focusDate]?.items || []).find((entry) => entry.id === id);
+    const recurringTemplateId = item?.recurringCustom ? String(item.templateId || "") : "";
+
     setStore((prev) => {
       const day = prev.days[focusDate];
-      if (!day) return prev;
+      if (!day && !recurringTemplateId) return prev;
+
+      if (recurringTemplateId) {
+        const nextDays = Object.fromEntries(
+          Object.entries(prev.days).map(([key, value]) => [
+            key,
+            {
+              ...value,
+              items: (value.items || []).filter((entry) => entry.templateId !== recurringTemplateId)
+            }
+          ])
+        );
+        return {
+          ...prev,
+          days: nextDays,
+          activeTemplateIds: Array.isArray(prev.activeTemplateIds)
+            ? prev.activeTemplateIds.filter((templateId) => templateId !== recurringTemplateId)
+            : prev.activeTemplateIds
+        };
+      }
+
       return {
         ...prev,
         days: {
@@ -660,6 +729,23 @@ function DailyGoalsModule({
         }
       };
     });
+
+    if (recurringTemplateId) {
+      setStudents((prev) =>
+        prev.map((studentItem) =>
+          studentItem.id !== activeStudentId
+            ? studentItem
+            : {
+                ...studentItem,
+                templates: studentItem.templates.filter((template) => template.id !== recurringTemplateId)
+              }
+        )
+      );
+      setMessage("Ayuda recurrente eliminada de hoy y de próximos días.");
+      return;
+    }
+
+    setMessage("Acción quitada de hoy.");
   };
 
   const createStudent = () => {
@@ -1141,7 +1227,7 @@ function DailyGoalsModule({
             </div>
             <ul className="manual-list">
               <li><strong>Estados:</strong> Hecho suma completo, Parcial suma la mitad, No hecho no suma.</li>
-              <li><strong>Rutina de hoy:</strong> lo que cargas hoy aparece en el Check diario cuando pase al día siguiente.</li>
+              <li><strong>Rutina de hoy:</strong> las ayudas nuevas quedan guardadas para los próximos días automáticamente.</li>
               <li><strong>XP:</strong> al llenar la barra subes de nivel y desbloqueas beneficios.</li>
               <li>
                 <strong>Magia blanca:</strong> se habilita con score semanal de {magicUnlockScore}%.
