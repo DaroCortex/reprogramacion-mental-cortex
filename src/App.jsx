@@ -166,12 +166,6 @@ const dailyDateKey = (input = new Date()) => {
   return input.toISOString().slice(0, 10);
 };
 
-const shiftDailyDate = (key, days) => {
-  const date = new Date(`${key}T12:00:00`);
-  date.setDate(date.getDate() + days);
-  return dailyDateKey(date);
-};
-
 const isBreathingTaskDaily = (item) => /respiraci/i.test(String(item?.text || ""));
 
 const buildQuickChecklistItems = (templates, dayKey) => {
@@ -2270,7 +2264,7 @@ export default function App() {
           }
         : { days: {}, activeTemplateIds: null };
 
-      const dayKey = shiftDailyDate(dailyDateKey(), -1);
+      const dayKey = dailyDateKey();
       let changed = false;
       let day = store.days[dayKey];
       if (!day || !Array.isArray(day.items) || day.items.length === 0) {
