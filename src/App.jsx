@@ -138,7 +138,6 @@ const PRACTICE_OPTIONS = [
 ];
 
 const MS_PER_HOUR = 1000 * 60 * 60;
-const DAILY_QUICK_LIMIT = 10;
 const DAILY_QUICK_STATUS = ["done", "partial", "missed"];
 const hasColorPracticeAccess = (studentItem) => Boolean(studentItem?.features?.colorVisionEnabled);
 
@@ -177,8 +176,7 @@ const isBreathingTaskDaily = (item) => /respiraci/i.test(String(item?.text || ""
 
 const buildQuickChecklistItems = (templates, dayKey) => {
   const safeTemplates = Array.isArray(templates) ? templates : [];
-  const selected = safeTemplates.slice(0, DAILY_QUICK_LIMIT);
-  return selected.map((template, index) => ({
+  return safeTemplates.map((template, index) => ({
     id: `${template.id || `quick-${index}`}-${dayKey}`,
     templateId: template.id || null,
     text: template.text || `Acción ${index + 1}`,
@@ -400,7 +398,6 @@ export default function App() {
     dayKey: "",
     items: []
   });
-  const [quickGatePassed, setQuickGatePassed] = useState(false);
 
   const submitColorVisionSession = useCallback(
     async (payload, flowStage = "practice") => {
@@ -1459,11 +1456,6 @@ export default function App() {
 
   const startSession = async () => {
     if (!student || isRunningRef.current || isStarting) return;
-    if (!quickGatePassed) {
-      setAudioCheckStatus("warning");
-      setAudioCheckMessage("Completa el check diario y toca Siguiente.");
-      return;
-    }
     setIsStarting(true);
     await requestWakeLock();
     const startNonce = Date.now();
@@ -2351,8 +2343,7 @@ export default function App() {
   }, [quickCheckState.dayKey, scheduleQuickDailySave]);
 
   useEffect(() => {
-    if (practiceScreen !== "practice" || !slug || !token || !student) return;
-    setQuickGatePassed(false);
+    if (practiceScreen !== "practice-check" || !slug || !token || !student) return;
     loadQuickDailyChecklist();
   }, [practiceScreen, slug, token, student, loadQuickDailyChecklist]);
 
@@ -2363,6 +2354,11 @@ export default function App() {
       stopSession();
     }
     setPracticeScreen("menu");
+  };
+
+  const proceedFromPrecheck = async () => {
+    await persistQuickDailyPayload();
+    setPracticeScreen("practice");
   };
 
   const openPracticeOption = (practiceId) => {
@@ -2380,7 +2376,7 @@ export default function App() {
       setPracticeScreen("color-vision");
       return;
     }
-    setPracticeScreen("practice");
+    setPracticeScreen("practice-check");
   };
 
   const onPointerUp = (event) => {
@@ -3390,6 +3386,114 @@ export default function App() {
     );
   }
 
+  if (practiceScreen === "practice-check") {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="practice-nav">
+          <button type="button" className="ghost" onClick={handleBackToMenu}>
+            Volver al menu
+          </button>
+        </div>
+        <section className="card precheck-screen">
+          <div className="precheck-head">
+            <p className="eyebrow">Checklist previo</p>
+            <h2>Checks antes de la respiración</h2>
+            <p className="muted">
+              Marca tus tareas y toca <strong>Siguiente</strong> para entrar a la práctica.
+            </p>
+            {quickCheckState.dayKey && (
+              <p className="muted precheck-date">
+                Día de control:{" "}
+                {new Date(`${quickCheckState.dayKey}T12:00:00`).toLocaleDateString("es-ES", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long"
+                })}
+              </p>
+            )}
+          </div>
+
+          {quickCheckState.loading && <p className="muted">Cargando checks...</p>}
+          {quickCheckState.error && <p className="status error">{quickCheckState.error}</p>}
+
+          {!quickCheckState.loading && !quickCheckState.error && (
+            <div className="precheck-list">
+              {quickCheckState.items.map((item, index) => (
+                <article
+                  key={item.id}
+                  className={`precheck-item ${
+                    item.status === "done"
+                      ? "is-done"
+                      : item.status === "partial"
+                        ? "is-partial"
+                        : item.status === "missed"
+                          ? "is-missed"
+                          : ""
+                  }`}
+                >
+                  <div className="precheck-meta">
+                    <strong>{item.text}</strong>
+                    <small>
+                      {item.category || "Personal"} · Check {index + 1}
+                    </small>
+                  </div>
+                  <div className="precheck-actions">
+                    <button
+                      type="button"
+                      className={item.status === "done" ? "chip active" : "chip"}
+                      onClick={() => setQuickItemStatus(item.id, "done")}
+                    >
+                      Hecho
+                    </button>
+                    <button
+                      type="button"
+                      className={item.status === "partial" ? "chip active" : "chip"}
+                      onClick={() => setQuickItemStatus(item.id, "partial")}
+                    >
+                      Parcial
+                    </button>
+                    <button
+                      type="button"
+                      className={item.status === "missed" ? "chip active" : "chip"}
+                      onClick={() => setQuickItemStatus(item.id, "missed")}
+                    >
+                      No hecho
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {quickCheckState.items.length === 0 && (
+                <p className="muted">
+                  No hay checks cargados todavía. Puedes cargarlos en <strong>Metas Diarias</strong>.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="precheck-footer">
+            <button
+              type="button"
+              className="secondary"
+              onClick={proceedFromPrecheck}
+              disabled={quickCheckState.loading}
+            >
+              Siguiente
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={loadQuickDailyChecklist}
+              disabled={quickCheckState.loading}
+            >
+              Recargar
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="app" onPointerUp={onPointerUp} onDoubleClick={onAppDoubleClick}>
       {renderHeader()}
@@ -3418,83 +3522,6 @@ export default function App() {
               )}
             </div>
           </div>
-
-          {!isRunning && phase === "idle" && !quickGatePassed && (
-            <div className="quick-check-card">
-              <div className="quick-check-head">
-                <strong>Check diario rápido</strong>
-                <span>
-                  {quickCheckState.dayKey
-                    ? new Date(`${quickCheckState.dayKey}T12:00:00`).toLocaleDateString("es-ES", {
-                        day: "2-digit",
-                        month: "short"
-                      })
-                    : "--"}
-                </span>
-              </div>
-              <p className="muted">
-                Marca rápido lo de ayer y toca <strong>Siguiente</strong>. Si quieres editar todo, usa Metas Diarias.
-              </p>
-              {quickCheckState.loading && <p className="muted">Cargando check diario...</p>}
-              {quickCheckState.error && <p className="status error">{quickCheckState.error}</p>}
-              {!quickCheckState.loading && !quickCheckState.error && (
-                <ul className="quick-check-list">
-                  {quickCheckState.items.map((item) => (
-                    <li key={item.id} className="quick-check-row">
-                      <div className="quick-check-meta">
-                        <strong>{item.text}</strong>
-                        <small>{item.category}</small>
-                      </div>
-                      <div className="quick-check-actions">
-                        <button
-                          type="button"
-                          className={item.status === "done" ? "chip active" : "chip"}
-                          onClick={() => setQuickItemStatus(item.id, "done")}
-                        >
-                          Hecho
-                        </button>
-                        <button
-                          type="button"
-                          className={item.status === "partial" ? "chip active" : "chip"}
-                          onClick={() => setQuickItemStatus(item.id, "partial")}
-                        >
-                          Parcial
-                        </button>
-                        <button
-                          type="button"
-                          className={item.status === "missed" ? "chip active" : "chip"}
-                          onClick={() => setQuickItemStatus(item.id, "missed")}
-                        >
-                          No hecho
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                  {quickCheckState.items.length === 0 && (
-                    <li className="muted">No hay acciones cargadas.</li>
-                  )}
-                </ul>
-              )}
-              <div className="quick-check-footer">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setQuickGatePassed(true)}
-                  disabled={quickCheckState.loading}
-                >
-                  Siguiente
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={loadQuickDailyChecklist}
-                  disabled={quickCheckState.loading}
-                >
-                  Recargar
-                </button>
-              </div>
-            </div>
-          )}
 
           <div className="breath-visual">
             {phase === "breathing" && (
@@ -3550,15 +3577,12 @@ export default function App() {
                 className="primary"
                 onClick={startSession}
                 disabled={
-                  !quickGatePassed ||
                   audioCheckStatus === "checking" ||
                   isStarting ||
                   startCountdown > 0
                 }
               >
-                {!quickGatePassed
-                  ? "Completa check rápido"
-                  : audioCheckStatus === "checking"
+                {audioCheckStatus === "checking"
                   ? "Chequeando audio..."
                   : isStarting
                     ? "Iniciando..."

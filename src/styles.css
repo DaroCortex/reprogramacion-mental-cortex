@@ -302,6 +302,81 @@ body {
   flex: 1;
 }
 
+.precheck-screen {
+  display: grid;
+  gap: 16px;
+}
+
+.precheck-head h2 {
+  margin: 4px 0 8px;
+}
+
+.precheck-date {
+  margin-top: 6px;
+  text-transform: capitalize;
+}
+
+.precheck-list {
+  display: grid;
+  gap: 12px;
+}
+
+.precheck-item {
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: color-mix(in srgb, var(--card) 85%, var(--bg) 15%);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.precheck-item.is-done {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke) 55%);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card) 88%);
+}
+
+.precheck-item.is-partial {
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--stroke) 55%);
+}
+
+.precheck-item.is-missed {
+  border-color: color-mix(in srgb, #d9534f 35%, var(--stroke) 65%);
+}
+
+.precheck-meta strong {
+  display: block;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.precheck-meta small {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.precheck-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.precheck-actions .chip {
+  width: 100%;
+  min-height: 52px;
+  font-size: 20px;
+  border-radius: 14px;
+}
+
+.precheck-footer {
+  display: flex;
+  gap: 10px;
+}
+
+.precheck-footer button {
+  flex: 1;
+}
+
 /* ── Breath visual ─────────────────────────────────── */
 
 .breath-visual {
@@ -1207,6 +1282,27 @@ input[type="range"]:focus {
 
   .practice-nav .ghost {
     width: 100%;
+  }
+
+  .precheck-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .precheck-actions .chip {
+    min-height: 46px;
+    font-size: 18px;
+  }
+
+  .precheck-meta strong {
+    font-size: 22px;
+  }
+
+  .precheck-meta small {
+    font-size: 13px;
+  }
+
+  .precheck-footer {
+    flex-direction: column;
   }
 
   .color-practice-iframe {
