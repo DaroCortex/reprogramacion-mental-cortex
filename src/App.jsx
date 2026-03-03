@@ -194,6 +194,12 @@ const applySundayDailyRules = (dayKey, items) => {
   return { changed, items: next };
 };
 
+const isQuickChecklistCompleted = (items) => {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) return false;
+  return list.every((item) => DAILY_QUICK_STATUS.includes(item.status));
+};
+
 const normalizeMagicUnlockScore = (value, fallback = DEFAULT_WHITE_MAGIC_UNLOCK_SCORE) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
@@ -392,6 +398,7 @@ export default function App() {
     dayKey: "",
     items: []
   });
+  const [showPrecheckItems, setShowPrecheckItems] = useState(true);
 
   const submitColorVisionSession = useCallback(
     async (payload, flowStage = "practice") => {
@@ -438,6 +445,7 @@ export default function App() {
   const replaceInputRef = useRef(null);
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
+  const lastBreathTriggerRef = useRef(0);
   const wakeLockRef = useRef(null);
   const pauseStartedAtRef = useRef(0);
   const endHoldTimeoutRef = useRef(null);
@@ -1537,6 +1545,7 @@ export default function App() {
     setCurrentBreathNumber(1);
     setSubphase("inhale");
     roundApneaByCycleRef.current = [];
+    lastBreathTriggerRef.current = 0;
     stopAudio();
     stopBosque();
     stopSeptasync();
@@ -1556,6 +1565,7 @@ export default function App() {
     apneaStartedAtRef.current = Date.now();
     phaseDeadlineRef.current = 0;
     setTimeLeftMs(0);
+    lastBreathTriggerRef.current = 0;
     stopBreathSound();
     const startPlayback = () => {
       playAudio();
@@ -1699,14 +1709,36 @@ export default function App() {
 
   const playBreathSound = () => {
     if (!breathAudioRef.current) return;
+    const now = Date.now();
+    if (now - lastBreathTriggerRef.current < 320) return;
+    lastBreathTriggerRef.current = now;
+
     if (breathStopTimerRef.current) {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
-    breathAudioRef.current.loop = false;
-    breathAudioRef.current.pause();
-    breathAudioRef.current.currentTime = 0;
-    breathAudioRef.current.play().catch(() => {});
+    const audioEl = breathAudioRef.current;
+    const cycleSeconds = Math.max(
+      0.5,
+      Number(config.inhaleSeconds || 0) + Number(config.exhaleSeconds || 0)
+    );
+    const clipDuration = Number.isFinite(audioEl.duration) ? Number(audioEl.duration) : 0;
+    const targetRate = clipDuration > 0 ? clipDuration / cycleSeconds : 1;
+    const safeRate = Math.min(1.5, Math.max(0.45, targetRate));
+
+    audioEl.loop = false;
+    audioEl.pause();
+    audioEl.playbackRate = safeRate;
+    try {
+      audioEl.preservesPitch = false;
+    } catch (_error) {
+      // ignore
+    }
+    audioEl.currentTime = 0;
+    if (audioEl.readyState < 2) {
+      audioEl.load();
+    }
+    audioEl.play().catch(() => {});
   };
 
   const stopBreathSound = () => {
@@ -2299,12 +2331,16 @@ export default function App() {
         });
       }
 
+      const visibleItems = (store.days[dayKey]?.items || []).filter((item) => item.status !== "na");
+      const doneToday = isQuickChecklistCompleted(visibleItems);
+
       setQuickCheckState({
         loading: false,
         error: "",
         dayKey,
-        items: (store.days[dayKey]?.items || []).filter((item) => item.status !== "na")
+        items: visibleItems
       });
+      setShowPrecheckItems(!doneToday);
     } catch (_error) {
       setQuickCheckState((prev) => ({
         ...prev,
@@ -2330,6 +2366,8 @@ export default function App() {
     );
     scheduleQuickDailySave();
   }, [quickCheckState.dayKey, scheduleQuickDailySave]);
+
+  const quickChecklistDoneToday = isQuickChecklistCompleted(quickCheckState.items);
 
   useEffect(() => {
     if (practiceScreen !== "practice-check" || !slug || !token || !student) return;
@@ -3388,9 +3426,15 @@ export default function App() {
           <div className="precheck-head">
             <p className="eyebrow">Checklist previo</p>
             <h2>Checks antes de la respiración</h2>
-            <p className="muted">
-              Marca tus tareas y toca <strong>Siguiente</strong> para entrar a la práctica.
-            </p>
+            {quickChecklistDoneToday ? (
+              <p className="status success precheck-done-banner">
+                Checklist hecho hoy. Puedes tocar <strong>Siguiente</strong> directo.
+              </p>
+            ) : (
+              <p className="muted">
+                Marca tus tareas y toca <strong>Siguiente</strong> para entrar a la práctica.
+              </p>
+            )}
             {quickCheckState.dayKey && (
               <p className="muted precheck-date">
                 Día de control:{" "}
@@ -3406,7 +3450,7 @@ export default function App() {
           {quickCheckState.loading && <p className="muted">Cargando checks...</p>}
           {quickCheckState.error && <p className="status error">{quickCheckState.error}</p>}
 
-          {!quickCheckState.loading && !quickCheckState.error && (
+          {!quickCheckState.loading && !quickCheckState.error && showPrecheckItems && (
             <div className="precheck-list">
               {quickCheckState.items.map((item, index) => (
                 <article
@@ -3469,6 +3513,16 @@ export default function App() {
             >
               Siguiente
             </button>
+            {quickChecklistDoneToday && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowPrecheckItems((prev) => !prev)}
+                disabled={quickCheckState.loading}
+              >
+                {showPrecheckItems ? "Ocultar checklist" : "Editar checklist"}
+              </button>
+            )}
             <button
               type="button"
               className="ghost"
