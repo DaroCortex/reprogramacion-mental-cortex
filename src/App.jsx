@@ -110,9 +110,9 @@ const SYSTEM_AUDIO = {
 };
 
 const SPEED_OPTIONS = [
-  { id: "rapida", label: "Rápida 1.5s/1.5s", inhale: 1.5, exhale: 1.5 },
+  { id: "rapida", label: "Rápida 1.5s/1.53s", inhale: 1.5, exhale: 1.53 },
   { id: "normal", label: "Normal 2s/2s", inhale: 2, exhale: 2 },
-  { id: "lenta", label: "Lenta 2.5s/3s", inhale: 2.5, exhale: 3 }
+  { id: "lenta", label: "Lenta 2.5s/2.5s", inhale: 2.5, exhale: 2.5 }
 ];
 const BREATH_STYLE_OPTIONS = [
   { id: "activation", label: "Activacion" },
@@ -1718,27 +1718,16 @@ export default function App() {
       breathStopTimerRef.current = null;
     }
     const audioEl = breathAudioRef.current;
-    const cycleSeconds = Math.max(
-      0.5,
-      Number(config.inhaleSeconds || 0) + Number(config.exhaleSeconds || 0)
-    );
-    const clipDuration = Number.isFinite(audioEl.duration) ? Number(audioEl.duration) : 0;
-    const targetRate = clipDuration > 0 ? clipDuration / cycleSeconds : 1;
-    const safeRate = Math.min(1.5, Math.max(0.45, targetRate));
-
     audioEl.loop = false;
     audioEl.pause();
-    audioEl.playbackRate = safeRate;
-    try {
-      audioEl.preservesPitch = false;
-    } catch (_error) {
-      // ignore
-    }
+    audioEl.playbackRate = 1;
     audioEl.currentTime = 0;
-    if (audioEl.readyState < 2) {
-      audioEl.load();
-    }
-    audioEl.play().catch(() => {});
+    audioEl.play().catch(() => {
+      setTimeout(() => {
+        if (!isRunningRef.current || isPausedRef.current || !breathAudioRef.current) return;
+        breathAudioRef.current.play().catch(() => {});
+      }, 90);
+    });
   };
 
   const stopBreathSound = () => {
