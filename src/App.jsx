@@ -1733,18 +1733,42 @@ export default function App() {
     const audioEl = usePrimary
       ? breathAudioRef.current || breathAudioAltRef.current
       : breathAudioAltRef.current || breathAudioRef.current;
+    const backupEl = usePrimary
+      ? breathAudioAltRef.current || breathAudioRef.current
+      : breathAudioRef.current || breathAudioAltRef.current;
     if (!audioEl) return;
 
-    audioEl.loop = false;
-    audioEl.pause();
-    audioEl.playbackRate = 1;
-    audioEl.currentTime = 0;
-    audioEl.play().catch(() => {
-      setTimeout(() => {
-        if (!isRunningRef.current || isPausedRef.current || !breathAudioRef.current) return;
-        breathAudioRef.current.play().catch(() => {});
-      }, 90);
-    });
+    const restartAndPlay = (target) => {
+      if (!target || !target.src) return Promise.reject(new Error("sin fuente"));
+      target.loop = false;
+      target.playbackRate = 1;
+      try {
+        target.currentTime = 0;
+      } catch (_error) {
+        // ignore
+      }
+      const attempt = target.play();
+      if (attempt && typeof attempt.then === "function") {
+        return attempt;
+      }
+      return Promise.resolve();
+    };
+
+    restartAndPlay(audioEl)
+      .catch(() => restartAndPlay(backupEl))
+      .catch(() => {
+        const src = audioEl?.src || backupEl?.src || "";
+        if (!src) return;
+        try {
+          const oneShot = new Audio(src);
+          oneShot.preload = "auto";
+          oneShot.loop = false;
+          oneShot.playbackRate = 1;
+          oneShot.play().catch(() => {});
+        } catch (_error) {
+          // ignore
+        }
+      });
   };
 
   const stopBreathSound = () => {
