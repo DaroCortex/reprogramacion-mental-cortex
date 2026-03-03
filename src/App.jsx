@@ -448,6 +448,10 @@ export default function App() {
   const breathStopTimerRef = useRef(null);
   const lastBreathTriggerRef = useRef(0);
   const breathCueIndexRef = useRef(0);
+  const breathBufferRef = useRef(null);
+  const breathBufferUrlRef = useRef("");
+  const breathBufferLoadingRef = useRef(null);
+  const breathActiveSourcesRef = useRef(new Set());
   const wakeLockRef = useRef(null);
   const pauseStartedAtRef = useRef(0);
   const endHoldTimeoutRef = useRef(null);
@@ -568,6 +572,52 @@ export default function App() {
       return false;
     }
   }, [config.audioVolume, config.reverbMix, config.reverbMode, getEffectiveReverbMix, updateReverbMix]);
+
+  const ensureBreathBuffer = useCallback(async (urlFromCaller) => {
+    const url =
+      urlFromCaller ||
+      breathAudioRef.current?.src ||
+      breathAudioAltRef.current?.src ||
+      "";
+    if (!url) return false;
+    if (breathBufferRef.current && breathBufferUrlRef.current === url) return true;
+    if (breathBufferLoadingRef.current) {
+      try {
+        await breathBufferLoadingRef.current;
+        return Boolean(breathBufferRef.current);
+      } catch (_error) {
+        return false;
+      }
+    }
+
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return false;
+    if (!audioContextRef.current) {
+      audioContextRef.current = new Ctx();
+    }
+    const ctx = audioContextRef.current;
+
+    const loading = (async () => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("breath buffer fetch failed");
+      const data = await response.arrayBuffer();
+      const decoded = await ctx.decodeAudioData(data.slice(0));
+      breathBufferRef.current = decoded;
+      breathBufferUrlRef.current = url;
+    })();
+
+    breathBufferLoadingRef.current = loading;
+    try {
+      await loading;
+      return true;
+    } catch (_error) {
+      breathBufferRef.current = null;
+      breathBufferUrlRef.current = "";
+      return false;
+    } finally {
+      breathBufferLoadingRef.current = null;
+    }
+  }, []);
 
   const ensureAuxGainGraph = useCallback((audioElement, sourceRef, gainRef, baseGain = 1) => {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -947,6 +997,7 @@ export default function App() {
           if (breathAudioAltRef.current) {
             breathAudioAltRef.current.src = url;
           }
+          ensureBreathBuffer(url);
         }
         if (key === "bosque7") {
           nextAmbient.bosque = url;
@@ -992,7 +1043,7 @@ export default function App() {
       setSeptasyncAudioMap((prev) => ({ ...prev, ...nextSeptasync }));
     }
     return { nextAmbient, nextSeptasync };
-  }, [config.ambientSound, config.septasyncTrack, fetchAudioUrl]);
+  }, [config.ambientSound, config.septasyncTrack, ensureBreathBuffer, fetchAudioUrl]);
 
   useEffect(() => {
     loadSystemAudio();
@@ -1167,6 +1218,17 @@ export default function App() {
       clearTimeout(septasyncFadeStopRef.current);
       septasyncFadeStopRef.current = null;
     }
+    breathActiveSourcesRef.current.forEach((source) => {
+      try {
+        source.stop(0);
+      } catch (_error) {
+        // no-op
+      }
+    });
+    breathActiveSourcesRef.current.clear();
+    breathBufferRef.current = null;
+    breathBufferUrlRef.current = "";
+    breathBufferLoadingRef.current = null;
     releaseWakeLock();
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
@@ -1297,6 +1359,8 @@ export default function App() {
     if (effectiveSeptasyncUrl && septasyncAudioRef.current) {
       syncLoopTrackSource(septasyncAudioRef.current, effectiveSeptasyncUrl);
     }
+
+    await ensureBreathBuffer();
 
     const targets = [
       audioRef.current,
@@ -1719,7 +1783,7 @@ export default function App() {
   };
 
   const playBreathSound = () => {
-    if (!breathAudioRef.current && !breathAudioAltRef.current) return;
+    if (!breathAudioRef.current && !breathAudioAltRef.current && !breathBufferRef.current) return;
     const now = Date.now();
     if (now - lastBreathTriggerRef.current < 320) return;
     lastBreathTriggerRef.current = now;
@@ -1728,6 +1792,47 @@ export default function App() {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
+
+    const playWithBuffer = () => {
+      const buffer = breathBufferRef.current;
+      if (!buffer) return false;
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return false;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new Ctx();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+      breathActiveSourcesRef.current.forEach((source) => {
+        try {
+          source.stop(0);
+        } catch (_error) {
+          // no-op
+        }
+      });
+      breathActiveSourcesRef.current.clear();
+
+      const source = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      source.buffer = buffer;
+      source.playbackRate.value = 1;
+      gain.gain.value = 1;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      source.onended = () => {
+        breathActiveSourcesRef.current.delete(source);
+        source.disconnect();
+        gain.disconnect();
+      };
+      breathActiveSourcesRef.current.add(source);
+      source.start(0);
+      return true;
+    };
+
+    if (playWithBuffer()) return;
+
     const usePrimary = breathCueIndexRef.current % 2 === 0;
     breathCueIndexRef.current += 1;
     const audioEl = usePrimary
@@ -1754,10 +1859,20 @@ export default function App() {
       return Promise.resolve();
     };
 
+    const breathSrc = audioEl?.src || backupEl?.src || "";
+    if (breathSrc) {
+      ensureBreathBuffer(breathSrc)
+        .then((ready) => {
+          if (!ready || !isRunningRef.current || isPausedRef.current) return;
+          playWithBuffer();
+        })
+        .catch(() => {});
+    }
+
     restartAndPlay(audioEl)
       .catch(() => restartAndPlay(backupEl))
       .catch(() => {
-        const src = audioEl?.src || backupEl?.src || "";
+        const src = breathSrc;
         if (!src) return;
         try {
           const oneShot = new Audio(src);
@@ -1778,12 +1893,21 @@ export default function App() {
       audioEl.currentTime = 0;
       audioEl.playbackRate = 1;
     };
+    breathActiveSourcesRef.current.forEach((source) => {
+      try {
+        source.stop(0);
+      } catch (_error) {
+        // no-op
+      }
+    });
+    breathActiveSourcesRef.current.clear();
     if (breathStopTimerRef.current) {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
     stopOne(breathAudioRef.current);
     stopOne(breathAudioAltRef.current);
+    lastBreathTriggerRef.current = 0;
   };
 
   const playBosque = () => {
