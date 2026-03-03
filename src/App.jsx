@@ -110,9 +110,9 @@ const SYSTEM_AUDIO = {
 };
 
 const SPEED_OPTIONS = [
-  { id: "rapida", label: "Rápida 1.5s", value: 1.5 },
-  { id: "normal", label: "Normal 2s", value: 2 },
-  { id: "lenta", label: "Lenta 3s", value: 3 }
+  { id: "rapida", label: "Rápida 1.5s/1.5s", inhale: 1.5, exhale: 1.5 },
+  { id: "normal", label: "Normal 2s/2s", inhale: 2, exhale: 2 },
+  { id: "lenta", label: "Lenta 2.5s/3s", inhale: 2.5, exhale: 3 }
 ];
 const BREATH_STYLE_OPTIONS = [
   { id: "activation", label: "Activacion" },
@@ -1048,9 +1048,6 @@ export default function App() {
       if (selectedSeptasyncUrl && septasyncAudioRef.current?.paused) {
         playSeptasync();
       }
-      if (phaseRef.current === "breathing" && breathAudioRef.current?.paused) {
-        playBreathSound();
-      }
     }, 600);
     return () => clearInterval(watchdog);
   }, [isRunning, isPaused, phase, selectedAmbientUrl, selectedSeptasyncUrl]);
@@ -1136,9 +1133,6 @@ export default function App() {
         if (phaseRef.current === "apnea") {
           safePlay(audioRef.current);
         }
-        if (phaseRef.current === "breathing") {
-          safePlay(breathAudioRef.current);
-        }
         safePlay(bosqueAudioRef.current);
         safePlay(septasyncAudioRef.current);
       }
@@ -1194,6 +1188,7 @@ export default function App() {
       setBreathsDone(nextBreaths);
       setSubphase("inhale");
       setCurrentBreathNumber(nextBreaths + 1);
+      playBreathSound();
       const inhaleMs = config.inhaleSeconds * 1000;
       phaseDeadlineRef.current = Date.now() + inhaleMs;
       setTimeLeftMs(inhaleMs);
@@ -1518,7 +1513,7 @@ export default function App() {
     if (phase === "apnea") playAudio();
     if (phase === "breathing") {
       playBosque();
-      playBreathSound();
+      if (subphase === "inhale") playBreathSound();
     }
   };
 
@@ -1708,9 +1703,9 @@ export default function App() {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
-    if (!breathAudioRef.current.paused) return;
+    breathAudioRef.current.loop = false;
+    breathAudioRef.current.pause();
     breathAudioRef.current.currentTime = 0;
-    breathAudioRef.current.loop = true;
     breathAudioRef.current.play().catch(() => {});
   };
 
@@ -3689,12 +3684,12 @@ export default function App() {
                 <button
                   key={option.id}
                   type="button"
-                  className={`chip ${config.inhaleSeconds === option.value && config.exhaleSeconds === option.value ? "active" : ""}`}
+                  className={`chip ${config.inhaleSeconds === option.inhale && config.exhaleSeconds === option.exhale ? "active" : ""}`}
                   onClick={() =>
                     setConfig((prev) => ({
                       ...prev,
-                      inhaleSeconds: option.value,
-                      exhaleSeconds: option.value
+                      inhaleSeconds: option.inhale,
+                      exhaleSeconds: option.exhale
                     }))
                   }
                 >
