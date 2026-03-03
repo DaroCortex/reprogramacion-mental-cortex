@@ -437,6 +437,7 @@ export default function App() {
 
   const audioRef = useRef(null);
   const breathAudioRef = useRef(null);
+  const breathAudioAltRef = useRef(null);
   const bosqueAudioRef = useRef(null);
   const endApneaAudioRef = useRef(null);
   const septasyncAudioRef = useRef(null);
@@ -446,6 +447,7 @@ export default function App() {
   const intervalRef = useRef(null);
   const breathStopTimerRef = useRef(null);
   const lastBreathTriggerRef = useRef(0);
+  const breathCueIndexRef = useRef(0);
   const wakeLockRef = useRef(null);
   const pauseStartedAtRef = useRef(0);
   const endHoldTimeoutRef = useRef(null);
@@ -942,6 +944,9 @@ export default function App() {
         if (!url) continue;
         if (key === "respirax1" && breathAudioRef.current) {
           breathAudioRef.current.src = url;
+          if (breathAudioAltRef.current) {
+            breathAudioAltRef.current.src = url;
+          }
         }
         if (key === "bosque7") {
           nextAmbient.bosque = url;
@@ -1296,6 +1301,7 @@ export default function App() {
     const targets = [
       audioRef.current,
       breathAudioRef.current,
+      breathAudioAltRef.current,
       endApneaAudioRef.current,
       preApneaCueAudioRef.current,
       finalApneaCueAudioRef.current,
@@ -1356,6 +1362,7 @@ export default function App() {
     const targets = [
       audioRef.current,
       breathAudioRef.current,
+      breathAudioAltRef.current,
       endApneaAudioRef.current,
       preApneaCueAudioRef.current,
       finalApneaCueAudioRef.current,
@@ -1376,6 +1383,7 @@ export default function App() {
     setIsAwaitingFinalClose(false);
     setPreviousApneaSeconds(0);
     preApneaCueCycleRef.current = null;
+    breathCueIndexRef.current = 0;
     setPhase("breathing");
     setCycleIndex(1);
     setBreathsDone(0);
@@ -1418,6 +1426,7 @@ export default function App() {
     const checks = [];
     if (apneaUrl && audioRef.current) checks.push(waitForAudioReady(audioRef.current));
     if (breathAudioRef.current?.src) checks.push(waitForAudioReady(breathAudioRef.current));
+    if (breathAudioAltRef.current?.src) checks.push(waitForAudioReady(breathAudioAltRef.current));
     if (endApneaAudioRef.current?.src) checks.push(waitForAudioReady(endApneaAudioRef.current));
     if (preApneaCueAudioRef.current?.src) checks.push(waitForAudioReady(preApneaCueAudioRef.current));
     if (finalApneaCueAudioRef.current?.src) checks.push(waitForAudioReady(finalApneaCueAudioRef.current));
@@ -1546,6 +1555,7 @@ export default function App() {
     setSubphase("inhale");
     roundApneaByCycleRef.current = [];
     lastBreathTriggerRef.current = 0;
+    breathCueIndexRef.current = 0;
     stopAudio();
     stopBosque();
     stopSeptasync();
@@ -1566,6 +1576,7 @@ export default function App() {
     phaseDeadlineRef.current = 0;
     setTimeLeftMs(0);
     lastBreathTriggerRef.current = 0;
+    breathCueIndexRef.current = 0;
     stopBreathSound();
     const startPlayback = () => {
       playAudio();
@@ -1708,7 +1719,7 @@ export default function App() {
   };
 
   const playBreathSound = () => {
-    if (!breathAudioRef.current) return;
+    if (!breathAudioRef.current && !breathAudioAltRef.current) return;
     const now = Date.now();
     if (now - lastBreathTriggerRef.current < 320) return;
     lastBreathTriggerRef.current = now;
@@ -1717,7 +1728,13 @@ export default function App() {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
-    const audioEl = breathAudioRef.current;
+    const usePrimary = breathCueIndexRef.current % 2 === 0;
+    breathCueIndexRef.current += 1;
+    const audioEl = usePrimary
+      ? breathAudioRef.current || breathAudioAltRef.current
+      : breathAudioAltRef.current || breathAudioRef.current;
+    if (!audioEl) return;
+
     audioEl.loop = false;
     audioEl.pause();
     audioEl.playbackRate = 1;
@@ -1731,13 +1748,18 @@ export default function App() {
   };
 
   const stopBreathSound = () => {
-    if (!breathAudioRef.current) return;
+    const stopOne = (audioEl) => {
+      if (!audioEl) return;
+      audioEl.pause();
+      audioEl.currentTime = 0;
+      audioEl.playbackRate = 1;
+    };
     if (breathStopTimerRef.current) {
       clearTimeout(breathStopTimerRef.current);
       breathStopTimerRef.current = null;
     }
-    breathAudioRef.current.pause();
-    breathAudioRef.current.currentTime = 0;
+    stopOne(breathAudioRef.current);
+    stopOne(breathAudioAltRef.current);
   };
 
   const playBosque = () => {
@@ -3669,6 +3691,7 @@ export default function App() {
 
           <audio ref={audioRef} src={audioSrc} preload="auto" playsInline />
           <audio ref={breathAudioRef} preload="auto" playsInline />
+          <audio ref={breathAudioAltRef} preload="auto" playsInline />
           <audio
             ref={bosqueAudioRef}
             preload="auto"
