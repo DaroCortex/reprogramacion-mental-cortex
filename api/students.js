@@ -187,7 +187,13 @@ export default async function handler(req, res) {
         magicUnlockScore: clampNumber(item?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore)
       }
     }));
-    return res.status(200).json({ students: safe });
+    return res.status(200).json({
+      students: safe,
+      settings: {
+        magicUnlockScore: appSettings.magicUnlockScore,
+        channelingEnabled: Boolean(appSettings.channelingEnabled)
+      }
+    });
   } catch (error) {
     return res.status(500).json({ error: "No se pudo cargar estudiantes" });
   }

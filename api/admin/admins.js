@@ -194,11 +194,11 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "PATCH") {
-      const { password, magicUnlockScore } = req.body || {};
+      const { password, magicUnlockScore, channelingEnabled } = req.body || {};
       if (!(await verifyAdminPassword(password))) {
         return res.status(401).json({ error: "No autorizado" });
       }
-      const nextSettings = await writeAppSettings({ magicUnlockScore });
+      const nextSettings = await writeAppSettings({ magicUnlockScore, channelingEnabled });
 
       const students = await readStudents();
       if (students.length > 0) {

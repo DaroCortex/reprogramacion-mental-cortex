@@ -693,28 +693,33 @@ function DailyGoalsModule({
 
   const removeTodayItem = (id) => {
     const item = (store.days[focusDate]?.items || []).find((entry) => entry.id === id);
-    const recurringTemplateId = item?.recurringCustom ? String(item.templateId || "") : "";
+    const templateId = String(item?.templateId || "");
+    const recurringTemplateId = item?.recurringCustom ? templateId : "";
+    const knownTemplateIds = (activeStudent?.templates || [])
+      .map((template) => template.id)
+      .filter(Boolean);
 
     setStore((prev) => {
       const day = prev.days[focusDate];
-      if (!day && !recurringTemplateId) return prev;
+      if (!day && !templateId) return prev;
 
-      if (recurringTemplateId) {
+      if (templateId) {
         const nextDays = Object.fromEntries(
           Object.entries(prev.days).map(([key, value]) => [
             key,
             {
               ...value,
-              items: (value.items || []).filter((entry) => entry.templateId !== recurringTemplateId)
+              items: (value.items || []).filter((entry) => entry.templateId !== templateId)
             }
           ])
         );
+        const sourceTemplateIds = Array.isArray(prev.activeTemplateIds)
+          ? prev.activeTemplateIds
+          : knownTemplateIds;
         return {
           ...prev,
           days: nextDays,
-          activeTemplateIds: Array.isArray(prev.activeTemplateIds)
-            ? prev.activeTemplateIds.filter((templateId) => templateId !== recurringTemplateId)
-            : prev.activeTemplateIds
+          activeTemplateIds: sourceTemplateIds.filter((activeId) => activeId !== templateId)
         };
       }
 
@@ -741,7 +746,12 @@ function DailyGoalsModule({
               }
         )
       );
-      setMessage("Ayuda recurrente eliminada de hoy y de próximos días.");
+      setMessage("Ayuda eliminada de hoy y de próximos días.");
+      return;
+    }
+
+    if (templateId) {
+      setMessage("Acción quitada y ocultada para los próximos días.");
       return;
     }
 

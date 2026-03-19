@@ -134,7 +134,7 @@ const PRACTICE_OPTIONS = [
   { id: "remota", label: "Practica de vision remota", enabled: false },
   { id: "meditacion", label: "Practica de meditacion", enabled: false },
   { id: "telekinesis", label: "Practica de telekinesis", enabled: false },
-  { id: "magia", label: "Sesion de magia blanca", enabled: false }
+  { id: "magia", label: "Sesiones de canalizacion", enabled: false }
 ];
 
 const MS_PER_HOUR = 1000 * 60 * 60;
@@ -350,6 +350,9 @@ export default function App() {
   const [magicUnlockConfigDraft, setMagicUnlockConfigDraft] = useState(String(DEFAULT_WHITE_MAGIC_UNLOCK_SCORE));
   const [magicUnlockConfigMessage, setMagicUnlockConfigMessage] = useState("");
   const [magicUnlockConfigSaving, setMagicUnlockConfigSaving] = useState(false);
+  const [channelingEnabled, setChannelingEnabled] = useState(false);
+  const [channelingConfigSaving, setChannelingConfigSaving] = useState(false);
+  const [channelingConfigMessage, setChannelingConfigMessage] = useState("");
   const [brandLogoMissing, setBrandLogoMissing] = useState(false);
   const [breathLogoMissing, setBreathLogoMissing] = useState(false);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -504,6 +507,8 @@ export default function App() {
   const septasyncFadeStopRef = useRef(null);
   const quickDailyPayloadRef = useRef(null);
   const quickDailySaveTimerRef = useRef(null);
+  const lastBreathBeepKeyRef = useRef("");
+  const lastRecoveryBeepKeyRef = useRef("");
 
   const getEffectiveReverbMix = useCallback((cfg) => {
     if (cfg.reverbMode === "off") return 0;
@@ -688,6 +693,7 @@ export default function App() {
       try {
         const data = await fetchJsonWithTimeout("/api/students", 1800);
         setStudents(Array.isArray(data.students) ? data.students : []);
+        setChannelingEnabled(Boolean(data?.settings?.channelingEnabled));
       } catch (error) {
         try {
           const data = await fetchJsonWithTimeout("/students.json", 1800);
@@ -780,12 +786,12 @@ export default function App() {
         if (item.id === "magia") {
           return {
             ...item,
-            enabled: whiteMagicUnlocked
+            enabled: channelingEnabled
           };
         }
         return item;
       }),
-    [student, whiteMagicUnlocked]
+    [student, channelingEnabled]
   );
 
   const selectedAmbientUrl = useMemo(() => {
@@ -1142,6 +1148,73 @@ export default function App() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [isRunning, isPaused, phase]);
+
+  const playSoftCueBeep = useCallback((frequency = 820, duration = 0.12, gainValue = 0.03) => {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new Ctx();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const now = ctx.currentTime;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(gainValue, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.03);
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        gain.disconnect();
+      };
+    } catch (_error) {
+      // no-op
+    }
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "breathing" || subphase !== "inhale" || !isRunning || isPaused) {
+      if (phase !== "breathing") lastBreathBeepKeyRef.current = "";
+      return;
+    }
+    const breathsLeft = Math.max(0, config.breathsPerCycle - currentBreathNumber + 1);
+    if (breathsLeft > 3) return;
+    const key = `${cycleIndex}-${currentBreathNumber}`;
+    if (lastBreathBeepKeyRef.current === key) return;
+    lastBreathBeepKeyRef.current = key;
+    playSoftCueBeep(760, 0.11, 0.026);
+  }, [
+    phase,
+    subphase,
+    isRunning,
+    isPaused,
+    cycleIndex,
+    currentBreathNumber,
+    config.breathsPerCycle,
+    playSoftCueBeep
+  ]);
+
+  useEffect(() => {
+    if (phase !== "recovery" || !isRunning || isPaused) {
+      if (phase !== "recovery") lastRecoveryBeepKeyRef.current = "";
+      return;
+    }
+    const remainingSeconds = Math.ceil(Math.max(0, timeLeftMs) / 1000);
+    if (remainingSeconds > 2 || remainingSeconds < 1) return;
+    const key = `${cycleIndex}-${remainingSeconds}`;
+    if (lastRecoveryBeepKeyRef.current === key) return;
+    lastRecoveryBeepKeyRef.current = key;
+    playSoftCueBeep(930, 0.1, 0.03);
+  }, [phase, isRunning, isPaused, timeLeftMs, cycleIndex, playSoftCueBeep]);
 
   const requestWakeLock = async () => {
     if (!("wakeLock" in navigator) || wakeLockRef.current) return;
@@ -2434,7 +2507,7 @@ export default function App() {
       if (!response.ok) throw new Error("No se pudo cargar check diario.");
       const data = await response.json().catch(() => ({}));
       const payload = data?.data && typeof data.data === "object" ? data.data : {};
-      const templates = Array.isArray(payload.templates) && payload.templates.length
+      const rawTemplates = Array.isArray(payload.templates) && payload.templates.length
         ? payload.templates
         : [
             { id: `${slug}-resp`, text: "Respiracion de reprogramacion mental", category: "Salud", critical: true, points: 12 },
@@ -2449,6 +2522,12 @@ export default function App() {
             activeTemplateIds: Array.isArray(payload.store.activeTemplateIds) ? payload.store.activeTemplateIds : null
           }
         : { days: {}, activeTemplateIds: null };
+      const activeTemplateSet = Array.isArray(store.activeTemplateIds)
+        ? new Set(store.activeTemplateIds.filter(Boolean))
+        : null;
+      const templates = activeTemplateSet
+        ? rawTemplates.filter((template) => activeTemplateSet.has(template.id))
+        : rawTemplates;
 
       const dayKey = dailyDateKey();
       let changed = false;
@@ -2460,6 +2539,18 @@ export default function App() {
         };
         store.days = { ...store.days, [dayKey]: day };
         changed = true;
+      }
+
+      if (activeTemplateSet) {
+        const filteredDayItems = day.items.filter((item) => {
+          if (!item?.templateId) return true;
+          return activeTemplateSet.has(item.templateId);
+        });
+        if (filteredDayItems.length !== day.items.length) {
+          day = { ...day, items: filteredDayItems };
+          store.days = { ...store.days, [dayKey]: day };
+          changed = true;
+        }
       }
 
       const sundayAdjusted = applySundayDailyRules(dayKey, day.items);
@@ -2621,6 +2712,7 @@ export default function App() {
       );
       setMagicUnlockScoreConfig(nextScore);
       setMagicUnlockConfigDraft(String(nextScore));
+      setChannelingEnabled(Boolean(data?.settings?.channelingEnabled));
     } catch (error) {
       // silent
     }
@@ -2721,13 +2813,45 @@ export default function App() {
       setMagicUnlockScoreConfig(savedScore);
       setMagicUnlockConfigDraft(String(savedScore));
       setMagicUnlockConfigMessage(
-        `Objetivo guardado en ${savedScore}% para Magia Blanca.`
+        `Objetivo guardado en ${savedScore}% para canalización.`
       );
       await ensureAdminList(adminPassword);
     } catch (error) {
       setMagicUnlockConfigMessage(error?.message || "No se pudo guardar configuración.");
     } finally {
       setMagicUnlockConfigSaving(false);
+    }
+  };
+
+  const handleToggleChannelingEnabled = async (enabled) => {
+    if (!adminPassword) {
+      setChannelingConfigMessage("Ingresa password de admin.");
+      return;
+    }
+    setChannelingConfigSaving(true);
+    setChannelingConfigMessage("");
+    try {
+      const response = await fetch("/api/admin/admins", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          channelingEnabled: enabled
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "No se pudo guardar la habilitación.");
+      }
+      const nextEnabled = Boolean(data?.settings?.channelingEnabled);
+      setChannelingEnabled(nextEnabled);
+      setChannelingConfigMessage(
+        nextEnabled ? "Canalización habilitada desde dashboard." : "Canalización bloqueada desde dashboard."
+      );
+    } catch (error) {
+      setChannelingConfigMessage(error?.message || "No se pudo actualizar canalización.");
+    } finally {
+      setChannelingConfigSaving(false);
     }
   };
 
@@ -3089,11 +3213,11 @@ export default function App() {
             <div className="card">
               <h3>Configurar habilitaciones</h3>
               <p className="muted">
-                Define el score semanal para habilitar Magia Blanca y usa el semáforo para ver en qué etapa está el grupo.
+                Define el score semanal objetivo y decide si Canalización aparece o no en el menú del alumno.
               </p>
               <div className="form-grid">
                 <label>
-                  Objetivo Magia Blanca (%)
+                  Objetivo Canalización (%)
                   <input
                     type="number"
                     min="60"
@@ -3128,6 +3252,25 @@ export default function App() {
                   {magicUnlockConfigSaving ? "Guardando..." : "Guardar objetivo"}
                 </button>
                 {magicUnlockConfigMessage && <span className="muted">{magicUnlockConfigMessage}</span>}
+              </div>
+              <div className="audio-tools">
+                <button
+                  className={channelingEnabled ? "primary" : "secondary"}
+                  onClick={() => handleToggleChannelingEnabled(!channelingEnabled)}
+                  disabled={channelingConfigSaving}
+                >
+                  {channelingConfigSaving
+                    ? "Guardando..."
+                    : channelingEnabled
+                      ? "Canalización ON"
+                      : "Canalización OFF"}
+                </button>
+                <span className="muted">
+                  {channelingEnabled
+                    ? "Visible para alumnos desde el menú principal."
+                    : "Oculta para alumnos hasta activarla aquí."}
+                </span>
+                {channelingConfigMessage && <span className="muted">{channelingConfigMessage}</span>}
               </div>
               <div className="admin-flow-summary">
                 <div className={`alert-pill ${adminAnalytics.flowSemaforoLevel}`}>
@@ -3444,7 +3587,7 @@ export default function App() {
           <p className="muted">
             Reprogramacion mental y Metas Diarias están activas. Visualizacion de colores depende del permiso por estudiante.
             {" "}
-            Magia blanca se desbloquea con score semanal de {magicUnlockScore}%.
+            Canalización depende del dashboard. Objetivo actual: {magicUnlockScore}%.
           </p>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
@@ -3461,7 +3604,7 @@ export default function App() {
                     {item.id === "colores"
                       ? "Bloqueado"
                       : item.id === "magia"
-                        ? `Bloqueado (${whiteMagicScore}%/${magicUnlockScore}%)`
+                        ? "Bloqueado por dashboard"
                         : "Proximamente"}
                   </span>
                 )}
@@ -3507,10 +3650,10 @@ export default function App() {
           </button>
         </div>
         <section className="card">
-          <p className="eyebrow">Magia blanca</p>
-          <h3>Grimorio bonus mensual</h3>
+          <p className="eyebrow">Canalización</p>
+          <h3>Sesiones de canalización</h3>
           <p className="muted">
-            Desbloqueado por score semanal: {whiteMagicScore}% (objetivo {magicUnlockScore}%).
+            Disponible porque fue habilitado desde dashboard. Referencia actual de score: {whiteMagicScore}% / objetivo {magicUnlockScore}%.
           </p>
           <p className="muted">
             Usa este módulo como práctica guiada: cada mes tiene un bonus y una meta concreta para habilitarlo.
