@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       }
       prefix = `student-submissions/${safeSlug}`;
     } else {
-      const isEditorUpload = scope === "editor-final";
+      const isEditorUpload = scope === "editor-final" || scope === "editor-beginner";
       const canUpload = isEditorUpload
         ? await verifyEditorPassword(password)
         : await verifyAdminPassword(password);
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
         if (!student) {
           return res.status(404).json({ error: "Estudiante no encontrado" });
         }
-        prefix = `student-edited/${safeSlug}`;
+        prefix = scope === "editor-beginner" ? `student-beginner/${safeSlug}` : `student-edited/${safeSlug}`;
       }
     }
 

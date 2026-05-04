@@ -9,7 +9,12 @@ const uniqueKeysReferencedByOthers = (students, slug, key) =>
   students.some((item) => {
     if (item.slug === slug) return false;
     const workflow = item.audioWorkflow || {};
-    return item.audioKey === key || workflow.rawAudioKey === key || workflow.editorAudioKey === key;
+    return (
+      item.audioKey === key ||
+      workflow.rawAudioKey === key ||
+      workflow.beginnerAudioKey === key ||
+      workflow.editorAudioKey === key
+    );
   });
 
 const cleanupKey = async (students, slug, key) => {
@@ -32,21 +37,23 @@ export default async function handler(req, res) {
       slug,
       action = "",
       audioKey,
+      beginnerAudioKey,
       editorAudioKey,
       audioBase64,
       fileName,
+      beginnerFileName,
       editorFileName,
       contentType,
       settings
     } = req.body || {};
     const isAdmin = await verifyAdminPassword(password);
-    const isEditorAction = action === "attach-edited-audio";
+    const isEditorAction = action === "attach-edited-audio" || action === "attach-beginner-audio";
     const isEditor = !isAdmin && isEditorAction ? await verifyEditorPassword(password) : false;
     if (!isAdmin && !isEditor) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    const hasAudioUpdate = Boolean(audioKey || editorAudioKey || audioBase64);
+    const hasAudioUpdate = Boolean(audioKey || beginnerAudioKey || editorAudioKey || audioBase64);
     const hasSettingsUpdate = Boolean(settings && typeof settings === "object");
     const hasAction = Boolean(action);
     if (isEditor && hasSettingsUpdate) {
@@ -56,8 +63,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    let nextAudioKey = String(audioKey || editorAudioKey || "").trim();
-    const nextFileName = fileName || editorFileName;
+    let nextAudioKey = String(audioKey || beginnerAudioKey || editorAudioKey || "").trim();
+    const nextFileName = fileName || beginnerFileName || editorFileName;
     let optimization = null;
     if (hasAudioUpdate && !nextAudioKey && audioBase64 && nextFileName) {
       const inputBuffer = Buffer.from(String(audioBase64), "base64");
@@ -114,19 +121,39 @@ export default async function handler(req, res) {
         };
       }
 
+      if (action === "attach-beginner-audio") {
+        if (!nextAudioKey) {
+          throw new Error("Falta audio principiante");
+        }
+        const previousBeginnerKey = nextWorkflow.beginnerAudioKey || "";
+        if (previousBeginnerKey && previousBeginnerKey !== nextAudioKey && previousBeginnerKey !== activeAudioKey) {
+          cleanupCandidates.push(previousBeginnerKey);
+        }
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: "edited",
+          beginnerAudioKey: nextAudioKey,
+          beginnerFileName: String(nextFileName || nextWorkflow.rawFileName || "audio-principiante"),
+          beginnerEditedAt: nowIso
+        };
+      }
+
       if (action === "approve-edited-audio") {
         const approvedKey = nextWorkflow.editorAudioKey || nextAudioKey;
+        const beginnerKey = nextWorkflow.beginnerAudioKey || approvedKey;
         if (!approvedKey) {
-          throw new Error("No hay audio editado para aprobar");
+          throw new Error("Falta el audio Advanced limpio para aprobar");
         }
-        if (activeAudioKey && activeAudioKey !== approvedKey) {
+        if (activeAudioKey && approvedKey && activeAudioKey !== approvedKey) {
           cleanupCandidates.push(activeAudioKey);
         }
-        activeAudioKey = approvedKey;
+        activeAudioKey = approvedKey || beginnerKey;
         nextWorkflow = {
           ...nextWorkflow,
           status: "approved",
-          editorAudioKey: approvedKey,
+          beginnerAudioKey: beginnerKey,
+          beginnerFileName: nextWorkflow.beginnerFileName || nextWorkflow.editorFileName || "",
+          editorAudioKey: approvedKey || nextWorkflow.editorAudioKey || "",
           approvedAt: nowIso,
           advancedUnlockAt: nextWorkflow.advancedUnlockAt || new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
         };
@@ -154,6 +181,7 @@ export default async function handler(req, res) {
 
       if (
         hasAudioUpdate &&
+        action !== "attach-beginner-audio" &&
         action !== "attach-edited-audio" &&
         action !== "approve-edited-audio" &&
         action !== "unlock-advanced"
@@ -166,6 +194,9 @@ export default async function handler(req, res) {
           nextWorkflow = {
             ...nextWorkflow,
             status: "approved",
+            beginnerAudioKey: nextAudioKey,
+            beginnerFileName: String(fileName || nextWorkflow.beginnerFileName || "audio-principiante"),
+            beginnerEditedAt: nowIso,
             editorAudioKey: nextAudioKey,
             editorFileName: String(fileName || nextWorkflow.editorFileName || "audio-aprobado"),
             editedAt: nowIso,
@@ -188,10 +219,27 @@ export default async function handler(req, res) {
     });
 
     await writeStudents(next);
-    if (previousAudioKey && nextAudioKey && previousAudioKey !== nextAudioKey && action !== "attach-edited-audio") {
+    if (
+      previousAudioKey &&
+      nextAudioKey &&
+      previousAudioKey !== nextAudioKey &&
+      action !== "attach-beginner-audio" &&
+      action !== "attach-edited-audio"
+    ) {
       cleanupCandidates.push(previousAudioKey);
     }
-    if (previousWorkflow.editorAudioKey && action === "attach-edited-audio") {
+    if (
+      previousWorkflow.beginnerAudioKey &&
+      action === "attach-beginner-audio" &&
+      previousWorkflow.beginnerAudioKey !== nextAudioKey
+    ) {
+      cleanupCandidates.push(previousWorkflow.beginnerAudioKey);
+    }
+    if (
+      previousWorkflow.editorAudioKey &&
+      action === "attach-edited-audio" &&
+      previousWorkflow.editorAudioKey !== nextAudioKey
+    ) {
       cleanupCandidates.push(previousWorkflow.editorAudioKey);
     }
     for (const key of [...new Set(cleanupCandidates)]) {

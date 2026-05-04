@@ -39,12 +39,22 @@ export default async function handler(req, res) {
       }
     }
 
+    if (kind === "beginner") {
+      selectedKey = workflow.beginnerAudioKey || student?.audioKey || workflow.editorAudioKey || "";
+      const isAdmin = password ? await verifyAdminPassword(password) : false;
+      const isEditor = isAdmin || (password ? await verifyEditorPassword(password) : false);
+      const isOwner = token && token === String(student?.token || "");
+      if (!isEditor && !isOwner) {
+        return res.status(403).json({ error: "No autorizado" });
+      }
+    }
+
     if (!student || !selectedKey) {
       return res.status(404).json({ error: "Audio no encontrado" });
     }
 
     const isPublicAudio = PUBLIC_AUDIO_SLUGS.has(slug);
-    if (!isPublicAudio && !isWorkflowPreview && (!token || token !== String(student.token || ""))) {
+    if (!isPublicAudio && !isWorkflowPreview && kind !== "beginner" && (!token || token !== String(student.token || ""))) {
       return res.status(403).json({ error: "Token inválido" });
     }
 

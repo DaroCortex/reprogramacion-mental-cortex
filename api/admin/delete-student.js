@@ -3,7 +3,9 @@ import { verifyAdminPassword } from "../../lib/auth.js";
 
 const collectAudioKeys = (student) => {
   const workflow = student?.audioWorkflow || {};
-  return [...new Set([student?.audioKey, workflow.rawAudioKey, workflow.editorAudioKey].filter(Boolean))];
+  return [
+    ...new Set([student?.audioKey, workflow.rawAudioKey, workflow.beginnerAudioKey, workflow.editorAudioKey].filter(Boolean))
+  ];
 };
 
 export default async function handler(req, res) {

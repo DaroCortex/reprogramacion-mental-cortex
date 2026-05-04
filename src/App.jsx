@@ -834,7 +834,7 @@ export default function App() {
   const beginnerAudioUrl = useMemo(
     () =>
       hasApprovedAudio && slug && token
-        ? `/api/audio-file?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`
+        ? `/api/audio-file?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}&kind=beginner`
         : "",
     [hasApprovedAudio, slug, token]
   );
@@ -3170,6 +3170,7 @@ export default function App() {
       return (
         ["requested", "submitted", "edited"].includes(status) ||
         item.audioWorkflow?.rawAudioKey ||
+        item.audioWorkflow?.beginnerAudioKey ||
         item.audioWorkflow?.editorAudioKey
       );
     });
@@ -3229,29 +3230,35 @@ export default function App() {
     }
   };
 
-  const handleEditorFinalUpload = async (slugToUpdate, file) => {
+  const handleEditorFinalUpload = async (slugToUpdate, file, uploadKind = "advanced") => {
     if (!editorPassword || !slugToUpdate || !file) return;
     setEditorUploadSlug(slugToUpdate);
     setEditorMessage("");
     try {
-      const editorAudioKey = await uploadFileWithSignature(file, {
-        scope: "editor-final",
+      const isBeginner = uploadKind === "beginner";
+      const uploadedAudioKey = await uploadFileWithSignature(file, {
+        scope: isBeginner ? "editor-beginner" : "editor-final",
         password: editorPassword,
         slug: slugToUpdate
       });
       await updateStudentWorkflow(
         {
           slug: slugToUpdate,
-          action: "attach-edited-audio",
-          editorAudioKey,
-          editorFileName: file.name
+          action: isBeginner ? "attach-beginner-audio" : "attach-edited-audio",
+          ...(isBeginner
+            ? { beginnerAudioKey: uploadedAudioKey, beginnerFileName: file.name }
+            : { editorAudioKey: uploadedAudioKey, editorFileName: file.name })
         },
         editorPassword
       );
       await ensureEditorList(editorPassword);
-      setEditorMessage("Audio editado subido. Queda esperando OK del administrador.");
+      setEditorMessage(
+        isBeginner
+          ? "Audio Principiante subido. Queda esperando OK del administrador."
+          : "Audio Advanced limpio subido. Queda esperando OK del administrador."
+      );
     } catch (error) {
-      setEditorMessage(error?.message || "No se pudo subir audio editado.");
+      setEditorMessage(error?.message || "No se pudo subir audio.");
     } finally {
       setEditorUploadSlug("");
     }
@@ -3679,7 +3686,8 @@ export default function App() {
           <p className="eyebrow">Solo edición</p>
           <h2>Cola de audios</h2>
           <p className="muted">
-            Acá el editor escucha el audio raw, lo prepara y sube la versión final. No toca permisos ni alumnos.
+            Acá Mathi o Nico escuchan el audio raw y suben dos versiones: Principiante 30 min y Advanced limpio.
+            No tocan permisos ni alumnos.
           </p>
           <div className="admin-login">
             <input
@@ -3727,8 +3735,11 @@ export default function App() {
                       {item.audioWorkflow?.rawFileName && (
                         <div className="muted">Raw: {item.audioWorkflow.rawFileName}</div>
                       )}
+                      {item.audioWorkflow?.beginnerFileName && (
+                        <div className="muted">Principiante 30 min: {item.audioWorkflow.beginnerFileName}</div>
+                      )}
                       {item.audioWorkflow?.editorFileName && (
-                        <div className="muted">Editado: {item.audioWorkflow.editorFileName}</div>
+                        <div className="muted">Advanced limpio: {item.audioWorkflow.editorFileName}</div>
                       )}
                     </div>
                     <div className="link-actions">
@@ -3743,12 +3754,31 @@ export default function App() {
                         </a>
                       )}
                       <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
-                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir editado"}
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir Principiante 30 min"}
                         <input
                           type="file"
                           accept="audio/*"
                           disabled={editorUploadSlug === item.slug}
-                          onChange={(event) => handleEditorFinalUpload(item.slug, event.target.files?.[0])}
+                          onChange={(event) => handleEditorFinalUpload(item.slug, event.target.files?.[0], "beginner")}
+                        />
+                      </label>
+                      {item.audioWorkflow?.beginnerAudioKey && (
+                        <a
+                          className="ghost link-button"
+                          href={buildWorkflowAudioUrl(item, "beginner", editorPassword)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Escuchar principiante
+                        </a>
+                      )}
+                      <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir Advanced limpio"}
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          disabled={editorUploadSlug === item.slug}
+                          onChange={(event) => handleEditorFinalUpload(item.slug, event.target.files?.[0], "advanced")}
                         />
                       </label>
                       {item.audioWorkflow?.editorAudioKey && (
@@ -3758,7 +3788,7 @@ export default function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Escuchar editado
+                          Escuchar advanced
                         </a>
                       )}
                     </div>
@@ -4079,8 +4109,11 @@ export default function App() {
                           {item.audioWorkflow?.rawFileName && (
                             <div className="muted">Raw: {item.audioWorkflow.rawFileName}</div>
                           )}
+                          {item.audioWorkflow?.beginnerFileName && (
+                            <div className="muted">Principiante 30 min: {item.audioWorkflow.beginnerFileName}</div>
+                          )}
                           {item.audioWorkflow?.editorFileName && (
-                            <div className="muted">Editado: {item.audioWorkflow.editorFileName}</div>
+                            <div className="muted">Advanced limpio: {item.audioWorkflow.editorFileName}</div>
                           )}
                           {workflowStatus === "approved" && item.audioWorkflow?.advancedUnlockAt && (
                             <div className="muted">
@@ -4187,16 +4220,29 @@ export default function App() {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              Editado
+                              Advanced
                             </a>
                           )}
-                          {workflowStatus === "edited" && (
+                          {item.audioWorkflow?.beginnerAudioKey && (
+                            <a
+                              className="ghost link-button"
+                              href={buildWorkflowAudioUrl(item, "beginner")}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Principiante
+                            </a>
+                          )}
+                          {workflowStatus === "edited" && item.audioWorkflow?.editorAudioKey && (
                             <button
                               className="primary"
                               onClick={() => handleApproveEditedAudio(item.slug)}
                             >
                               Aprobar audio
                             </button>
+                          )}
+                          {workflowStatus === "edited" && !item.audioWorkflow?.editorAudioKey && (
+                            <span className="workflow-pill pending">Falta Advanced limpio</span>
                           )}
                           {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
                             <button
