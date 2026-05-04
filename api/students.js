@@ -1,9 +1,35 @@
 import { readAppSettings, readStudents, writeStudents } from "../lib/r2.js";
 
+const BEGINNER_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const clampNumber = (value, min, max, fallback = 0) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
   return Math.min(max, Math.max(min, num));
+};
+
+const safeTimestamp = (value) => {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getAdvancedUnlockTarget = (item, workflow) => {
+  const explicit = safeTimestamp(workflow?.advancedUnlockAt);
+  if (explicit) return explicit;
+
+  const approvedAt = safeTimestamp(workflow?.approvedAt);
+  if (approvedAt) return approvedAt + BEGINNER_DAYS * DAY_MS;
+
+  const firstSessionAt = safeTimestamp(item?.usage?.firstSessionAt);
+  if (firstSessionAt) return firstSessionAt + BEGINNER_DAYS * DAY_MS;
+
+  const createdAt = safeTimestamp(item?.createdAt);
+  if (createdAt && (item?.audioKey || workflow?.status === "approved")) {
+    return createdAt + BEGINNER_DAYS * DAY_MS;
+  }
+
+  return 0;
 };
 
 const normalizeSessionPayload = (payload) => {
@@ -210,10 +236,15 @@ export default async function handler(req, res) {
     const [students, appSettings] = await Promise.all([readStudents(), readAppSettings()]);
     const safe = students.map((item) => {
       const workflow = item.audioWorkflow || {};
+      const advancedUnlockTarget = getAdvancedUnlockTarget(item, workflow);
+      const hasApprovedAudio = Boolean(item.audioKey || workflow.status === "approved");
+      const advancedAutoUnlocked = Boolean(
+        hasApprovedAudio && advancedUnlockTarget && Date.now() >= advancedUnlockTarget
+      );
       return {
         name: item.name,
         slug: item.slug,
-        audioReady: Boolean(item.audioKey || workflow.status === "approved"),
+        audioReady: hasApprovedAudio,
         createdAt: item.createdAt || "",
         updatedAt: item.updatedAt || "",
         lastAudioAccessAt: item.lastAudioAccessAt || "",
@@ -226,7 +257,7 @@ export default async function handler(req, res) {
           editorFileName: workflow.editorFileName || "",
           editedAt: workflow.editedAt || "",
           approvedAt: workflow.approvedAt || "",
-          advancedUnlockAt: workflow.advancedUnlockAt || "",
+          advancedUnlockAt: workflow.advancedUnlockAt || (advancedUnlockTarget ? new Date(advancedUnlockTarget).toISOString() : ""),
           hasRawAudio: Boolean(workflow.rawAudioKey),
           hasEditedAudio: Boolean(workflow.editorAudioKey)
         },
@@ -234,7 +265,7 @@ export default async function handler(req, res) {
           colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled),
           magicUnlockScore: clampNumber(item?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore),
           beginnerReprogrammingEnabled: Boolean(item?.features?.beginnerReprogrammingEnabled || item.audioKey),
-          advancedReprogrammingEnabled: Boolean(item?.features?.advancedReprogrammingEnabled)
+          advancedReprogrammingEnabled: Boolean(item?.features?.advancedReprogrammingEnabled || advancedAutoUnlocked)
         }
       };
     });

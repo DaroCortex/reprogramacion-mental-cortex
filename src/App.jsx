@@ -130,6 +130,7 @@ const REVERB_MODE_OPTIONS = [
 const AUDIO_WORKFLOW_DAYS_TO_ADVANCED = 30;
 const AUDIO_WORKFLOW_MS_TO_ADVANCED =
   AUDIO_WORKFLOW_DAYS_TO_ADVANCED * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const WORKFLOW_STATUS_LABELS = {
   pending: "Pendiente",
   requested: "Solicitud enviada",
@@ -151,6 +152,40 @@ const PRACTICE_OPTIONS = [
 const MS_PER_HOUR = 1000 * 60 * 60;
 const DAILY_QUICK_STATUS = ["done", "partial", "missed"];
 const hasColorPracticeAccess = (studentItem) => Boolean(studentItem?.features?.colorVisionEnabled);
+
+const safeTimestamp = (value) => {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getAdvancedAccessInfo = (studentItem) => {
+  const workflow = studentItem?.audioWorkflow || {};
+  const hasApprovedAudio = Boolean(
+    studentItem?.audioReady ||
+      studentItem?.audioKey ||
+      workflow.status === "approved" ||
+      studentItem?.features?.beginnerReprogrammingEnabled
+  );
+  const explicitUnlockAt = safeTimestamp(workflow.advancedUnlockAt);
+  const approvedAt = safeTimestamp(workflow.approvedAt);
+  const firstSessionAt = safeTimestamp(studentItem?.usage?.firstSessionAt);
+  const createdAt = safeTimestamp(studentItem?.createdAt);
+  const targetMs =
+    explicitUnlockAt ||
+    (approvedAt ? approvedAt + AUDIO_WORKFLOW_MS_TO_ADVANCED : 0) ||
+    (firstSessionAt ? firstSessionAt + AUDIO_WORKFLOW_MS_TO_ADVANCED : 0) ||
+    (hasApprovedAudio && createdAt ? createdAt + AUDIO_WORKFLOW_MS_TO_ADVANCED : 0);
+  const unlocked = Boolean(
+    hasApprovedAudio &&
+      (studentItem?.features?.advancedReprogrammingEnabled ||
+        (targetMs && Date.now() >= targetMs))
+  );
+  const daysUntil = unlocked || !targetMs
+    ? 0
+    : Math.max(1, Math.ceil((targetMs - Date.now()) / DAY_MS));
+
+  return { hasApprovedAudio, unlocked, targetMs, daysUntil };
+};
 
 const toIsoDate = (value) => {
   if (!value) return "";
@@ -790,32 +825,12 @@ export default function App() {
     [studentsWithSlugs, uploadSlug]
   );
   const audioWorkflow = student?.audioWorkflow || {};
-  const approvedAtMs = Date.parse(audioWorkflow.approvedAt || "");
-  const advancedUnlockAtMs = Date.parse(audioWorkflow.advancedUnlockAt || "");
-  const workflowKnown = Boolean(audioWorkflow.status || audioWorkflow.approvedAt);
-  const hasApprovedAudio = Boolean(
-    student?.audioReady ||
-      audioWorkflow.status === "approved" ||
-      student?.features?.beginnerReprogrammingEnabled
-  );
-  const advancedUnlocked = Boolean(
-    hasApprovedAudio &&
-      (student?.features?.advancedReprogrammingEnabled ||
-        !workflowKnown ||
-        (Number.isFinite(advancedUnlockAtMs) && Date.now() >= advancedUnlockAtMs) ||
-        (Number.isFinite(approvedAtMs) &&
-          Date.now() - approvedAtMs >= AUDIO_WORKFLOW_MS_TO_ADVANCED))
-  );
-  const daysUntilAdvanced = useMemo(() => {
-    if (advancedUnlocked) return 0;
-    const target = Number.isFinite(advancedUnlockAtMs)
-      ? advancedUnlockAtMs
-      : Number.isFinite(approvedAtMs)
-        ? approvedAtMs + AUDIO_WORKFLOW_MS_TO_ADVANCED
-        : 0;
-    if (!target) return AUDIO_WORKFLOW_DAYS_TO_ADVANCED;
-    return Math.max(1, Math.ceil((target - Date.now()) / (24 * 60 * 60 * 1000)));
-  }, [advancedUnlocked, advancedUnlockAtMs, approvedAtMs]);
+  const advancedAccessInfo = useMemo(() => getAdvancedAccessInfo(student), [student]);
+  const hasApprovedAudio = advancedAccessInfo.hasApprovedAudio;
+  const advancedUnlocked = advancedAccessInfo.unlocked;
+  const daysUntilAdvanced = advancedUnlocked
+    ? 0
+    : advancedAccessInfo.daysUntil || AUDIO_WORKFLOW_DAYS_TO_ADVANCED;
   const beginnerAudioUrl = useMemo(
     () =>
       hasApprovedAudio && slug && token
@@ -3199,6 +3214,21 @@ export default function App() {
     }
   };
 
+  const handleUnlockAdvanced = async (slugToUpdate) => {
+    if (!adminPassword || !slugToUpdate) return;
+    try {
+      const confirmed = window.confirm(
+        "¿Seguro que quieres habilitar Reprogramacion Mental Advanced para este estudiante?"
+      );
+      if (!confirmed) return;
+      await updateStudentWorkflow({ slug: slugToUpdate, action: "unlock-advanced" });
+      await ensureAdminList(adminPassword);
+      setAdminMessage("Advanced habilitado manualmente para este estudiante.");
+    } catch (error) {
+      setAdminMessage(error?.message || "No se pudo habilitar Advanced.");
+    }
+  };
+
   const handleEditorFinalUpload = async (slugToUpdate, file) => {
     if (!editorPassword || !slugToUpdate || !file) return;
     setEditorUploadSlug(slugToUpdate);
@@ -4031,6 +4061,7 @@ export default function App() {
                 {adminRowsForView
                   .map((item) => {
                     const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
+                    const advancedInfo = getAdvancedAccessInfo(item);
                     return (
                       <div key={item.slug} className={`link-row ${item.alertLevel === "critical" ? "row-critical" : ""}`}>
                         <div>
@@ -4053,8 +4084,17 @@ export default function App() {
                           )}
                           {workflowStatus === "approved" && item.audioWorkflow?.advancedUnlockAt && (
                             <div className="muted">
-                              Advanced desde: {new Date(item.audioWorkflow.advancedUnlockAt).toLocaleDateString()}
+                              {advancedInfo.unlocked ? "Advanced desde" : "Advanced se libera"}:{" "}
+                              {new Date(item.audioWorkflow.advancedUnlockAt).toLocaleDateString()}
                             </div>
+                          )}
+                          {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
+                            <div className="muted">
+                              Advanced: se libera en {advancedInfo.daysUntil || AUDIO_WORKFLOW_DAYS_TO_ADVANCED} días
+                            </div>
+                          )}
+                          {advancedInfo.unlocked && (
+                            <div className="muted">Advanced: habilitado</div>
                           )}
                           <div className="muted">
                             Visualizacion de colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}
@@ -4157,6 +4197,17 @@ export default function App() {
                             >
                               Aprobar audio
                             </button>
+                          )}
+                          {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
+                            <button
+                              className="primary"
+                              onClick={() => handleUnlockAdvanced(item.slug)}
+                            >
+                              Activar Advanced
+                            </button>
+                          )}
+                          {advancedInfo.unlocked && (
+                            <span className="workflow-pill approved">Advanced ON</span>
                           )}
                           <button
                             className="secondary"

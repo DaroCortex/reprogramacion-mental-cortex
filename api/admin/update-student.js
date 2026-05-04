@@ -125,7 +125,30 @@ export default async function handler(req, res) {
         nextFeatures.advancedReprogrammingEnabled = false;
       }
 
-      if (hasAudioUpdate && action !== "attach-edited-audio" && action !== "approve-edited-audio") {
+      if (action === "unlock-advanced") {
+        if (!activeAudioKey && !nextWorkflow.editorAudioKey) {
+          throw new Error("Primero debe haber un audio aprobado");
+        }
+        const approvedKey = activeAudioKey || nextWorkflow.editorAudioKey;
+        activeAudioKey = approvedKey;
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: "approved",
+          editorAudioKey: nextWorkflow.editorAudioKey || approvedKey,
+          approvedAt: nextWorkflow.approvedAt || nowIso,
+          advancedUnlockAt: nowIso,
+          advancedUnlockedAt: nowIso
+        };
+        nextFeatures.beginnerReprogrammingEnabled = true;
+        nextFeatures.advancedReprogrammingEnabled = true;
+      }
+
+      if (
+        hasAudioUpdate &&
+        action !== "attach-edited-audio" &&
+        action !== "approve-edited-audio" &&
+        action !== "unlock-advanced"
+      ) {
         if (nextAudioKey) {
           if (activeAudioKey && activeAudioKey !== nextAudioKey) {
             cleanupCandidates.push(activeAudioKey);
