@@ -1,5 +1,5 @@
 import { deleteObject, readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
-import { verifyAdminPassword } from "../../lib/auth.js";
+import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 
 const BEGINNER_DAYS = 30;
@@ -32,29 +32,38 @@ export default async function handler(req, res) {
       slug,
       action = "",
       audioKey,
+      editorAudioKey,
       audioBase64,
       fileName,
+      editorFileName,
       contentType,
       settings
     } = req.body || {};
-    if (!(await verifyAdminPassword(password))) {
+    const isAdmin = await verifyAdminPassword(password);
+    const isEditorAction = action === "attach-edited-audio";
+    const isEditor = !isAdmin && isEditorAction ? await verifyEditorPassword(password) : false;
+    if (!isAdmin && !isEditor) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    const hasAudioUpdate = Boolean(audioKey || audioBase64);
+    const hasAudioUpdate = Boolean(audioKey || editorAudioKey || audioBase64);
     const hasSettingsUpdate = Boolean(settings && typeof settings === "object");
     const hasAction = Boolean(action);
+    if (isEditor && hasSettingsUpdate) {
+      return res.status(403).json({ error: "Editor sin permiso para cambiar configuracion" });
+    }
     if (!slug || (!hasAudioUpdate && !hasSettingsUpdate && !hasAction)) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    let nextAudioKey = String(audioKey || "").trim();
+    let nextAudioKey = String(audioKey || editorAudioKey || "").trim();
+    const nextFileName = fileName || editorFileName;
     let optimization = null;
-    if (hasAudioUpdate && !nextAudioKey && audioBase64 && fileName) {
+    if (hasAudioUpdate && !nextAudioKey && audioBase64 && nextFileName) {
       const inputBuffer = Buffer.from(String(audioBase64), "base64");
-      const optimized = await optimizeAudioBuffer({ inputBuffer, fileName });
+      const optimized = await optimizeAudioBuffer({ inputBuffer, fileName: nextFileName });
       optimization = optimized.optimization;
-      nextAudioKey = buildAudioKey(fileName, optimized.extension || "mp3");
+      nextAudioKey = buildAudioKey(nextFileName, optimized.extension || "mp3");
       await uploadObject(nextAudioKey, optimized.buffer, optimized.contentType || contentType);
     }
 
@@ -100,7 +109,7 @@ export default async function handler(req, res) {
           ...nextWorkflow,
           status: "edited",
           editorAudioKey: nextAudioKey,
-          editorFileName: String(fileName || nextWorkflow.rawFileName || "audio-editado"),
+          editorFileName: String(nextFileName || nextWorkflow.rawFileName || "audio-editado"),
           editedAt: nowIso
         };
       }

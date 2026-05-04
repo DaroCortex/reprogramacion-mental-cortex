@@ -1,5 +1,5 @@
 import { readStudents, signPutUrl } from "../../lib/r2.js";
-import { verifyAdminPassword } from "../../lib/auth.js";
+import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
 
 const sanitizeFileName = (fileName) =>
   String(fileName || "audio")
@@ -31,10 +31,14 @@ export default async function handler(req, res) {
       }
       prefix = `student-submissions/${safeSlug}`;
     } else {
-      if (!(await verifyAdminPassword(password))) {
+      const isEditorUpload = scope === "editor-final";
+      const canUpload = isEditorUpload
+        ? await verifyEditorPassword(password)
+        : await verifyAdminPassword(password);
+      if (!canUpload) {
         return res.status(401).json({ error: "No autorizado" });
       }
-      if (scope === "editor-final") {
+      if (isEditorUpload) {
         const students = await readStudents();
         const student = students.find((item) => item.slug === safeSlug);
         if (!student) {

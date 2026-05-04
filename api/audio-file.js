@@ -1,6 +1,6 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getBucket, getS3Client, readStudents, writeStudents } from "../lib/r2.js";
-import { verifyAdminPassword } from "../lib/auth.js";
+import { verifyAdminPassword, verifyEditorPassword } from "../lib/auth.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala", "oceano", "balance", "gamma", "trance"]);
 
@@ -32,8 +32,9 @@ export default async function handler(req, res) {
     if (isWorkflowPreview) {
       selectedKey = kind === "raw" ? workflow.rawAudioKey || "" : workflow.editorAudioKey || "";
       const isAdmin = await verifyAdminPassword(password);
+      const isEditor = isAdmin || (await verifyEditorPassword(password));
       const isOwner = token && token === String(student?.token || "");
-      if (!isAdmin && !isOwner) {
+      if (!isEditor && !isOwner) {
         return res.status(403).json({ error: "No autorizado" });
       }
     }
