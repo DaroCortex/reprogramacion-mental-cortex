@@ -885,6 +885,67 @@ input[type="range"]:focus {
   gap: 10px;
 }
 
+.student-upload-card,
+.editor-dashboard,
+.beginner-card {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.upload-drop {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--stroke) 55%);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card) 92%);
+  display: grid;
+  gap: 12px;
+}
+
+.upload-drop label {
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.audio-preview,
+.beginner-player {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.recording-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  margin-right: 6px;
+  background: #d43f3f;
+  box-shadow: 0 0 0 4px rgba(212, 63, 63, 0.18);
+}
+
+.file-button {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 34px;
+}
+
+.file-button input {
+  display: none;
+}
+
+.file-button.is-loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 /* ── History ───────────────────────────────────────── */
 
 .history {
@@ -1206,6 +1267,49 @@ input[type="range"]:focus {
   padding: 8px 12px;
 }
 
+.workflow-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workflow-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--card) 86%, var(--bg) 14%);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.workflow-pill.requested {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--stroke) 55%);
+}
+
+.workflow-pill.submitted {
+  color: #2f80ed;
+  border-color: color-mix(in srgb, #2f80ed 45%, var(--stroke) 55%);
+}
+
+.workflow-pill.edited {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--stroke) 45%);
+}
+
+.workflow-pill.approved {
+  color: #16a34a;
+  border-color: color-mix(in srgb, #16a34a 55%, var(--stroke) 45%);
+}
+
 /* ── Status / utilities ────────────────────────────── */
 
 .status {
@@ -1215,6 +1319,14 @@ input[type="range"]:focus {
 
 .status.error {
   color: #c0392b;
+}
+
+.status.success {
+  color: #16845f;
+}
+
+[data-theme="dark"] .status.success {
+  color: #6dd4c7;
 }
 
 .muted {

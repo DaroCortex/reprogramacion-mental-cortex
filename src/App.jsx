@@ -127,8 +127,19 @@ const REVERB_MODE_OPTIONS = [
   { id: "soft", label: "Suave" },
   { id: "camera", label: "Camara" }
 ];
+const AUDIO_WORKFLOW_DAYS_TO_ADVANCED = 30;
+const AUDIO_WORKFLOW_MS_TO_ADVANCED =
+  AUDIO_WORKFLOW_DAYS_TO_ADVANCED * 24 * 60 * 60 * 1000;
+const WORKFLOW_STATUS_LABELS = {
+  pending: "Pendiente",
+  requested: "Solicitud enviada",
+  submitted: "Audio recibido",
+  edited: "Editado listo",
+  approved: "Aprobado"
+};
 const PRACTICE_OPTIONS = [
-  { id: "reprogramacion", label: "Practica de Reprogramacion mental", enabled: true },
+  { id: "principiante", label: "Reprogramacion Mental Principiante", enabled: false },
+  { id: "reprogramacion", label: "Reprogramacion Mental Advanced", enabled: false },
   { id: "metas", label: "Metas Diarias", enabled: true },
   { id: "colores", label: "Practica de visualizacion de colores", enabled: false },
   { id: "remota", label: "Practica de vision remota", enabled: false },
@@ -216,19 +227,16 @@ const getSeptasyncUrlFromMap = (map, septasyncTrack) => {
   return map?.[septasyncTrack] || "";
 };
 
+const getRouteSlug = (prefix) => {
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  return parts[0] === prefix ? decodeURIComponent(parts[1] || "").trim() : "";
+};
+
 const getSlugFromLocation = () => {
   const params = new URLSearchParams(window.location.search);
   const querySlug = params.get("s");
   if (querySlug) return querySlug.trim();
-
-  const path = window.location.pathname;
-  if (path.startsWith("/s/")) {
-    const raw = path.split("/")[2] || "";
-    return raw.trim();
-  }
-
-  const cleaned = path.replace(/^\//, "").trim();
-  return cleaned.length ? cleaned : "";
+  return getRouteSlug("s");
 };
 
 const getTokenFromLocation = () => {
@@ -342,6 +350,19 @@ export default function App() {
   const [adminBridgeMessage, setAdminBridgeMessage] = useState("");
   const [adminBridgeLoading, setAdminBridgeLoading] = useState(false);
   const [replaceSlug, setReplaceSlug] = useState("");
+  const [editorPassword, setEditorPassword] = useState(
+    sessionStorage.getItem("rmcortex_editor_pw") || ""
+  );
+  const [editorStatus, setEditorStatus] = useState("idle");
+  const [editorStudents, setEditorStudents] = useState([]);
+  const [editorMessage, setEditorMessage] = useState("");
+  const [editorSearchTerm, setEditorSearchTerm] = useState("");
+  const [editorUploadSlug, setEditorUploadSlug] = useState("");
+  const [studentUploadFile, setStudentUploadFile] = useState(null);
+  const [studentUploadStatus, setStudentUploadStatus] = useState("idle");
+  const [studentUploadMessage, setStudentUploadMessage] = useState("");
+  const [studentRecordedBlob, setStudentRecordedBlob] = useState(null);
+  const [studentRecordingStatus, setStudentRecordingStatus] = useState("idle");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
   const [practiceScreen, setPracticeScreen] = useState("menu");
   const [whiteMagicUnlocked, setWhiteMagicUnlocked] = useState(false);
@@ -533,6 +554,9 @@ export default function App() {
   const quickDailySaveTimerRef = useRef(null);
   const lastBreathBeepKeyRef = useRef("");
   const lastRecoveryBeepKeyRef = useRef("");
+  const studentMediaRecorderRef = useRef(null);
+  const studentMediaStreamRef = useRef(null);
+  const studentRecordedChunksRef = useRef([]);
 
   const getEffectiveReverbMix = useCallback((cfg) => {
     if (cfg.reverbMode === "off") return 0;
@@ -760,6 +784,54 @@ export default function App() {
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
 
+  const uploadSlug = getRouteSlug("upload");
+  const uploadStudent = useMemo(
+    () => studentsWithSlugs.find((item) => item.slug === uploadSlug) || null,
+    [studentsWithSlugs, uploadSlug]
+  );
+  const audioWorkflow = student?.audioWorkflow || {};
+  const approvedAtMs = Date.parse(audioWorkflow.approvedAt || "");
+  const advancedUnlockAtMs = Date.parse(audioWorkflow.advancedUnlockAt || "");
+  const workflowKnown = Boolean(audioWorkflow.status || audioWorkflow.approvedAt);
+  const hasApprovedAudio = Boolean(
+    student?.audioReady ||
+      audioWorkflow.status === "approved" ||
+      student?.features?.beginnerReprogrammingEnabled
+  );
+  const advancedUnlocked = Boolean(
+    hasApprovedAudio &&
+      (student?.features?.advancedReprogrammingEnabled ||
+        !workflowKnown ||
+        (Number.isFinite(advancedUnlockAtMs) && Date.now() >= advancedUnlockAtMs) ||
+        (Number.isFinite(approvedAtMs) &&
+          Date.now() - approvedAtMs >= AUDIO_WORKFLOW_MS_TO_ADVANCED))
+  );
+  const daysUntilAdvanced = useMemo(() => {
+    if (advancedUnlocked) return 0;
+    const target = Number.isFinite(advancedUnlockAtMs)
+      ? advancedUnlockAtMs
+      : Number.isFinite(approvedAtMs)
+        ? approvedAtMs + AUDIO_WORKFLOW_MS_TO_ADVANCED
+        : 0;
+    if (!target) return AUDIO_WORKFLOW_DAYS_TO_ADVANCED;
+    return Math.max(1, Math.ceil((target - Date.now()) / (24 * 60 * 60 * 1000)));
+  }, [advancedUnlocked, advancedUnlockAtMs, approvedAtMs]);
+  const beginnerAudioUrl = useMemo(
+    () =>
+      hasApprovedAudio && slug && token
+        ? `/api/audio-file?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`
+        : "",
+    [hasApprovedAudio, slug, token]
+  );
+  const recordedPreviewUrl = useMemo(
+    () => (studentRecordedBlob ? URL.createObjectURL(studentRecordedBlob) : ""),
+    [studentRecordedBlob]
+  );
+
+  useEffect(() => () => {
+    if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
+  }, [recordedPreviewUrl]);
+
   const magicUnlockScore = useMemo(
     () => normalizeMagicUnlockScore(student?.features?.magicUnlockScore, magicUnlockScoreConfig),
     [student?.features?.magicUnlockScore, magicUnlockScoreConfig]
@@ -801,6 +873,18 @@ export default function App() {
   const practiceOptions = useMemo(
     () =>
       PRACTICE_OPTIONS.map((item) => {
+        if (item.id === "principiante") {
+          return {
+            ...item,
+            enabled: hasApprovedAudio
+          };
+        }
+        if (item.id === "reprogramacion") {
+          return {
+            ...item,
+            enabled: advancedUnlocked
+          };
+        }
         if (item.id === "colores") {
           return {
             ...item,
@@ -815,7 +899,7 @@ export default function App() {
         }
         return item;
       }),
-    [student, channelingEnabled]
+    [student, channelingEnabled, hasApprovedAudio, advancedUnlocked]
   );
 
   const selectedAmbientUrl = useMemo(() => {
@@ -2440,11 +2524,17 @@ export default function App() {
     <header className="header">
       <div>
         <p className="eyebrow">
-          {practiceScreen === "daily-goals"
-            ? "Metas Diarias"
-            : practiceScreen === "color-vision"
-              ? "Visualizacion de colores"
-              : "Reprogramación mental"}
+          {window.location.pathname.startsWith("/upload")
+            ? "Carga de audio"
+            : window.location.pathname.startsWith("/editor")
+              ? "Editor de audio"
+              : practiceScreen === "daily-goals"
+                ? "Metas Diarias"
+                : practiceScreen === "color-vision"
+                  ? "Visualizacion de colores"
+                  : practiceScreen === "principiante"
+                    ? "Reprogramacion mental principiante"
+                    : "Reprogramación mental"}
         </p>
         {!brandLogoMissing && (
           <img
@@ -2477,6 +2567,22 @@ export default function App() {
     const tokenParam =
       includeToken && studentToken ? `?t=${studentToken}` : "";
     return `${origin}/s/${studentSlug}${tokenParam}`;
+  };
+
+  const buildUploadLink = (studentSlug, studentToken) =>
+    `${window.location.origin}/upload/${studentSlug}?t=${studentToken}`;
+
+  const buildWorkflowAudioUrl = (item, kind, passwordValue = adminPassword) =>
+    `/api/audio-file?slug=${encodeURIComponent(item.slug)}&kind=${encodeURIComponent(kind)}&password=${encodeURIComponent(passwordValue || "")}`;
+
+  const copyUploadLink = async (studentSlug, studentToken) => {
+    const link = buildUploadLink(studentSlug, studentToken);
+    try {
+      await navigator.clipboard.writeText(link);
+      alert("Link de carga copiado.");
+    } catch (error) {
+      window.prompt("Copia el link de carga:", link);
+    }
   };
 
   const copyLink = async (studentSlug, studentToken, includeToken) => {
@@ -2704,6 +2810,16 @@ export default function App() {
   };
 
   const openPracticeOption = (practiceId) => {
+    if (practiceId === "principiante") {
+      if (!hasApprovedAudio) return;
+      setPracticeScreen("principiante");
+      return;
+    }
+    if (practiceId === "reprogramacion") {
+      if (!advancedUnlocked) return;
+      setPracticeScreen("practice-check");
+      return;
+    }
     if (practiceId === "metas") {
       setPracticeScreen("daily-goals");
       return;
@@ -2738,6 +2854,8 @@ export default function App() {
   };
 
   const isAdminRoute = window.location.pathname.startsWith("/admin");
+  const isEditorRoute = window.location.pathname.startsWith("/editor");
+  const isUploadRoute = window.location.pathname.startsWith("/upload");
 
   useEffect(() => {
     if (!isAdminRoute) return;
@@ -2746,6 +2864,13 @@ export default function App() {
       ensureAdminsRegistry(adminPassword);
     }
   }, [isAdminRoute, adminPassword]);
+
+  useEffect(() => {
+    if (!isEditorRoute) return;
+    if (editorPassword) {
+      ensureEditorList(editorPassword);
+    }
+  }, [isEditorRoute, editorPassword]);
 
   const ensureAdminList = async (password) => {
     setAdminStatus("loading");
@@ -2965,18 +3090,20 @@ export default function App() {
       reader.readAsDataURL(file);
     });
 
-  const directUploadToR2 = async (file) => {
+  const uploadFileWithSignature = async (file, payload = {}) => {
     const signRes = await fetch("/api/admin/sign-upload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        password: adminPassword,
-        fileName: file.name
+        password: payload.password ?? adminPassword,
+        fileName: file.name,
+        contentType: file.type || "audio/mpeg",
+        ...payload
       })
     });
     const signPayload = await signRes.json().catch(() => ({}));
     if (!signRes.ok || !signPayload?.uploadUrl || !signPayload?.key) {
-      throw new Error(signPayload?.error || "No se pudo preparar subida directa");
+      throw new Error(signPayload?.error || signPayload?.detail || "No se pudo preparar subida directa");
     }
 
     const putRes = await fetch(signPayload.uploadUrl, {
@@ -2991,6 +3118,198 @@ export default function App() {
     }
     return signPayload.key;
   };
+
+  const directUploadToR2 = (file) => uploadFileWithSignature(file, { password: adminPassword });
+
+  const ensureEditorList = async (passwordValue = editorPassword) => {
+    if (!passwordValue) return false;
+    setEditorStatus("loading");
+    setEditorMessage("");
+    try {
+      const response = await fetch(`/api/admin/list?password=${encodeURIComponent(passwordValue)}`);
+      if (!response.ok) throw new Error("No autorizado");
+      const data = await response.json();
+      setEditorStudents(Array.isArray(data.students) ? data.students : []);
+      sessionStorage.setItem("rmcortex_editor_pw", passwordValue);
+      setEditorStatus("ready");
+      return true;
+    } catch (error) {
+      setEditorStatus("auth-error");
+      setEditorMessage("Password incorrecto o sin acceso.");
+      return false;
+    }
+  };
+
+  const handleEditorLogin = async () => {
+    if (!editorPassword) {
+      setEditorMessage("Ingresa password de editor.");
+      return;
+    }
+    await ensureEditorList(editorPassword);
+  };
+
+  const filteredEditorStudents = useMemo(() => {
+    const term = editorSearchTerm.trim().toLowerCase();
+    const workflowRows = editorStudents.filter((item) => {
+      const status = item.audioWorkflow?.status || "";
+      return (
+        ["requested", "submitted", "edited"].includes(status) ||
+        item.audioWorkflow?.rawAudioKey ||
+        item.audioWorkflow?.editorAudioKey
+      );
+    });
+    if (!term) return workflowRows;
+    return workflowRows.filter((item) =>
+      [item.name, item.slug, item.audioWorkflow?.status].some((value) =>
+        String(value || "").toLowerCase().includes(term)
+      )
+    );
+  }, [editorStudents, editorSearchTerm]);
+
+  const updateStudentWorkflow = async (body, passwordValue = adminPassword) => {
+    const response = await fetch("/api/admin/update-student", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: passwordValue, ...body })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error || "No se pudo actualizar");
+    return payload;
+  };
+
+  const handleRequestStudentAudio = async (slugToUpdate) => {
+    if (!adminPassword || !slugToUpdate) return;
+    try {
+      await updateStudentWorkflow({ slug: slugToUpdate, action: "request-audio" });
+      await ensureAdminList(adminPassword);
+      setAdminMessage("Solicitud creada. Copia el link de carga y envíaselo al estudiante.");
+    } catch (error) {
+      setAdminMessage(error?.message || "No se pudo solicitar audio.");
+    }
+  };
+
+  const handleApproveEditedAudio = async (slugToUpdate) => {
+    if (!adminPassword || !slugToUpdate) return;
+    try {
+      await updateStudentWorkflow({ slug: slugToUpdate, action: "approve-edited-audio" });
+      await ensureAdminList(adminPassword);
+      setAdminMessage("Audio aprobado. Principiante queda activo y Advanced se libera en 30 dias.");
+    } catch (error) {
+      setAdminMessage(error?.message || "No se pudo aprobar audio.");
+    }
+  };
+
+  const handleEditorFinalUpload = async (slugToUpdate, file) => {
+    if (!editorPassword || !slugToUpdate || !file) return;
+    setEditorUploadSlug(slugToUpdate);
+    setEditorMessage("");
+    try {
+      const editorAudioKey = await uploadFileWithSignature(file, {
+        scope: "editor-final",
+        password: editorPassword,
+        slug: slugToUpdate
+      });
+      await updateStudentWorkflow(
+        {
+          slug: slugToUpdate,
+          action: "attach-edited-audio",
+          editorAudioKey,
+          editorFileName: file.name
+        },
+        editorPassword
+      );
+      await ensureEditorList(editorPassword);
+      setEditorMessage("Audio editado subido. Queda esperando OK del administrador.");
+    } catch (error) {
+      setEditorMessage(error?.message || "No se pudo subir audio editado.");
+    } finally {
+      setEditorUploadSlug("");
+    }
+  };
+
+  const stopStudentRecordingTracks = () => {
+    studentMediaStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    studentMediaStreamRef.current = null;
+  };
+
+  const startStudentRecording = async () => {
+    try {
+      setStudentUploadMessage("");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      studentMediaStreamRef.current = stream;
+      studentRecordedChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      studentMediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) studentRecordedChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(studentRecordedChunksRef.current, {
+          type: recorder.mimeType || "audio/webm"
+        });
+        setStudentRecordedBlob(blob);
+        setStudentRecordingStatus("ready");
+        stopStudentRecordingTracks();
+      };
+      recorder.start();
+      setStudentRecordingStatus("recording");
+    } catch (error) {
+      setStudentRecordingStatus("error");
+      setStudentUploadMessage("No se pudo activar el micrófono. Puedes subir un archivo.");
+    }
+  };
+
+  const stopStudentRecording = () => {
+    if (studentMediaRecorderRef.current?.state === "recording") {
+      studentMediaRecorderRef.current.stop();
+    }
+  };
+
+  const handleStudentRawUpload = async () => {
+    const sourceFile = studentRecordedBlob
+      ? new File([studentRecordedBlob], `${uploadSlug || "audio"}-grabacion.webm`, {
+          type: studentRecordedBlob.type || "audio/webm"
+        })
+      : studentUploadFile;
+    if (!uploadSlug || !token || !sourceFile) {
+      setStudentUploadMessage("Selecciona o graba un audio.");
+      return;
+    }
+    setStudentUploadStatus("loading");
+    setStudentUploadMessage("");
+    try {
+      const rawAudioKey = await uploadFileWithSignature(sourceFile, {
+        scope: "student-raw",
+        password: "",
+        slug: uploadSlug,
+        token
+      });
+      const response = await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: uploadSlug,
+          token,
+          action: "submitRawAudio",
+          rawAudioKey,
+          fileName: sourceFile.name,
+          source: studentRecordedBlob ? "recorded" : "uploaded"
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "No se pudo guardar audio");
+      setStudentUploadStatus("ready");
+      setStudentUploadMessage("Audio enviado. El editor lo preparará y administración dará el OK.");
+      setStudentUploadFile(null);
+      setStudentRecordedBlob(null);
+      setStudentRecordingStatus("idle");
+    } catch (error) {
+      setStudentUploadStatus("error");
+      setStudentUploadMessage(error?.message || "No se pudo subir el audio.");
+    }
+  };
+
+  useEffect(() => () => stopStudentRecordingTracks(), []);
 
   const optimizeStudentAudioDeferred = async (slugToOptimize) => {
     if (!slugToOptimize || !adminPassword) return;
@@ -3022,14 +3341,38 @@ export default function App() {
   };
 
   const handleAdminCreate = async () => {
-    if (!adminPassword || !adminName || !adminFile) {
-      setAdminMessage("Completa nombre y audio.");
+    if (!adminPassword || !adminName) {
+      setAdminMessage("Completa nombre.");
       return;
     }
     setAdminStatus("loading");
     setAdminMessage("");
     setAdminLink("");
     try {
+      if (!adminFile) {
+        const addRes = await fetch("/api/admin/create-student", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            password: adminPassword,
+            name: adminName,
+            requestAudio: true
+          })
+        });
+        if (!addRes.ok) {
+          const detail = await addRes.json().catch(() => ({}));
+          throw new Error(`No se pudo crear estudiante (${detail?.error || "error"}).`);
+        }
+        const payload = await addRes.json();
+        const created = payload.student;
+        setAdminLink(buildUploadLink(created.slug, created.token));
+        setAdminName("");
+        setAdminFile(null);
+        await ensureAdminList(adminPassword);
+        setAdminStatus("ready");
+        setAdminMessage("Estudiante creado. Link de carga listo para enviar.");
+        return;
+      }
       const isLarge = adminFile.size > DIRECT_UPLOAD_THRESHOLD_BYTES;
       const payloadBase = {
         password: adminPassword,
@@ -3218,6 +3561,186 @@ export default function App() {
       <div className="app">
         {renderHeader()}
         <p className="status error">{loadError}</p>
+      </div>
+    );
+  }
+
+  if (isUploadRoute) {
+    const uploadWorkflowStatus = uploadStudent?.audioWorkflow?.status || "pending";
+    const uploadTokenValid = Boolean(
+      uploadStudent && token && String(uploadStudent.token || "") === token
+    );
+
+    return (
+      <div className="app">
+        {renderHeader()}
+        <section className="card student-upload-card">
+          <p className="eyebrow">Carga simple</p>
+          <h2>Subir audio para edición</h2>
+          {!uploadStudent ? (
+            <p className="status error">Estudiante no encontrado. Revisa el link.</p>
+          ) : !uploadTokenValid ? (
+            <p className="status error">Token inválido. Abre el link completo que te enviaron.</p>
+          ) : uploadWorkflowStatus === "approved" ? (
+            <p className="status success">Tu audio ya está aprobado y cargado.</p>
+          ) : (
+            <>
+              <p className="muted">
+                Hola <strong>{uploadStudent.name}</strong>. Puedes grabar desde esta página o subir el audio
+                desde tu teléfono o notebook.
+              </p>
+              <div className="upload-drop">
+                <label>
+                  Subir archivo de audio
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(event) => setStudentUploadFile(event.target.files?.[0] || null)}
+                  />
+                </label>
+                <div className="audio-tools">
+                  {studentRecordingStatus !== "recording" ? (
+                    <button type="button" className="secondary" onClick={startStudentRecording}>
+                      Grabar ahora
+                    </button>
+                  ) : (
+                    <button type="button" className="ghost" onClick={stopStudentRecording}>
+                      <span className="recording-dot" /> Detener grabación
+                    </button>
+                  )}
+                </div>
+                {recordedPreviewUrl && (
+                  <audio className="audio-preview" controls src={recordedPreviewUrl} />
+                )}
+                {studentUploadFile && (
+                  <p className="muted">Archivo seleccionado: {studentUploadFile.name}</p>
+                )}
+              </div>
+              <div className="audio-tools">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={handleStudentRawUpload}
+                  disabled={
+                    studentUploadStatus === "loading" ||
+                    (!studentUploadFile && !studentRecordedBlob)
+                  }
+                >
+                  {studentUploadStatus === "loading" ? "Subiendo..." : "Enviar audio"}
+                </button>
+                {studentUploadMessage && (
+                  <span className={studentUploadStatus === "error" ? "status error" : "muted"}>
+                    {studentUploadMessage}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  if (isEditorRoute) {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <section className="card editor-dashboard">
+          <p className="eyebrow">Solo edición</p>
+          <h2>Cola de audios</h2>
+          <p className="muted">
+            Acá el editor escucha el audio raw, lo prepara y sube la versión final. No toca permisos ni alumnos.
+          </p>
+          <div className="admin-login">
+            <input
+              type="password"
+              placeholder="Password editor/admin"
+              value={editorPassword}
+              onChange={(event) => setEditorPassword(event.target.value)}
+            />
+            <button type="button" className="secondary" onClick={handleEditorLogin}>
+              Entrar
+            </button>
+          </div>
+          {editorMessage && (
+            <p className={editorStatus === "auth-error" ? "status error" : "muted"}>
+              {editorMessage}
+            </p>
+          )}
+        </section>
+
+        {editorStatus === "ready" && (
+          <section className="card editor-dashboard">
+            <div className="panel-actions">
+              <h3>Audios por editar</h3>
+              <input
+                type="search"
+                placeholder="Buscar estudiante..."
+                value={editorSearchTerm}
+                onChange={(event) => setEditorSearchTerm(event.target.value)}
+              />
+            </div>
+            <div className="link-list">
+              {filteredEditorStudents.map((item) => {
+                const workflowStatus = item.audioWorkflow?.status || "pending";
+                return (
+                  <div key={item.slug} className="link-row editor-row">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <div className="muted">{item.slug}</div>
+                      <div className="workflow-meta">
+                        Estado:{" "}
+                        <span className={`workflow-pill ${workflowStatus}`}>
+                          {WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}
+                        </span>
+                      </div>
+                      {item.audioWorkflow?.rawFileName && (
+                        <div className="muted">Raw: {item.audioWorkflow.rawFileName}</div>
+                      )}
+                      {item.audioWorkflow?.editorFileName && (
+                        <div className="muted">Editado: {item.audioWorkflow.editorFileName}</div>
+                      )}
+                    </div>
+                    <div className="link-actions">
+                      {item.audioWorkflow?.rawAudioKey && (
+                        <a
+                          className="ghost link-button"
+                          href={buildWorkflowAudioUrl(item, "raw", editorPassword)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Escuchar raw
+                        </a>
+                      )}
+                      <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir editado"}
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          disabled={editorUploadSlug === item.slug}
+                          onChange={(event) => handleEditorFinalUpload(item.slug, event.target.files?.[0])}
+                        />
+                      </label>
+                      {item.audioWorkflow?.editorAudioKey && (
+                        <a
+                          className="ghost link-button"
+                          href={buildWorkflowAudioUrl(item, "edited", editorPassword)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Escuchar editado
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredEditorStudents.length === 0 && (
+                <p className="muted">No hay audios pendientes.</p>
+              )}
+            </div>
+          </section>
+        )}
       </div>
     );
   }
@@ -3442,12 +3965,15 @@ export default function App() {
                   />
                 </label>
                 <label>
-                  Audio (apnea)
+                  Audio editado listo (opcional)
                   <input
                     type="file"
                     accept="audio/*"
                     onChange={(event) => setAdminFile(event.target.files?.[0] || null)}
                   />
+                  <span className="muted">
+                    Si lo dejas vacío, se crea un link para que el alumno suba el audio raw.
+                  </span>
                 </label>
               </div>
               <div className="audio-tools">
@@ -3503,99 +4029,159 @@ export default function App() {
               </div>
               <div className="link-list">
                 {adminRowsForView
-                  .map((item) => (
-                    <div key={item.slug} className={`link-row ${item.alertLevel === "critical" ? "row-critical" : ""}`}>
-                      <div>
-                        <strong>{item.name}</strong>
-                        <div className="muted">{item.slug}</div>
-                        {item.createdAt && (
-                          <div className="muted">Creado: {new Date(item.createdAt).toLocaleDateString()}</div>
-                        )}
-                        <div className="muted">
-                          Visualizacion de colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}
-                        </div>
-                        {item.usage?.lastSessionAt && (
-                          <div className="muted">
-                            Última práctica: {new Date(item.usage.lastSessionAt).toLocaleString()}
+                  .map((item) => {
+                    const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
+                    return (
+                      <div key={item.slug} className={`link-row ${item.alertLevel === "critical" ? "row-critical" : ""}`}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <div className="muted">{item.slug}</div>
+                          {item.createdAt && (
+                            <div className="muted">Creado: {new Date(item.createdAt).toLocaleDateString()}</div>
+                          )}
+                          <div className="workflow-meta">
+                            Audio:{" "}
+                            <span className={`workflow-pill ${workflowStatus}`}>
+                              {WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}
+                            </span>
                           </div>
-                        )}
-                        {adminView !== "students" && (
+                          {item.audioWorkflow?.rawFileName && (
+                            <div className="muted">Raw: {item.audioWorkflow.rawFileName}</div>
+                          )}
+                          {item.audioWorkflow?.editorFileName && (
+                            <div className="muted">Editado: {item.audioWorkflow.editorFileName}</div>
+                          )}
+                          {workflowStatus === "approved" && item.audioWorkflow?.advancedUnlockAt && (
+                            <div className="muted">
+                              Advanced desde: {new Date(item.audioWorkflow.advancedUnlockAt).toLocaleDateString()}
+                            </div>
+                          )}
                           <div className="muted">
-                            Sesiones: {item.totalSessions || 0} · Rondas: {item.totalRounds || 0}
-                            {Array.isArray(item.roundAvg) && item.roundAvg.length > 0
-                              ? ` · Promedio apnea R1-R5: ${item.roundAvg.map((v, idx) => `R${idx + 1}:${v || 0}s`).join(" | ")}`
+                            Visualizacion de colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}
+                          </div>
+                          {item.usage?.lastSessionAt && (
+                            <div className="muted">
+                              Última práctica: {new Date(item.usage.lastSessionAt).toLocaleString()}
+                            </div>
+                          )}
+                          {adminView !== "students" && (
+                            <div className="muted">
+                              Sesiones: {item.totalSessions || 0} · Rondas: {item.totalRounds || 0}
+                              {Array.isArray(item.roundAvg) && item.roundAvg.length > 0
+                                ? ` · Promedio apnea R1-R5: ${item.roundAvg.map((v, idx) => `R${idx + 1}:${v || 0}s`).join(" | ")}`
+                                : ""}
+                            </div>
+                          )}
+                          <div className="muted">
+                            Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}
+                            {item.colorVisionSessions
+                              ? ` · Color: ${item.colorVisionSessions} sesiones (${Math.round(item.colorVisionAccuracy || 0)}% prom.)`
                               : ""}
                           </div>
-                        )}
-                        <div className="muted">
-                          Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}
-                          {item.colorVisionSessions
-                            ? ` · Color: ${item.colorVisionSessions} sesiones (${Math.round(item.colorVisionAccuracy || 0)}% prom.)`
-                            : ""}
+                          <div className="flow-semaforo" aria-label="Estado de flujo del alumno">
+                            <span className={`flow-dot ${item.flowState?.onboarding ? "on" : "off"}`} />
+                            <span className={`flow-dot ${item.flowState?.prePractice ? "on" : "off"}`} />
+                            <span className={`flow-dot ${item.flowState?.practice ? "on" : "off"}`} />
+                            <span className="muted flow-legend">Onboarding · Pre-práctica · Práctica</span>
+                          </div>
+                          {item.alertLevel === "warning" && (
+                            <div className="warn">Alerta 48h sin práctica</div>
+                          )}
+                          {item.alertLevel === "critical" && (
+                            <div className="warn">Alerta roja 72h sin práctica</div>
+                          )}
                         </div>
-                        <div className="flow-semaforo" aria-label="Estado de flujo del alumno">
-                          <span className={`flow-dot ${item.flowState?.onboarding ? "on" : "off"}`} />
-                          <span className={`flow-dot ${item.flowState?.prePractice ? "on" : "off"}`} />
-                          <span className={`flow-dot ${item.flowState?.practice ? "on" : "off"}`} />
-                          <span className="muted flow-legend">Onboarding · Pre-práctica · Práctica</span>
+                        <div className="link-actions">
+                          <button
+                            className="secondary"
+                            onClick={() => copyLink(item.slug, item.token, false)}
+                          >
+                            Copiar link
+                          </button>
+                          <button
+                            className="primary"
+                            onClick={() => copyLink(item.slug, item.token, true)}
+                          >
+                            Copiar link con token
+                          </button>
+                          <button
+                            className="ghost"
+                            onClick={() => copyToken(item.token)}
+                          >
+                            Copiar token
+                          </button>
+                          <a
+                            className="ghost link-button"
+                            href={buildStudentLink(item.slug, item.token, true)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Abrir link
+                          </a>
+                          <button
+                            className="secondary"
+                            onClick={() => copyUploadLink(item.slug, item.token)}
+                          >
+                            Copiar link carga
+                          </button>
+                          <button
+                            className="ghost"
+                            onClick={() => handleRequestStudentAudio(item.slug)}
+                          >
+                            Solicitar audio
+                          </button>
+                          {item.audioWorkflow?.rawAudioKey && (
+                            <a
+                              className="ghost link-button"
+                              href={buildWorkflowAudioUrl(item, "raw")}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Raw
+                            </a>
+                          )}
+                          {item.audioWorkflow?.editorAudioKey && (
+                            <a
+                              className="ghost link-button"
+                              href={buildWorkflowAudioUrl(item, "edited")}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Editado
+                            </a>
+                          )}
+                          {workflowStatus === "edited" && (
+                            <button
+                              className="primary"
+                              onClick={() => handleApproveEditedAudio(item.slug)}
+                            >
+                              Aprobar audio
+                            </button>
+                          )}
+                          <button
+                            className="secondary"
+                            onClick={() => handleReplaceClick(item.slug)}
+                          >
+                            Reemplazar audio
+                          </button>
+                          <button
+                            className={item.features?.colorVisionEnabled ? "primary" : "secondary"}
+                            onClick={() =>
+                              handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled)
+                            }
+                          >
+                            {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
+                          </button>
+                          <button
+                            className="ghost"
+                            onClick={() => handleAdminDelete(item.slug)}
+                          >
+                            Eliminar
+                          </button>
                         </div>
-                        {item.alertLevel === "warning" && (
-                          <div className="warn">Alerta 48h sin práctica</div>
-                        )}
-                        {item.alertLevel === "critical" && (
-                          <div className="warn">Alerta roja 72h sin práctica</div>
-                        )}
                       </div>
-                      <div className="link-actions">
-                        <button
-                          className="secondary"
-                          onClick={() => copyLink(item.slug, item.token, false)}
-                        >
-                          Copiar link
-                        </button>
-                        <button
-                          className="primary"
-                          onClick={() => copyLink(item.slug, item.token, true)}
-                        >
-                          Copiar link con token
-                        </button>
-                        <button
-                          className="ghost"
-                          onClick={() => copyToken(item.token)}
-                        >
-                          Copiar token
-                        </button>
-                        <a
-                          className="ghost link-button"
-                          href={buildStudentLink(item.slug, item.token, true)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Abrir link
-                        </a>
-                        <button
-                          className="secondary"
-                          onClick={() => handleReplaceClick(item.slug)}
-                        >
-                          Reemplazar audio
-                        </button>
-                        <button
-                          className={item.features?.colorVisionEnabled ? "primary" : "secondary"}
-                          onClick={() =>
-                            handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled)
-                          }
-                        >
-                          {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
-                        </button>
-                        <button
-                          className="ghost"
-                          onClick={() => handleAdminDelete(item.slug)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 {adminRowsForView.length === 0 && (
                   <p className="muted">
                     {adminStudents.length === 0
@@ -3650,9 +4236,9 @@ export default function App() {
         <div className="card menu-card">
           <h2>Selecciona practica</h2>
           <p className="muted">
-            Reprogramacion mental y Metas Diarias están activas. Visualizacion de colores depende del permiso por estudiante.
+            Principiante se habilita cuando administración aprueba tu audio. Advanced se libera a los 30 días.
             {" "}
-            Canalización depende del dashboard. Objetivo actual: {magicUnlockScore}%.
+            Metas Diarias está activa. Visualización de colores y Canalización dependen del dashboard.
           </p>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
@@ -3666,17 +4252,54 @@ export default function App() {
                 {item.label}
                 {!item.enabled && (
                   <span>
-                    {item.id === "colores"
-                      ? "Bloqueado"
-                      : item.id === "magia"
-                        ? "Bloqueado por dashboard"
-                        : "Proximamente"}
+                    {item.id === "principiante"
+                      ? "Pendiente de audio"
+                      : item.id === "reprogramacion"
+                        ? hasApprovedAudio
+                          ? `Disponible en ${daysUntilAdvanced} días`
+                          : "Pendiente de audio"
+                        : item.id === "colores"
+                          ? "Bloqueado"
+                          : item.id === "magia"
+                            ? "Bloqueado por dashboard"
+                            : "Proximamente"}
                   </span>
                 )}
               </button>
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (practiceScreen === "principiante") {
+    return (
+      <div className="app">
+        {renderHeader()}
+        <div className="practice-nav">
+          <button type="button" className="ghost" onClick={handleBackToMenu}>
+            Volver al menu
+          </button>
+        </div>
+        <section className="card beginner-card">
+          <p className="eyebrow">Primer mes</p>
+          <h2>Reprogramacion Mental Principiante</h2>
+          <p className="muted">
+            Durante los primeros 30 días escuchas tu audio completo editado. Es una práctica simple:
+            reproducir, cerrar ojos y dejar que corra.
+          </p>
+          {beginnerAudioUrl ? (
+            <audio className="beginner-player" controls preload="metadata" src={beginnerAudioUrl} />
+          ) : (
+            <p className="status error">El audio todavía no está aprobado.</p>
+          )}
+          <div className="summary">
+            {advancedUnlocked
+              ? "Advanced ya está disponible en el menú."
+              : `Advanced se libera en ${daysUntilAdvanced} días.`}
+          </div>
+        </section>
       </div>
     );
   }

@@ -1,6 +1,11 @@
 import { deleteObject, readStudents, writeStudents } from "../../lib/r2.js";
 import { verifyAdminPassword } from "../../lib/auth.js";
 
+const collectAudioKeys = (student) => {
+  const workflow = student?.audioWorkflow || {};
+  return [...new Set([student?.audioKey, workflow.rawAudioKey, workflow.editorAudioKey].filter(Boolean))];
+};
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
@@ -20,11 +25,11 @@ export default async function handler(req, res) {
     const target = students.find((item) => item.slug === slug);
     const next = students.filter((item) => item.slug !== slug);
 
-    if (target?.audioKey) {
-      const isStillReferenced = next.some((item) => item.audioKey === target.audioKey);
+    for (const key of collectAudioKeys(target)) {
+      const isStillReferenced = next.some((item) => collectAudioKeys(item).includes(key));
       try {
         if (!isStillReferenced) {
-          await deleteObject(target.audioKey);
+          await deleteObject(key);
         }
       } catch (cleanupError) {
         console.warn("delete-student audio cleanup warning:", cleanupError?.message || cleanupError);

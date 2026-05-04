@@ -1,7 +1,8 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getBucket, getS3Client, readStudents, writeStudents } from "../lib/r2.js";
+import { verifyAdminPassword } from "../lib/auth.js";
 
-const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
+const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala", "oceano", "balance", "gamma", "trance"]);
 
 const streamToBuffer = async (stream) => {
   const chunks = [];
@@ -15,6 +16,8 @@ export default async function handler(req, res) {
   try {
     const slug = String(req.query.slug || "").trim();
     const token = String(req.query.token || "").trim();
+    const kind = String(req.query.kind || "").trim();
+    const password = String(req.query.password || "");
 
     if (!slug) {
       return res.status(400).json({ error: "Slug requerido" });
@@ -22,29 +25,43 @@ export default async function handler(req, res) {
 
     const students = await readStudents();
     const student = students.find((item) => item.slug === slug);
+    const workflow = student?.audioWorkflow || {};
+    let selectedKey = student?.audioKey || "";
+    const isWorkflowPreview = kind === "raw" || kind === "edited";
 
-    if (!student || !student.audioKey) {
+    if (isWorkflowPreview) {
+      selectedKey = kind === "raw" ? workflow.rawAudioKey || "" : workflow.editorAudioKey || "";
+      const isAdmin = await verifyAdminPassword(password);
+      const isOwner = token && token === String(student?.token || "");
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ error: "No autorizado" });
+      }
+    }
+
+    if (!student || !selectedKey) {
       return res.status(404).json({ error: "Audio no encontrado" });
     }
 
     const isPublicAudio = PUBLIC_AUDIO_SLUGS.has(slug);
-    if (!isPublicAudio && (!token || token !== String(student.token || ""))) {
+    if (!isPublicAudio && !isWorkflowPreview && (!token || token !== String(student.token || ""))) {
       return res.status(403).json({ error: "Token inválido" });
     }
 
-    // Marca uso real del audio para limpieza automática a 90 días.
-    // Se limita la frecuencia para evitar escrituras excesivas por requests de rango.
-    const nowIso = new Date().toISOString();
-    const lastSeen = student.lastAudioAccessAt ? Date.parse(student.lastAudioAccessAt) : 0;
-    const shouldStampAccess = !lastSeen || Number.isNaN(lastSeen) || Date.now() - lastSeen > 10 * 60 * 1000;
-    if (shouldStampAccess) {
-      const nextStudents = students.map((item) =>
-        item.slug === slug ? { ...item, lastAudioAccessAt: nowIso, updatedAt: nowIso } : item
-      );
-      try {
-        await writeStudents(nextStudents);
-      } catch (trackError) {
-        console.warn("audio-file access tracking warning:", trackError?.message || trackError);
+    if (!isWorkflowPreview) {
+      // Marca uso real del audio para limpieza automática a 90 días.
+      // Se limita la frecuencia para evitar escrituras excesivas por requests de rango.
+      const nowIso = new Date().toISOString();
+      const lastSeen = student.lastAudioAccessAt ? Date.parse(student.lastAudioAccessAt) : 0;
+      const shouldStampAccess = !lastSeen || Number.isNaN(lastSeen) || Date.now() - lastSeen > 10 * 60 * 1000;
+      if (shouldStampAccess) {
+        const nextStudents = students.map((item) =>
+          item.slug === slug ? { ...item, lastAudioAccessAt: nowIso, updatedAt: nowIso } : item
+        );
+        try {
+          await writeStudents(nextStudents);
+        } catch (trackError) {
+          console.warn("audio-file access tracking warning:", trackError?.message || trackError);
+        }
       }
     }
 
@@ -54,7 +71,7 @@ export default async function handler(req, res) {
     const output = await client.send(
       new GetObjectCommand({
         Bucket: bucket,
-        Key: student.audioKey,
+        Key: selectedKey,
         ...(requestedRange ? { Range: requestedRange } : {})
       })
     );
@@ -69,7 +86,7 @@ export default async function handler(req, res) {
     if (output.ContentRange) {
       res.setHeader("Content-Range", output.ContentRange);
     }
-    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Cache-Control", isWorkflowPreview ? "private, max-age=60" : "no-store");
     const statusCode = requestedRange && output.ContentRange ? 206 : 200;
     return res.status(statusCode).send(data);
   } catch (error) {

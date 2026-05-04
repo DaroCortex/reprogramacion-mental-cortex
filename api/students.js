@@ -50,10 +50,10 @@ const normalizeSessionPayload = (payload) => {
 export default async function handler(req, res) {
   try {
     if (req.method === "POST") {
-      const { slug, token, session } = req.body || {};
+      const { slug, token, session, action, rawAudioKey, fileName, source } = req.body || {};
       const safeSlug = String(slug || "").trim();
       const safeToken = String(token || "").trim();
-      if (!safeSlug || !safeToken || !session) {
+      if (!safeSlug || !safeToken) {
         return res.status(400).json({ error: "Datos incompletos" });
       }
 
@@ -65,6 +65,35 @@ export default async function handler(req, res) {
       const student = students[index];
       if (String(student.token || "") !== safeToken) {
         return res.status(403).json({ error: "Token inválido" });
+      }
+
+      if (action === "submitRawAudio") {
+        const safeAudioKey = String(rawAudioKey || "").trim();
+        if (!safeAudioKey) {
+          return res.status(400).json({ error: "Audio requerido" });
+        }
+        const nowIso = new Date().toISOString();
+        const nextStudents = students.slice();
+        nextStudents[index] = {
+          ...student,
+          audioWorkflow: {
+            ...(student.audioWorkflow || {}),
+            status: "submitted",
+            rawAudioKey: safeAudioKey,
+            rawFileName: String(fileName || "audio-alumno"),
+            rawSource: String(source || "uploaded"),
+            rawUploadedAt: nowIso,
+            submittedAt: nowIso,
+            requestedAt: student?.audioWorkflow?.requestedAt || nowIso
+          },
+          updatedAt: nowIso
+        };
+        await writeStudents(nextStudents);
+        return res.status(200).json({ ok: true });
+      }
+
+      if (!session) {
+        return res.status(400).json({ error: "Datos incompletos" });
       }
 
       const parsed = normalizeSessionPayload(session);
@@ -179,14 +208,36 @@ export default async function handler(req, res) {
     }
 
     const [students, appSettings] = await Promise.all([readStudents(), readAppSettings()]);
-    const safe = students.map((item) => ({
-      name: item.name,
-      slug: item.slug,
-      features: {
-        colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled),
-        magicUnlockScore: clampNumber(item?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore)
-      }
-    }));
+    const safe = students.map((item) => {
+      const workflow = item.audioWorkflow || {};
+      return {
+        name: item.name,
+        slug: item.slug,
+        audioReady: Boolean(item.audioKey || workflow.status === "approved"),
+        createdAt: item.createdAt || "",
+        updatedAt: item.updatedAt || "",
+        lastAudioAccessAt: item.lastAudioAccessAt || "",
+        audioWorkflow: {
+          status: workflow.status || (item.audioKey ? "approved" : "pending"),
+          requestedAt: workflow.requestedAt || "",
+          rawUploadedAt: workflow.rawUploadedAt || workflow.submittedAt || "",
+          rawFileName: workflow.rawFileName || "",
+          rawSource: workflow.rawSource || "",
+          editorFileName: workflow.editorFileName || "",
+          editedAt: workflow.editedAt || "",
+          approvedAt: workflow.approvedAt || "",
+          advancedUnlockAt: workflow.advancedUnlockAt || "",
+          hasRawAudio: Boolean(workflow.rawAudioKey),
+          hasEditedAudio: Boolean(workflow.editorAudioKey)
+        },
+        features: {
+          colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled),
+          magicUnlockScore: clampNumber(item?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore),
+          beginnerReprogrammingEnabled: Boolean(item?.features?.beginnerReprogrammingEnabled || item.audioKey),
+          advancedReprogrammingEnabled: Boolean(item?.features?.advancedReprogrammingEnabled)
+        }
+      };
+    });
     return res.status(200).json({
       students: safe,
       settings: {

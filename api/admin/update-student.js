@@ -2,24 +2,53 @@ import { deleteObject, readStudents, writeStudents, uploadObject } from "../../l
 import { verifyAdminPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 
+const BEGINNER_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const uniqueKeysReferencedByOthers = (students, slug, key) =>
+  students.some((item) => {
+    if (item.slug === slug) return false;
+    const workflow = item.audioWorkflow || {};
+    return item.audioKey === key || workflow.rawAudioKey === key || workflow.editorAudioKey === key;
+  });
+
+const cleanupKey = async (students, slug, key) => {
+  if (!key || uniqueKeysReferencedByOthers(students, slug, key)) return;
+  try {
+    await deleteObject(key);
+  } catch (cleanupError) {
+    console.warn("update-student audio cleanup warning:", cleanupError?.message || cleanupError);
+  }
+};
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const { password, slug, audioKey, audioBase64, fileName, contentType, settings } = req.body || {};
+    const {
+      password,
+      slug,
+      action = "",
+      audioKey,
+      audioBase64,
+      fileName,
+      contentType,
+      settings
+    } = req.body || {};
     if (!(await verifyAdminPassword(password))) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
     const hasAudioUpdate = Boolean(audioKey || audioBase64);
     const hasSettingsUpdate = Boolean(settings && typeof settings === "object");
-    if (!slug || (!hasAudioUpdate && !hasSettingsUpdate)) {
+    const hasAction = Boolean(action);
+    if (!slug || (!hasAudioUpdate && !hasSettingsUpdate && !hasAction)) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    let nextAudioKey = audioKey;
+    let nextAudioKey = String(audioKey || "").trim();
     let optimization = null;
     if (hasAudioUpdate && !nextAudioKey && audioBase64 && fileName) {
       const inputBuffer = Buffer.from(String(audioBase64), "base64");
@@ -30,33 +59,111 @@ export default async function handler(req, res) {
     }
 
     const students = await readStudents();
-    const current = students.find((item) => item.slug === slug);
-    const previousAudioKey = current?.audioKey || "";
+    const index = students.findIndex((item) => item.slug === slug);
+    if (index < 0) {
+      return res.status(404).json({ error: "Estudiante no encontrado" });
+    }
+
+    const current = students[index];
+    const previousAudioKey = current.audioKey || "";
+    const previousWorkflow = current.audioWorkflow || {};
+    const nowIso = new Date().toISOString();
+    let cleanupCandidates = [];
+
     const next = students.map((item) => {
       if (item.slug !== slug) return item;
+
       const nextFeatures = {
         ...(item.features || {}),
         ...(settings?.features || {})
       };
+      let nextWorkflow = { ...(item.audioWorkflow || {}) };
+      let activeAudioKey = item.audioKey || "";
+
+      if (action === "request-audio") {
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: nextWorkflow.status === "approved" ? "approved" : "requested",
+          requestedAt: nextWorkflow.requestedAt || nowIso
+        };
+      }
+
+      if (action === "attach-edited-audio") {
+        if (!nextAudioKey) {
+          throw new Error("Falta audio editado");
+        }
+        const previousEditedKey = nextWorkflow.editorAudioKey || "";
+        if (previousEditedKey && previousEditedKey !== nextAudioKey && previousEditedKey !== activeAudioKey) {
+          cleanupCandidates.push(previousEditedKey);
+        }
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: "edited",
+          editorAudioKey: nextAudioKey,
+          editorFileName: String(fileName || nextWorkflow.rawFileName || "audio-editado"),
+          editedAt: nowIso
+        };
+      }
+
+      if (action === "approve-edited-audio") {
+        const approvedKey = nextWorkflow.editorAudioKey || nextAudioKey;
+        if (!approvedKey) {
+          throw new Error("No hay audio editado para aprobar");
+        }
+        if (activeAudioKey && activeAudioKey !== approvedKey) {
+          cleanupCandidates.push(activeAudioKey);
+        }
+        activeAudioKey = approvedKey;
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: "approved",
+          editorAudioKey: approvedKey,
+          approvedAt: nowIso,
+          advancedUnlockAt: nextWorkflow.advancedUnlockAt || new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
+        };
+        nextFeatures.beginnerReprogrammingEnabled = true;
+        nextFeatures.advancedReprogrammingEnabled = false;
+      }
+
+      if (hasAudioUpdate && action !== "attach-edited-audio" && action !== "approve-edited-audio") {
+        if (nextAudioKey) {
+          if (activeAudioKey && activeAudioKey !== nextAudioKey) {
+            cleanupCandidates.push(activeAudioKey);
+          }
+          activeAudioKey = nextAudioKey;
+          nextWorkflow = {
+            ...nextWorkflow,
+            status: "approved",
+            editorAudioKey: nextAudioKey,
+            editorFileName: String(fileName || nextWorkflow.editorFileName || "audio-aprobado"),
+            editedAt: nowIso,
+            approvedAt: nowIso,
+            advancedUnlockAt: new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
+          };
+          nextFeatures.beginnerReprogrammingEnabled = true;
+          nextFeatures.advancedReprogrammingEnabled = false;
+        }
+      }
+
       return {
         ...item,
-        audioKey: hasAudioUpdate ? (nextAudioKey || item.audioKey) : item.audioKey,
+        audioKey: activeAudioKey,
+        audioWorkflow: nextWorkflow,
         features: nextFeatures,
-        updatedAt: new Date().toISOString(),
-        lastAudioAccessAt: item.lastAudioAccessAt || new Date().toISOString()
+        updatedAt: nowIso,
+        lastAudioAccessAt: activeAudioKey ? item.lastAudioAccessAt || nowIso : item.lastAudioAccessAt || ""
       };
     });
 
     await writeStudents(next);
-    if (previousAudioKey && nextAudioKey && previousAudioKey !== nextAudioKey) {
-      const isStillReferenced = next.some((item) => item.slug !== slug && item.audioKey === previousAudioKey);
-      try {
-        if (!isStillReferenced) {
-          await deleteObject(previousAudioKey);
-        }
-      } catch (cleanupError) {
-        console.warn("update-student audio cleanup warning:", cleanupError?.message || cleanupError);
-      }
+    if (previousAudioKey && nextAudioKey && previousAudioKey !== nextAudioKey && action !== "attach-edited-audio") {
+      cleanupCandidates.push(previousAudioKey);
+    }
+    if (previousWorkflow.editorAudioKey && action === "attach-edited-audio") {
+      cleanupCandidates.push(previousWorkflow.editorAudioKey);
+    }
+    for (const key of [...new Set(cleanupCandidates)]) {
+      await cleanupKey(next, slug, key);
     }
 
     return res.status(200).json({ ok: true, optimization });

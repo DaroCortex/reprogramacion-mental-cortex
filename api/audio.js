@@ -1,6 +1,6 @@
 import { readStudents } from "../lib/r2.js";
 
-const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala"]);
+const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala", "oceano", "balance", "gamma", "trance"]);
 
 export default async function handler(req, res) {
   try {
