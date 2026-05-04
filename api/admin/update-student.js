@@ -106,7 +106,7 @@ export default async function handler(req, res) {
 
       if (action === "attach-edited-audio") {
         if (!nextAudioKey) {
-          throw new Error("Falta audio editado");
+          throw new Error("Falta audio crudo Advanced");
         }
         const previousEditedKey = nextWorkflow.editorAudioKey || "";
         if (previousEditedKey && previousEditedKey !== nextAudioKey && previousEditedKey !== activeAudioKey) {
@@ -116,7 +116,7 @@ export default async function handler(req, res) {
           ...nextWorkflow,
           status: "edited",
           editorAudioKey: nextAudioKey,
-          editorFileName: String(nextFileName || nextWorkflow.rawFileName || "audio-editado"),
+          editorFileName: String(nextFileName || nextWorkflow.rawFileName || "audio-crudo-advanced"),
           editedAt: nowIso
         };
       }
@@ -139,21 +139,24 @@ export default async function handler(req, res) {
       }
 
       if (action === "approve-edited-audio") {
-        const approvedKey = nextWorkflow.editorAudioKey || nextAudioKey;
-        const beginnerKey = nextWorkflow.beginnerAudioKey || approvedKey;
-        if (!approvedKey) {
-          throw new Error("Falta el audio Advanced limpio para aprobar");
+        const advancedKey = nextWorkflow.editorAudioKey || nextAudioKey;
+        const beginnerKey = nextWorkflow.beginnerAudioKey || "";
+        if (!beginnerKey) {
+          throw new Error("Falta el audio editado 30 min para Principiante");
         }
-        if (activeAudioKey && approvedKey && activeAudioKey !== approvedKey) {
+        if (!advancedKey) {
+          throw new Error("Falta el audio crudo para Advanced");
+        }
+        if (activeAudioKey && advancedKey && activeAudioKey !== advancedKey) {
           cleanupCandidates.push(activeAudioKey);
         }
-        activeAudioKey = approvedKey || beginnerKey;
+        activeAudioKey = advancedKey;
         nextWorkflow = {
           ...nextWorkflow,
           status: "approved",
           beginnerAudioKey: beginnerKey,
-          beginnerFileName: nextWorkflow.beginnerFileName || nextWorkflow.editorFileName || "",
-          editorAudioKey: approvedKey || nextWorkflow.editorAudioKey || "",
+          beginnerFileName: nextWorkflow.beginnerFileName || "",
+          editorAudioKey: advancedKey,
           approvedAt: nowIso,
           advancedUnlockAt: nextWorkflow.advancedUnlockAt || new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
         };

@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     }
 
     if (kind === "beginner") {
-      selectedKey = workflow.beginnerAudioKey || student?.audioKey || workflow.editorAudioKey || "";
+      selectedKey = workflow.beginnerAudioKey || "";
       const isAdmin = password ? await verifyAdminPassword(password) : false;
       const isEditor = isAdmin || (password ? await verifyEditorPassword(password) : false);
       const isOwner = token && token === String(student?.token || "");

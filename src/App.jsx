@@ -3209,7 +3209,7 @@ export default function App() {
     try {
       await updateStudentWorkflow({ slug: slugToUpdate, action: "approve-edited-audio" });
       await ensureAdminList(adminPassword);
-      setAdminMessage("Audio aprobado. Principiante queda activo y Advanced se libera en 30 dias.");
+      setAdminMessage("Audio aprobado. Principiante usa el editado 30 min y Advanced queda preparado con el crudo.");
     } catch (error) {
       setAdminMessage(error?.message || "No se pudo aprobar audio.");
     }
@@ -3254,8 +3254,8 @@ export default function App() {
       await ensureEditorList(editorPassword);
       setEditorMessage(
         isBeginner
-          ? "Audio Principiante subido. Queda esperando OK del administrador."
-          : "Audio Advanced limpio subido. Queda esperando OK del administrador."
+          ? "Audio editado 30 min subido para Principiante. Queda esperando OK del administrador."
+          : "Audio crudo Advanced subido. Queda esperando OK del administrador."
       );
     } catch (error) {
       setEditorMessage(error?.message || "No se pudo subir audio.");
@@ -3686,7 +3686,8 @@ export default function App() {
           <p className="eyebrow">Solo edición</p>
           <h2>Cola de audios</h2>
           <p className="muted">
-            Acá Mathi o Nico escuchan el audio raw y suben dos versiones: Principiante 30 min y Advanced limpio.
+            Acá Mathi o Nico escuchan el audio original del alumno y suben dos audios:
+            el editado de 30 minutos para Principiante y el crudo para Advanced.
             No tocan permisos ni alumnos.
           </p>
           <div className="admin-login">
@@ -3733,13 +3734,13 @@ export default function App() {
                         </span>
                       </div>
                       {item.audioWorkflow?.rawFileName && (
-                        <div className="muted">Raw: {item.audioWorkflow.rawFileName}</div>
+                        <div className="muted">Original alumno: {item.audioWorkflow.rawFileName}</div>
                       )}
                       {item.audioWorkflow?.beginnerFileName && (
-                        <div className="muted">Principiante 30 min: {item.audioWorkflow.beginnerFileName}</div>
+                        <div className="muted">Editado 30 min: {item.audioWorkflow.beginnerFileName}</div>
                       )}
                       {item.audioWorkflow?.editorFileName && (
-                        <div className="muted">Advanced limpio: {item.audioWorkflow.editorFileName}</div>
+                        <div className="muted">Crudo Advanced: {item.audioWorkflow.editorFileName}</div>
                       )}
                     </div>
                     <div className="link-actions">
@@ -3750,11 +3751,11 @@ export default function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Escuchar raw
+                          Escuchar original
                         </a>
                       )}
                       <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
-                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir Principiante 30 min"}
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir editado 30 min"}
                         <input
                           type="file"
                           accept="audio/*"
@@ -3769,11 +3770,11 @@ export default function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Escuchar principiante
+                          Escuchar editado 30 min
                         </a>
                       )}
                       <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
-                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir Advanced limpio"}
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir crudo Advanced"}
                         <input
                           type="file"
                           accept="audio/*"
@@ -3788,7 +3789,7 @@ export default function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Escuchar advanced
+                          Escuchar crudo Advanced
                         </a>
                       )}
                     </div>
@@ -4025,14 +4026,14 @@ export default function App() {
                   />
                 </label>
                 <label>
-                  Audio editado listo (opcional)
+                  Audio inicial aprobado (opcional)
                   <input
                     type="file"
                     accept="audio/*"
                     onChange={(event) => setAdminFile(event.target.files?.[0] || null)}
                   />
                   <span className="muted">
-                    Si lo dejas vacío, se crea un link para que el alumno suba el audio raw.
+                    Si lo dejas vacío, se crea un link para que el alumno suba su audio original.
                   </span>
                 </label>
               </div>
@@ -4092,6 +4093,9 @@ export default function App() {
                   .map((item) => {
                     const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
                     const advancedInfo = getAdvancedAccessInfo(item);
+                    const hasBeginnerAudio = Boolean(item.audioWorkflow?.beginnerAudioKey);
+                    const hasAdvancedAudio = Boolean(item.audioWorkflow?.editorAudioKey);
+                    const readyToApproveWorkflow = workflowStatus === "edited" && hasBeginnerAudio && hasAdvancedAudio;
                     return (
                       <div key={item.slug} className={`link-row ${item.alertLevel === "critical" ? "row-critical" : ""}`}>
                         <div>
@@ -4107,13 +4111,13 @@ export default function App() {
                             </span>
                           </div>
                           {item.audioWorkflow?.rawFileName && (
-                            <div className="muted">Raw: {item.audioWorkflow.rawFileName}</div>
+                            <div className="muted">Original alumno: {item.audioWorkflow.rawFileName}</div>
                           )}
                           {item.audioWorkflow?.beginnerFileName && (
-                            <div className="muted">Principiante 30 min: {item.audioWorkflow.beginnerFileName}</div>
+                            <div className="muted">Editado 30 min: {item.audioWorkflow.beginnerFileName}</div>
                           )}
                           {item.audioWorkflow?.editorFileName && (
-                            <div className="muted">Advanced limpio: {item.audioWorkflow.editorFileName}</div>
+                            <div className="muted">Crudo Advanced: {item.audioWorkflow.editorFileName}</div>
                           )}
                           {workflowStatus === "approved" && item.audioWorkflow?.advancedUnlockAt && (
                             <div className="muted">
@@ -4210,7 +4214,7 @@ export default function App() {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              Raw
+                              Original
                             </a>
                           )}
                           {item.audioWorkflow?.editorAudioKey && (
@@ -4220,7 +4224,7 @@ export default function App() {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              Advanced
+                              Crudo Advanced
                             </a>
                           )}
                           {item.audioWorkflow?.beginnerAudioKey && (
@@ -4230,10 +4234,10 @@ export default function App() {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              Principiante
+                              Editado 30 min
                             </a>
                           )}
-                          {workflowStatus === "edited" && item.audioWorkflow?.editorAudioKey && (
+                          {readyToApproveWorkflow && (
                             <button
                               className="primary"
                               onClick={() => handleApproveEditedAudio(item.slug)}
@@ -4241,8 +4245,14 @@ export default function App() {
                               Aprobar audio
                             </button>
                           )}
-                          {workflowStatus === "edited" && !item.audioWorkflow?.editorAudioKey && (
-                            <span className="workflow-pill pending">Falta Advanced limpio</span>
+                          {workflowStatus === "edited" && !readyToApproveWorkflow && (
+                            <span className="workflow-pill pending">
+                              {!hasBeginnerAudio && !hasAdvancedAudio
+                                ? "Faltan editado 30 min y crudo Advanced"
+                                : !hasBeginnerAudio
+                                  ? "Falta editado 30 min"
+                                  : "Falta crudo Advanced"}
+                            </span>
                           )}
                           {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
                             <button
