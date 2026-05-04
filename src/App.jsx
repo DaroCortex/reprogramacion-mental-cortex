@@ -486,6 +486,30 @@ export default function App() {
     audioEl.dataset.trackSrc = url;
     return true;
   };
+
+  const startAudioPriming = (audioEl) => {
+    if (!audioEl?.dataset) return "";
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    audioEl.dataset.primeToken = token;
+    return token;
+  };
+
+  const isAudioPrimingCurrent = (audioEl, token) =>
+    Boolean(audioEl?.dataset && token && audioEl.dataset.primeToken === token);
+
+  const clearAudioPriming = (audioEl, token = "") => {
+    if (!audioEl?.dataset?.primeToken) return;
+    if (!token || audioEl.dataset.primeToken === token) {
+      delete audioEl.dataset.primeToken;
+    }
+  };
+
+  const markRealAudioPlayback = (audioEl) => {
+    if (!audioEl) return;
+    clearAudioPriming(audioEl);
+    audioEl.muted = false;
+  };
+
   const preApneaCueCycleRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioSourceNodeRef = useRef(null);
@@ -589,7 +613,7 @@ export default function App() {
     if (breathBufferLoadingRef.current) {
       try {
         await breathBufferLoadingRef.current;
-        return Boolean(breathBufferRef.current);
+        return breathBufferUrlRef.current === url && Boolean(breathBufferRef.current);
       } catch (_error) {
         return false;
       }
@@ -1265,6 +1289,7 @@ export default function App() {
       if (document.visibilityState === "visible" && isRunningRef.current && !isPausedRef.current) {
         const safePlay = (audioEl) => {
           if (!audioEl || !audioEl.src) return;
+          markRealAudioPlayback(audioEl);
           audioEl.play().catch(() => {});
         };
         if (phaseRef.current === "apnea") {
@@ -1327,7 +1352,7 @@ export default function App() {
       }
 
       const upcomingBreath = nextBreaths + 1;
-      const cueBreath = Math.max(1, config.breathsPerCycle - PRE_APNEA_BREATHS_LEFT);
+      const cueBreath = Math.max(1, config.breathsPerCycle - PRE_APNEA_BREATHS_LEFT + 1);
       if (upcomingBreath === cueBreath && preApneaCueCycleRef.current !== cycleIndex) {
         playPreApneaCue();
         preApneaCueCycleRef.current = cycleIndex;
@@ -1408,20 +1433,24 @@ export default function App() {
     if (!audioElement || !audioElement.src) return false;
     const wasMuted = audioElement.muted;
     const wasLoop = audioElement.loop;
+    const token = startAudioPriming(audioElement);
     try {
       audioElement.muted = true;
       audioElement.loop = false;
       audioElement.currentTime = 0;
       await audioElement.play();
       await sleep(durationMs);
-      audioElement.pause();
-      audioElement.currentTime = 0;
       return true;
     } catch (_error) {
       return false;
     } finally {
-      audioElement.muted = wasMuted;
-      audioElement.loop = wasLoop;
+      if (isAudioPrimingCurrent(audioElement, token)) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+        audioElement.muted = wasMuted;
+        audioElement.loop = wasLoop;
+        clearAudioPriming(audioElement, token);
+      }
     }
   };
 
@@ -1453,6 +1482,7 @@ export default function App() {
     if (!audioElement || !audioElement.src) return;
     const wasMuted = audioElement.muted;
     const wasLoop = audioElement.loop;
+    const token = startAudioPriming(audioElement);
     try {
       audioElement.muted = true;
       audioElement.loop = false;
@@ -1461,24 +1491,34 @@ export default function App() {
       if (playResult && typeof playResult.then === "function") {
         playResult
           .then(() => {
+            if (!isAudioPrimingCurrent(audioElement, token)) return;
             audioElement.pause();
             audioElement.currentTime = 0;
             audioElement.muted = wasMuted;
             audioElement.loop = wasLoop;
+            clearAudioPriming(audioElement, token);
           })
           .catch(() => {
+            if (!isAudioPrimingCurrent(audioElement, token)) return;
             audioElement.muted = wasMuted;
             audioElement.loop = wasLoop;
+            clearAudioPriming(audioElement, token);
           });
       } else {
-        audioElement.pause();
-        audioElement.currentTime = 0;
-        audioElement.muted = wasMuted;
-        audioElement.loop = wasLoop;
+        if (isAudioPrimingCurrent(audioElement, token)) {
+          audioElement.pause();
+          audioElement.currentTime = 0;
+          audioElement.muted = wasMuted;
+          audioElement.loop = wasLoop;
+          clearAudioPriming(audioElement, token);
+        }
       }
     } catch (_error) {
-      audioElement.muted = wasMuted;
-      audioElement.loop = wasLoop;
+      if (isAudioPrimingCurrent(audioElement, token)) {
+        audioElement.muted = wasMuted;
+        audioElement.loop = wasLoop;
+        clearAudioPriming(audioElement, token);
+      }
     }
   };
 
@@ -1665,8 +1705,11 @@ export default function App() {
     }
     setIsPaused(false);
     if (phase === "apnea") playAudio();
-    if (phase === "breathing") {
+    if (phase === "breathing" || phase === "recovery" || phase === "apnea") {
       playBosque();
+      playSeptasync();
+    }
+    if (phase === "breathing") {
       if (subphase === "inhale") playBreathSound();
     }
   };
@@ -1847,6 +1890,7 @@ export default function App() {
   const playAudio = () => {
     if (!audioRef.current) return;
     ensureReverbGraph();
+    markRealAudioPlayback(audioRef.current);
     audioRef.current.muted = false;
     audioRef.current.currentTime = 0;
     audioRef.current.loop = true;
@@ -1866,9 +1910,18 @@ export default function App() {
       breathStopTimerRef.current = null;
     }
 
+    const loadedBreathUrl = breathAudioRef.current?.src || breathAudioAltRef.current?.src || "";
+
     const playWithBuffer = () => {
       const buffer = breathBufferRef.current;
       if (!buffer) return false;
+      if (
+        loadedBreathUrl &&
+        breathBufferUrlRef.current &&
+        breathBufferUrlRef.current !== loadedBreathUrl
+      ) {
+        return false;
+      }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return false;
       if (!audioContextRef.current) {
@@ -1886,6 +1939,15 @@ export default function App() {
         }
       });
       breathActiveSourcesRef.current.clear();
+      [breathAudioRef.current, breathAudioAltRef.current].forEach((audioEl) => {
+        if (!audioEl) return;
+        audioEl.pause();
+        try {
+          audioEl.currentTime = 0;
+        } catch (_error) {
+          // ignore
+        }
+      });
 
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
@@ -1918,6 +1980,7 @@ export default function App() {
 
     const restartAndPlay = (target) => {
       if (!target || !target.src) return Promise.reject(new Error("sin fuente"));
+      markRealAudioPlayback(target);
       target.loop = false;
       target.playbackRate = 1;
       try {
@@ -1934,12 +1997,9 @@ export default function App() {
 
     const breathSrc = audioEl?.src || backupEl?.src || "";
     if (breathSrc) {
-      ensureBreathBuffer(breathSrc)
-        .then((ready) => {
-          if (!ready || !isRunningRef.current || isPausedRef.current) return;
-          playWithBuffer();
-        })
-        .catch(() => {});
+      // Preparamos el buffer para el próximo disparo, pero no lo reproducimos
+      // al terminar la carga: si llega tarde, pisaría la respiración actual.
+      ensureBreathBuffer(breathSrc).catch(() => {});
     }
 
     restartAndPlay(audioEl)
@@ -1998,6 +2058,7 @@ export default function App() {
       bosqueGainRef,
       0
     );
+    markRealAudioPlayback(bosqueAudioRef.current);
     bosqueAudioRef.current.loop = true;
     if (bosqueAudioRef.current.paused || changedSource) {
       bosqueAudioRef.current.play().then(() => {
@@ -2046,6 +2107,7 @@ export default function App() {
       septasyncGainRef,
       0
     );
+    markRealAudioPlayback(septasyncAudioRef.current);
     septasyncAudioRef.current.loop = true;
     if (septasyncAudioRef.current.paused || changedSource) {
       septasyncAudioRef.current.play().then(() => {
@@ -2097,6 +2159,7 @@ export default function App() {
 
   const playEndApnea = () => {
     if (!endApneaAudioRef.current) return;
+    markRealAudioPlayback(endApneaAudioRef.current);
     endApneaAudioRef.current.currentTime = 0;
     endApneaAudioRef.current.loop = false;
     endApneaAudioRef.current.play().catch(() => {
@@ -2112,6 +2175,7 @@ export default function App() {
   const playPreApneaCue = () => {
     if (!preApneaCueAudioRef.current) return;
     ensureAuxGainGraph(preApneaCueAudioRef.current, preCueSourceNodeRef, preCueGainRef, 1.8);
+    markRealAudioPlayback(preApneaCueAudioRef.current);
     preApneaCueAudioRef.current.currentTime = 0;
     preApneaCueAudioRef.current.loop = false;
     preApneaCueAudioRef.current.play().catch(() => {
@@ -2127,6 +2191,7 @@ export default function App() {
   const playFinalApneaCue = () => {
     if (!finalApneaCueAudioRef.current) return;
     ensureAuxGainGraph(finalApneaCueAudioRef.current, finalCueSourceNodeRef, finalCueGainRef, 1.8);
+    markRealAudioPlayback(finalApneaCueAudioRef.current);
     finalApneaCueAudioRef.current.currentTime = 0;
     finalApneaCueAudioRef.current.loop = false;
     finalApneaCueAudioRef.current.play().catch(() => {
@@ -3840,7 +3905,7 @@ export default function App() {
   }
 
   return (
-    <div className="app" onPointerUp={onPointerUp} onDoubleClick={onAppDoubleClick}>
+    <div className="app practice-app" onPointerUp={onPointerUp} onDoubleClick={onAppDoubleClick}>
       {renderHeader()}
       <div className="practice-nav">
         <button type="button" className="ghost" onClick={handleBackToMenu}>
@@ -3848,8 +3913,8 @@ export default function App() {
         </button>
       </div>
 
-      <main className="grid">
-        <section className="session card">
+      <main className="grid practice-grid">
+        <section className="session card practice-section practice-section-session">
           <div className="session-header">
             <div>
               <p className="eyebrow">{PHASE_LABELS[phase]}</p>
@@ -4006,7 +4071,7 @@ export default function App() {
           <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" playsInline />
         </section>
 
-        <section className="card">
+        <section className="card practice-section practice-section-config">
           <h3>Configuración rápida</h3>
           <p className="muted">Presets rápidos para no tocar sliders en cada sesión.</p>
 
@@ -4203,7 +4268,7 @@ export default function App() {
           </div>
 
           {manualConfigOpen && (
-            <div className="form-grid">
+            <div className="form-grid practice-section-manual">
               <label>
                 Respiraciones por ciclo
                 <input
