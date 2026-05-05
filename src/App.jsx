@@ -227,25 +227,35 @@ const buildWeeklyPracticeStats = (studentItem, nowInput = new Date()) => {
   const nowDate = nowInput instanceof Date ? nowInput : new Date(nowInput);
   const usage = studentItem?.usage || {};
   const sessionsByDay = usage.sessionsByDay || {};
+  const practiceActivityByDay = usage.practiceActivityByDay || {};
   const todayKey = localDateKey(nowDate);
   const createdKey = studentItem?.createdAt ? localDateKey(studentItem.createdAt) : "";
+  const lastActivityKey =
+    localDateKey(usage.lastActivityAt || "") ||
+    localDateKey(studentItem?.lastAudioAccessAt || "") ||
+    localDateKey(usage.lastSessionAt || "");
+  const practiceCountForDay = (key) => Math.max(
+    Number(sessionsByDay[key] || 0),
+    Number(practiceActivityByDay[key] || 0),
+    lastActivityKey === key ? 1 : 0
+  );
   const weekKeys = Array.from({ length: 7 }, (_, index) => (
     localDateKey(shiftLocalDate(nowDate, index - 6))
   )).filter(Boolean);
   const trackedKeys = weekKeys.filter((key) => !createdKey || compareDateKey(key, createdKey) >= 0);
-  const completedKeys = trackedKeys.filter((key) => Number(sessionsByDay[key] || 0) > 0);
+  const completedKeys = trackedKeys.filter((key) => practiceCountForDay(key) > 0);
   const missedKeys = trackedKeys
     .filter((key) => key !== todayKey)
-    .filter((key) => Number(sessionsByDay[key] || 0) <= 0);
-  const weeklySessions = trackedKeys.reduce((sum, key) => sum + Number(sessionsByDay[key] || 0), 0);
-  const todaySessions = Number(sessionsByDay[todayKey] || 0);
+    .filter((key) => practiceCountForDay(key) <= 0);
+  const weeklySessions = trackedKeys.reduce((sum, key) => sum + practiceCountForDay(key), 0);
+  const todaySessions = practiceCountForDay(todayKey);
 
   let currentStreak = 0;
   const streakStartOffset = todaySessions > 0 ? 0 : 1;
   for (let offset = streakStartOffset; offset < 90; offset += 1) {
     const key = localDateKey(shiftLocalDate(nowDate, -offset));
     if (createdKey && compareDateKey(key, createdKey) < 0) break;
-    if (Number(sessionsByDay[key] || 0) <= 0) break;
+    if (practiceCountForDay(key) <= 0) break;
     currentStreak += 1;
   }
 
@@ -253,7 +263,7 @@ const buildWeeklyPracticeStats = (studentItem, nowInput = new Date()) => {
   for (let offset = 1; offset < 90; offset += 1) {
     const key = localDateKey(shiftLocalDate(nowDate, -offset));
     if (createdKey && compareDateKey(key, createdKey) < 0) break;
-    if (Number(sessionsByDay[key] || 0) > 0) break;
+    if (practiceCountForDay(key) > 0) break;
     consecutiveMisses += 1;
   }
 
@@ -379,12 +389,10 @@ const withGeneratedSlugs = (items) => {
   });
 };
 
-const getTodayKey = () => new Date().toISOString().slice(0, 10);
+const getTodayKey = () => localDateKey(new Date());
 
 const getYesterdayKey = () => {
-  const date = new Date();
-  date.setDate(date.getDate() - 1);
-  return date.toISOString().slice(0, 10);
+  return localDateKey(shiftLocalDate(new Date(), -1));
 };
 
 const getNostrilState = (style, breathNumber) => {
@@ -419,6 +427,25 @@ const fetchJsonWithTimeout = async (url, timeoutMs = 3000) => {
   }
 };
 
+const readRememberedValue = (key) => {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage?.getItem(key) || window.sessionStorage?.getItem(key) || "";
+  } catch (_error) {
+    return "";
+  }
+};
+
+const rememberValue = (key, value) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage?.setItem(key, value);
+    window.sessionStorage?.setItem(key, value);
+  } catch (_error) {
+    // Si el navegador bloquea almacenamiento, la app sigue funcionando en la sesión actual.
+  }
+};
+
 const buildImpulseResponse = (audioContext, seconds = 1.4, decay = 2.2) => {
   const rate = audioContext.sampleRate;
   const length = Math.floor(rate * seconds);
@@ -444,8 +471,8 @@ export default function App() {
   const [slug] = useState(getSlugFromLocation());
   const [token] = useState(getTokenFromLocation());
   const [searchTerm, setSearchTerm] = useState("");
-  const [adminPassword, setAdminPassword] = useState(
-    sessionStorage.getItem("rmcortex_admin_pw") || ""
+  const [adminPassword, setAdminPassword] = useState(() =>
+    readRememberedValue("rmcortex_admin_pw")
   );
   const [adminStatus, setAdminStatus] = useState("idle");
   const [adminStudents, setAdminStudents] = useState([]);
@@ -463,8 +490,8 @@ export default function App() {
   const [adminBridgeMessage, setAdminBridgeMessage] = useState("");
   const [adminBridgeLoading, setAdminBridgeLoading] = useState(false);
   const [replaceSlug, setReplaceSlug] = useState("");
-  const [editorPassword, setEditorPassword] = useState(
-    sessionStorage.getItem("rmcortex_editor_pw") || ""
+  const [editorPassword, setEditorPassword] = useState(() =>
+    readRememberedValue("rmcortex_editor_pw")
   );
   const [editorStatus, setEditorStatus] = useState("idle");
   const [editorStudents, setEditorStudents] = useState([]);
@@ -1023,12 +1050,12 @@ export default function App() {
     const now = nowDate.getTime();
     const rows = adminStudents.map((item) => {
       const usage = item.usage || {};
-      const sessionsByDay = usage.sessionsByDay || {};
       const lastSessionAt = usage.lastSessionAt || "";
+      const lastActivityAt = usage.lastActivityAt || item.lastAudioAccessAt || lastSessionAt;
       const createdMs = item.createdAt ? Date.parse(item.createdAt) : 0;
-      const lastMs = lastSessionAt ? Date.parse(lastSessionAt) : createdMs;
+      const lastMs = lastActivityAt ? Date.parse(lastActivityAt) : createdMs;
       const inactiveHours = lastMs ? (now - lastMs) / MS_PER_HOUR : Number.POSITIVE_INFINITY;
-      const isActive = Boolean(lastSessionAt) && Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
+      const isActive = Boolean(lastActivityAt) && Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
       const inactivityAlertLevel = !Number.isFinite(inactiveHours)
         ? "ok"
         : inactiveHours >= ALERT_CRITICAL_HOURS
@@ -1078,6 +1105,7 @@ export default function App() {
         flowState,
         roundAvg,
         weeklyPractice,
+        lastActivityAt,
         lastSessionAt
       };
     });
@@ -1742,6 +1770,25 @@ export default function App() {
     targets.forEach((audioEl) => primeAudioElementFromGesture(audioEl));
   }, [ensureAuxGainGraph, ensureReverbGraph]);
 
+  const recordPracticeActivity = useCallback(() => {
+    if (!student?.slug || !token) return;
+    fetch("/api/students", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: student.slug,
+        token,
+        action: "practice-activity",
+        activity: {
+          startedAt: new Date().toISOString(),
+          dayKey: localDateKey(new Date())
+        }
+      })
+    }).catch((error) => {
+      console.warn("practice activity warning:", error?.message || error);
+    });
+  }, [student?.slug, token]);
+
   const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
     phaseTransitionLockRef.current = false;
     sessionStartRef.current = Date.now();
@@ -1760,6 +1807,7 @@ export default function App() {
     setSubphase("inhale");
     if (effectiveAmbientUrl) playBosque();
     if (effectiveSeptasyncUrl) playSeptasync();
+    recordPracticeActivity();
     playBreathSound();
     const inhaleMs = config.inhaleSeconds * 1000;
     phaseDeadlineRef.current = Date.now() + inhaleMs;
@@ -3018,7 +3066,7 @@ export default function App() {
 
   const handleAdminLogin = async () => {
     if (!adminPassword) return;
-    sessionStorage.setItem("rmcortex_admin_pw", adminPassword);
+    rememberValue("rmcortex_admin_pw", adminPassword);
     await ensureAdminList(adminPassword);
     await ensureAdminsRegistry(adminPassword);
   };
@@ -3238,7 +3286,7 @@ export default function App() {
       if (!response.ok) throw new Error("No autorizado");
       const data = await response.json();
       setEditorStudents(Array.isArray(data.students) ? data.students : []);
-      sessionStorage.setItem("rmcortex_editor_pw", passwordValue);
+      rememberValue("rmcortex_editor_pw", passwordValue);
       setEditorStatus("ready");
       return true;
     } catch (error) {

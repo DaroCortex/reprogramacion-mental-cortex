@@ -118,6 +118,39 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      if (action === "practice-activity") {
+        const nowIso = new Date().toISOString();
+        const activityInput = req.body?.activity && typeof req.body.activity === "object"
+          ? req.body.activity
+          : {};
+        const startedDate = activityInput?.startedAt ? new Date(activityInput.startedAt) : new Date();
+        const startedAt = Number.isNaN(startedDate.getTime()) ? nowIso : startedDate.toISOString();
+        const requestedDayKey = String(activityInput?.dayKey || "").trim();
+        const dayKey = /^\d{4}-\d{2}-\d{2}$/.test(requestedDayKey)
+          ? requestedDayKey
+          : startedAt.slice(0, 10);
+        const prevUsage = student.usage || {};
+        const prevByDay = prevUsage.practiceActivityByDay || {};
+        const nextByDay = {
+          ...prevByDay,
+          [dayKey]: clampNumber(prevByDay[dayKey], 0, 9999, 0) + 1
+        };
+        const nextStudents = students.slice();
+        nextStudents[index] = {
+          ...student,
+          usage: {
+            ...prevUsage,
+            firstActivityAt: prevUsage.firstActivityAt || startedAt,
+            lastActivityAt: startedAt,
+            practiceActivityByDay: nextByDay
+          },
+          lastAudioAccessAt: startedAt,
+          updatedAt: nowIso
+        };
+        await writeStudents(nextStudents);
+        return res.status(200).json({ ok: true });
+      }
+
       if (!session) {
         return res.status(400).json({ error: "Datos incompletos" });
       }
@@ -129,6 +162,11 @@ export default async function handler(req, res) {
       const nextByDay = {
         ...prevByDay,
         [dayKey]: clampNumber(prevByDay[dayKey], 0, 9999, 0) + 1
+      };
+      const prevPracticeByDay = prevUsage.practiceActivityByDay || {};
+      const nextPracticeByDay = {
+        ...prevPracticeByDay,
+        [dayKey]: Math.max(clampNumber(prevPracticeByDay[dayKey], 0, 9999, 0), 1)
       };
 
       const prevSums = Array.isArray(prevUsage.apneaRoundSums) ? prevUsage.apneaRoundSums.slice(0, 10) : [];
@@ -149,6 +187,9 @@ export default async function handler(req, res) {
       }
 
       const nextUsage = {
+        ...prevUsage,
+        firstActivityAt: prevUsage.firstActivityAt || parsed.completedAt,
+        lastActivityAt: parsed.completedAt,
         firstSessionAt: prevUsage.firstSessionAt || parsed.completedAt,
         lastSessionAt: parsed.completedAt,
         totalSessions: clampNumber(prevUsage.totalSessions, 0, 1e9, 0) + 1,
@@ -157,6 +198,7 @@ export default async function handler(req, res) {
           clampNumber(prevUsage.totalBreaths, 0, 1e9, 0) +
           parsed.completedRounds * parsed.breathsPerCycle,
         sessionsByDay: nextByDay,
+        practiceActivityByDay: nextPracticeByDay,
         apneaRoundSums: nextSums,
         apneaRoundCounts: nextCounts,
         flowStats: {
