@@ -627,6 +627,11 @@ export default function App() {
   const phaseRef = useRef(phase);
   const isRunningRef = useRef(isRunning);
   const isPausedRef = useRef(isPaused);
+  const subphaseRef = useRef(subphase);
+  const cycleIndexRef = useRef(cycleIndex);
+  const breathsDoneRef = useRef(breathsDone);
+  const currentBreathNumberRef = useRef(currentBreathNumber);
+  const sessionMetricsRecordedRef = useRef(false);
   const sessionStartRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastDoubleTapActionRef = useRef(0);
@@ -871,6 +876,22 @@ export default function App() {
   useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
+
+  useEffect(() => {
+    subphaseRef.current = subphase;
+  }, [subphase]);
+
+  useEffect(() => {
+    cycleIndexRef.current = cycleIndex;
+  }, [cycleIndex]);
+
+  useEffect(() => {
+    breathsDoneRef.current = breathsDone;
+  }, [breathsDone]);
+
+  useEffect(() => {
+    currentBreathNumberRef.current = currentBreathNumber;
+  }, [currentBreathNumber]);
 
   useEffect(() => {
     phaseTransitionLockRef.current = false;
@@ -1793,6 +1814,7 @@ export default function App() {
     phaseTransitionLockRef.current = false;
     sessionStartRef.current = Date.now();
     roundApneaByCycleRef.current = [];
+    sessionMetricsRecordedRef.current = false;
     pauseStartedAtRef.current = 0;
     setIsRunning(true);
     setIsPaused(false);
@@ -1955,6 +1977,13 @@ export default function App() {
   };
 
   const stopSession = () => {
+    if (
+      isRunningRef.current &&
+      phaseRef.current !== "idle" &&
+      phaseRef.current !== "complete"
+    ) {
+      recordCurrentSessionIfNeeded({ partial: true, manualStop: true });
+    }
     countdownAbortRef.current = true;
     setStartCountdown(0);
     cancelStopHold();
@@ -2038,11 +2067,22 @@ export default function App() {
     setTimeLeftMs(recoveryMs);
   };
 
-  const recordSessionMetrics = async ({ completedRounds, plannedRounds, breathsPerCycle, apneaByRound }) => {
+  const recordSessionMetrics = async ({
+    completedRounds,
+    plannedRounds,
+    breathsPerCycle,
+    apneaByRound,
+    partial = false,
+    manualStop = false,
+    startedAt = "",
+    durationSeconds = 0,
+    breathsDoneTotal = 0
+  }) => {
     if (!student?.slug || !token) return;
     try {
       await fetch("/api/students", {
         method: "POST",
+        keepalive: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slug: student.slug,
@@ -2051,7 +2091,12 @@ export default function App() {
             completedRounds,
             plannedRounds,
             breathsPerCycle,
+            breathsDoneTotal,
             apneaByRound,
+            partial,
+            manualStop,
+            startedAt,
+            durationSeconds,
             completedAt: new Date().toISOString()
           }
         })
@@ -2059,6 +2104,81 @@ export default function App() {
     } catch (error) {
       console.warn("session metrics warning:", error?.message || error);
     }
+  };
+
+  const buildSessionSnapshot = ({ partial = false, manualStop = false } = {}) => {
+    const activePhase = phaseRef.current || phase;
+    const totalCycles = Math.max(1, Number(config.cycles || 1));
+    const currentCycle = Math.min(
+      totalCycles,
+      Math.max(1, Number(cycleIndexRef.current || cycleIndex || 1))
+    );
+    const breathsPerCycle = Math.max(1, Number(config.breathsPerCycle || 1));
+    const apneaByRound = roundApneaByCycleRef.current
+      .slice(0, totalCycles)
+      .map((value) => Math.max(0, Number(value || 0)));
+
+    while (apneaByRound.length < totalCycles) {
+      apneaByRound.push(0);
+    }
+
+    if (activePhase === "apnea" && apneaStartedAtRef.current) {
+      const apneaSeconds = Math.max(0, Math.round((Date.now() - apneaStartedAtRef.current) / 1000));
+      apneaByRound[currentCycle - 1] = Math.max(apneaByRound[currentCycle - 1] || 0, apneaSeconds);
+    }
+
+    const completedBeforeCurrent = Math.max(0, currentCycle - 1);
+    const currentBreath = Math.max(1, Number(currentBreathNumberRef.current || currentBreathNumber || 1));
+    const doneState = Math.max(0, Number(breathsDoneRef.current || breathsDone || 0));
+    const breathsInCurrent =
+      activePhase === "breathing"
+        ? Math.min(breathsPerCycle, Math.max(doneState, currentBreath - 1))
+        : activePhase === "apnea" || activePhase === "recovery" || activePhase === "complete"
+          ? breathsPerCycle
+          : 0;
+
+    let completedRounds = completedBeforeCurrent;
+    if (activePhase === "breathing") {
+      completedRounds += breathsInCurrent / breathsPerCycle;
+    } else if (activePhase === "apnea" || activePhase === "recovery" || activePhase === "complete") {
+      completedRounds += 1;
+    }
+
+    const apneasCompleted = apneaByRound.filter((seconds) => seconds > 0).length;
+    completedRounds = Math.min(totalCycles, Math.max(completedRounds, apneasCompleted));
+
+    const durationSeconds = sessionStartRef.current
+      ? Math.max(0, Math.round((Date.now() - sessionStartRef.current) / 1000))
+      : 0;
+    const breathsDoneTotal = Math.min(
+      totalCycles * breathsPerCycle,
+      Math.max(0, completedBeforeCurrent * breathsPerCycle + breathsInCurrent)
+    );
+
+    return {
+      completedRounds: Number(completedRounds.toFixed(2)),
+      plannedRounds: totalCycles,
+      breathsPerCycle,
+      breathsDoneTotal,
+      apneaByRound,
+      partial,
+      manualStop,
+      startedAt: sessionStartRef.current ? new Date(sessionStartRef.current).toISOString() : "",
+      durationSeconds
+    };
+  };
+
+  const recordCurrentSessionIfNeeded = (flags = {}) => {
+    if (sessionMetricsRecordedRef.current) return;
+    const snapshot = buildSessionSnapshot(flags);
+    const hasUsefulProgress =
+      snapshot.completedRounds > 0 ||
+      snapshot.breathsDoneTotal > 0 ||
+      snapshot.apneaByRound.some((seconds) => seconds > 0);
+
+    if (!hasUsefulProgress) return;
+    sessionMetricsRecordedRef.current = true;
+    recordSessionMetrics(snapshot);
   };
 
   const finishSession = () => {
@@ -2081,12 +2201,22 @@ export default function App() {
       .slice(0, config.cycles)
       .map((value) => Math.max(0, Number(value || 0)));
 
-    recordSessionMetrics({
-      completedRounds: cycleIndex,
-      plannedRounds: config.cycles,
-      breathsPerCycle: config.breathsPerCycle,
-      apneaByRound
-    });
+    if (!sessionMetricsRecordedRef.current) {
+      sessionMetricsRecordedRef.current = true;
+      recordSessionMetrics({
+        completedRounds: cycleIndex,
+        plannedRounds: config.cycles,
+        breathsPerCycle: config.breathsPerCycle,
+        breathsDoneTotal: addedBreaths,
+        apneaByRound,
+        partial: false,
+        manualStop: false,
+        startedAt: sessionStartRef.current ? new Date(sessionStartRef.current).toISOString() : "",
+        durationSeconds: sessionStartRef.current
+          ? Math.max(0, Math.round((Date.now() - sessionStartRef.current) / 1000))
+          : 0
+      });
+    }
 
     setProgress((prev) => {
       const lastDate = prev.lastSessionDate || "";

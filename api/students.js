@@ -42,6 +42,20 @@ const normalizeSessionPayload = (payload) => {
   const completedAtIso = Number.isNaN(completedAt.getTime())
     ? new Date().toISOString()
     : completedAt.toISOString();
+  const startedAtDate = payload?.startedAt ? new Date(payload.startedAt) : null;
+  const startedAt =
+    startedAtDate && !Number.isNaN(startedAtDate.getTime())
+      ? startedAtDate.toISOString()
+      : "";
+  const durationSeconds = clampNumber(payload?.durationSeconds, 0, 86400, 0);
+  const breathsDoneTotal = clampNumber(
+    payload?.breathsDoneTotal,
+    0,
+    100000,
+    completedRounds * breathsPerCycle
+  );
+  const partial = Boolean(payload?.partial);
+  const manualStop = Boolean(payload?.manualStop);
   const safeType = String(payload?.sessionType || "breathing").trim();
   const flowStageRaw = String(payload?.flowStage || "").trim().toLowerCase();
   const flowStageNormalized =
@@ -67,7 +81,12 @@ const normalizeSessionPayload = (payload) => {
     completedRounds,
     plannedRounds,
     breathsPerCycle,
+    breathsDoneTotal,
     apneaByRound,
+    partial,
+    manualStop,
+    startedAt,
+    durationSeconds,
     completedAt: completedAtIso,
     colorVision
   };
@@ -157,6 +176,7 @@ export default async function handler(req, res) {
 
       const parsed = normalizeSessionPayload(session);
       const prevUsage = student.usage || {};
+      const prevRecent = Array.isArray(prevUsage.recentSessions) ? prevUsage.recentSessions : [];
       const prevByDay = prevUsage.sessionsByDay || {};
       const dayKey = parsed.completedAt.slice(0, 10);
       const nextByDay = {
@@ -186,6 +206,22 @@ export default async function handler(req, res) {
         }
       }
 
+      const sessionSummary = {
+        sessionType: parsed.sessionType,
+        flowStage: parsed.flowStage,
+        completedRounds: parsed.completedRounds,
+        plannedRounds: parsed.plannedRounds,
+        breathsPerCycle: parsed.breathsPerCycle,
+        breathsDoneTotal: parsed.breathsDoneTotal,
+        apneaByRound: parsed.apneaByRound,
+        completedAt: parsed.completedAt,
+        startedAt: parsed.startedAt,
+        durationSeconds: parsed.durationSeconds,
+        partial: parsed.partial,
+        manualStop: parsed.manualStop,
+        colorVision: parsed.colorVision
+      };
+
       const nextUsage = {
         ...prevUsage,
         firstActivityAt: prevUsage.firstActivityAt || parsed.completedAt,
@@ -196,7 +232,7 @@ export default async function handler(req, res) {
         totalRounds: clampNumber(prevUsage.totalRounds, 0, 1e9, 0) + parsed.completedRounds,
         totalBreaths:
           clampNumber(prevUsage.totalBreaths, 0, 1e9, 0) +
-          parsed.completedRounds * parsed.breathsPerCycle,
+          parsed.breathsDoneTotal,
         sessionsByDay: nextByDay,
         practiceActivityByDay: nextPracticeByDay,
         apneaRoundSums: nextSums,
@@ -247,16 +283,8 @@ export default async function handler(req, res) {
             }
           };
         })(),
-        lastSession: {
-          sessionType: parsed.sessionType,
-          flowStage: parsed.flowStage,
-          completedRounds: parsed.completedRounds,
-          plannedRounds: parsed.plannedRounds,
-          breathsPerCycle: parsed.breathsPerCycle,
-          apneaByRound: parsed.apneaByRound,
-          completedAt: parsed.completedAt,
-          colorVision: parsed.colorVision
-        }
+        recentSessions: [sessionSummary, ...prevRecent].slice(0, 60),
+        lastSession: sessionSummary
       };
 
       const nowIso = new Date().toISOString();
