@@ -4002,12 +4002,20 @@ export default function App() {
                   <div key={admin.name} className="link-row">
                     <div>
                       <strong>{admin.name}</strong>
+                      <div className="muted">
+                        {admin.role === "admin-total" ? "Administrador total" : "Administrador"}
+                        {admin.source === "env" ? " · acceso fijo" : ""}
+                      </div>
                       <div className="muted">Creado: {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "-"}</div>
                     </div>
                     <div className="link-actions">
-                      <button className="ghost" onClick={() => handleRemoveAdmin(admin.name)}>
-                        Eliminar admin
-                      </button>
+                      {admin.locked ? (
+                        <span className="muted">Protegido por Vercel</span>
+                      ) : (
+                        <button className="ghost" onClick={() => handleRemoveAdmin(admin.name)}>
+                          Eliminar admin
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
