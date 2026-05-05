@@ -3807,277 +3807,55 @@ export default function App() {
   }
 
   if (isAdminRoute) {
-    return (
-      <div className="app">
-        {renderHeader()}
-        <div className="card">
+    const adminLoginCard = (
+      <section className="card admin-login-card">
+        <div>
+          <p className="eyebrow">Acceso interno</p>
           <h2>Panel de administrador</h2>
           <p className="muted">Crea estudiantes y sube sus audios sin salir de aquí.</p>
-          <div className="admin-login">
-            <input
-              type="password"
-              placeholder="Password de admin"
-              value={adminPassword}
-              onChange={(event) => setAdminPassword(event.target.value)}
-            />
-            <button className="secondary" onClick={handleAdminLogin}>
-              Entrar
-            </button>
-          </div>
-          {adminStatus === "auth-error" && <p className="status error">{adminMessage}</p>}
         </div>
+        <div className="admin-login admin-login-inline">
+          <input
+            type="password"
+            placeholder="Password de admin"
+            value={adminPassword}
+            onChange={(event) => setAdminPassword(event.target.value)}
+          />
+          <button type="button" className="secondary" onClick={handleAdminLogin}>
+            Entrar
+          </button>
+        </div>
+        {adminStatus === "auth-error" && <p className="status error">{adminMessage}</p>}
+      </section>
+    );
 
-        {adminStatus === "ready" && (
-          <>
-            <div className={`card admin-overview-card ${adminAnalytics.hasAttention ? "attention" : ""}`}>
-              <div className="admin-overview-head">
-                <h3>Panel de control</h3>
-                <span className={`alert-pill ${adminAnalytics.hasAttention ? "critical" : "ok"}`}>
-                  {adminAnalytics.hasAttention ? "Revisar alertas" : "Todo en orden"}
-                </span>
-              </div>
-              <div className="stats-grid">
-                <div>
-                  <span>Estudiantes activos</span>
-                  <strong>{adminAnalytics.active.length}</strong>
-                </div>
-                <div>
-                  <span>Alerta 48h</span>
-                  <strong>{adminAnalytics.warning.length}</strong>
-                </div>
-                <div>
-                  <span>Alerta 72h</span>
-                  <strong>{adminAnalytics.critical.length}</strong>
-                </div>
-                <div>
-                  <span>Más de 1 sesión hoy</span>
-                  <strong>{adminAnalytics.moreThanOnceToday.length}</strong>
-                </div>
-              </div>
-              <div className="muted">
-                Diario: {adminAnalytics.practicingDaily.length} practicaron hoy. Abandono potencial: {adminAnalytics.abandoned.length}.
-              </div>
-            </div>
-
-            <div className="card">
-              <h3>Configurar habilitaciones</h3>
-              <p className="muted">
-                Define el score semanal objetivo y decide si Canalización aparece o no en el menú del alumno.
-              </p>
-              <div className="form-grid">
-                <label>
-                  Objetivo Canalización (%)
-                  <input
-                    type="number"
-                    min="60"
-                    max="98"
-                    step="1"
-                    value={magicUnlockConfigDraft}
-                    onChange={(event) => setMagicUnlockConfigDraft(event.target.value)}
-                  />
-                </label>
-                <div className="admin-semaforo-panel">
-                  <strong>Semáforo objetivo</strong>
-                  <div className="semaforo-lights">
-                    <span className={`semaforo-light green ${magicPolicyLevel === "green" ? "on" : ""}`} />
-                    <span className={`semaforo-light yellow ${magicPolicyLevel === "yellow" ? "on" : ""}`} />
-                    <span className={`semaforo-light red ${magicPolicyLevel === "red" ? "on" : ""}`} />
-                  </div>
-                  <small>
-                    {magicPolicyLevel === "green"
-                      ? "Objetivo fácil de alcanzar"
-                      : magicPolicyLevel === "yellow"
-                        ? "Objetivo medio"
-                        : "Objetivo exigente"}
-                  </small>
-                </div>
-              </div>
-              <div className="audio-tools">
-                <button
-                  className="secondary"
-                  onClick={handleSaveMagicUnlockScore}
-                  disabled={magicUnlockConfigSaving}
-                >
-                  {magicUnlockConfigSaving ? "Guardando..." : "Guardar objetivo"}
-                </button>
-                {magicUnlockConfigMessage && <span className="muted">{magicUnlockConfigMessage}</span>}
-              </div>
-              <div className="audio-tools">
-                <button
-                  className={channelingEnabled ? "primary" : "secondary"}
-                  onClick={() => handleToggleChannelingEnabled(!channelingEnabled)}
-                  disabled={channelingConfigSaving}
-                >
-                  {channelingConfigSaving
-                    ? "Guardando..."
-                    : channelingEnabled
-                      ? "Canalización ON"
-                      : "Canalización OFF"}
-                </button>
-                <span className="muted">
-                  {channelingEnabled
-                    ? "Visible para alumnos desde el menú principal."
-                    : "Oculta para alumnos hasta activarla aquí."}
-                </span>
-                {channelingConfigMessage && <span className="muted">{channelingConfigMessage}</span>}
-              </div>
-              <div className="admin-flow-summary">
-                <div className={`alert-pill ${adminAnalytics.flowSemaforoLevel}`}>
-                  Avance de flujo: {adminAnalytics.flowProgressPct}%
-                </div>
-                <div className="flow-semaforo" aria-label="Semáforo de flujo por etapa">
-                  <span className={`flow-dot ${adminAnalytics.flowCounts.onboarding > 0 ? "on" : "off"}`} />
-                  <span className={`flow-dot ${adminAnalytics.flowCounts.prePractice > 0 ? "on" : "off"}`} />
-                  <span className={`flow-dot ${adminAnalytics.flowCounts.practice > 0 ? "on" : "off"}`} />
-                  <span className="muted flow-legend">
-                    Onboarding {adminAnalytics.flowCounts.onboarding} · Pre-práctica {adminAnalytics.flowCounts.prePractice} · Práctica {adminAnalytics.flowCounts.practice}
-                  </span>
-                </div>
-                <div className="muted">
-                  Color habilitado en {adminAnalytics.flowCounts.colorEnabled} de {adminStudents.length} estudiantes.
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <h3>Administradores (v2)</h3>
-              <p className="muted">Solo el administrador principal puede crear o eliminar administradores secundarios.</p>
-              <div className="audio-tools">
-                <button
-                  className="ghost"
-                  onClick={() => window.open(SEGUIMIENTO_DASHBOARD_URL, "_blank", "noopener,noreferrer")}
-                >
-                  Abrir dashboard Seguimiento
-                </button>
-                {adminStudents.length === 0 && (
-                  <button className="secondary" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
-                    {adminBridgeLoading ? "Sincronizando..." : "Importacion inicial de alumnos"}
-                  </button>
-                )}
-                {adminBridgeMessage && <span className="muted">{adminBridgeMessage}</span>}
-              </div>
-              <div className="form-grid">
-                <label>
-                  Nombre admin
-                  <input
-                    type="text"
-                    value={newAdminName}
-                    onChange={(event) => setNewAdminName(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Password admin
-                  <input
-                    type="password"
-                    value={newAdminPassword}
-                    onChange={(event) => setNewAdminPassword(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Doble confirmación
-                  <input
-                    type="text"
-                    placeholder={newAdminName ? `CONFIRMAR ${newAdminName}` : "CONFIRMAR nombre"}
-                    value={newAdminConfirmation}
-                    onChange={(event) => setNewAdminConfirmation(event.target.value)}
-                  />
-                </label>
-              </div>
-              <div className="audio-tools">
-                <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={newAdminConfirmedTwice}
-                    onChange={(event) => setNewAdminConfirmedTwice(event.target.checked)}
-                  />
-                  Confirmo por segunda vez que deseo crear este administrador.
-                </label>
-                <button className="secondary" onClick={handleCreateAdmin}>
-                  Crear administrador
-                </button>
-                {adminManagerMessage && <span className="muted">{adminManagerMessage}</span>}
-              </div>
-              <div className="link-list">
-                {adminsList.map((admin) => (
-                  <div key={admin.name} className="link-row">
-                    <div>
-                      <strong>{admin.name}</strong>
-                      <div className="muted">
-                        {admin.role === "admin-total" ? "Administrador total" : "Administrador"}
-                        {admin.source === "env" ? " · acceso fijo" : ""}
-                      </div>
-                      <div className="muted">Creado: {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "-"}</div>
-                    </div>
-                    <div className="link-actions">
-                      {admin.locked ? (
-                        <span className="muted">Protegido por Vercel</span>
-                      ) : (
-                        <button className="ghost" onClick={() => handleRemoveAdmin(admin.name)}>
-                          Eliminar admin
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3>Nuevo estudiante</h3>
-              <div className="form-grid">
-                <label>
-                  Nombre
-                  <input
-                    type="text"
-                    value={adminName}
-                    onChange={(event) => setAdminName(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Audio inicial aprobado (opcional)
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    onChange={(event) => setAdminFile(event.target.files?.[0] || null)}
-                  />
-                  <span className="muted">
-                    Si lo dejas vacío, se crea un link para que el alumno suba su audio original.
-                  </span>
-                </label>
-              </div>
-              <div className="audio-tools">
-                <button className="primary" onClick={handleAdminCreate}>
-                  Crear estudiante
-                </button>
-                {adminStatus === "loading" && (
-                  <span className="muted">Procesando…</span>
-                )}
-                {adminMessage && <span className="muted">{adminMessage}</span>}
-              </div>
-              {adminLink && (
-                <div className="summary">
-                  Link listo: <span className="code">{adminLink}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="card">
-              <div className="panel-actions">
-                <h3>Estudiantes</h3>
-                <div className="admin-tabs">
+    return (
+      <div className="app admin-app">
+        {renderHeader()}
+        {adminStatus !== "ready" ? (
+          adminLoginCard
+        ) : (
+          <main className="admin-dashboard">
+            <section className="admin-hero">
+              <div>
+                <h2>Estudiantes</h2>
+                <div className="admin-tabs segmented-tabs" role="tablist" aria-label="Vista estudiantes">
                   <button
+                    type="button"
                     className={`chip ${adminView === "students" ? "active" : ""}`}
                     onClick={() => setAdminView("students")}
                   >
                     Todos
                   </button>
                   <button
+                    type="button"
                     className={`chip ${adminView === "active" ? "active" : ""}`}
                     onClick={() => setAdminView("active")}
                   >
                     Activos
                   </button>
                   <button
+                    type="button"
                     className={`chip ${adminView === "alerts" ? "active" : ""}`}
                     onClick={() => setAdminView("alerts")}
                   >
@@ -4085,228 +3863,415 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              <div className="panel-actions">
+              <div className="admin-hero-tools" aria-hidden="true">
+                <span className="admin-icon-button">☼</span>
+                <span className="admin-avatar">A</span>
+              </div>
+            </section>
+
+            <section className="admin-kpi-strip card">
+              <div className="admin-kpi-card active">
+                <span className="kpi-icon people" />
+                <div>
+                  <span>Estudiantes activos</span>
+                  <strong>{adminAnalytics.active.length}</strong>
+                  <small>Diario: {adminAnalytics.practicingDaily.length} practicaron hoy</small>
+                </div>
+                <span className="kpi-spark green" />
+              </div>
+              <div className="admin-kpi-card warning">
+                <span className="kpi-icon clock" />
+                <div>
+                  <span>Alerta 48h</span>
+                  <strong>{adminAnalytics.warning.length}</strong>
+                  <small>Abandono potencial: {adminAnalytics.abandoned.length}</small>
+                </div>
+                <span className="kpi-spark red" />
+              </div>
+              <div className="admin-kpi-card critical">
+                <span className="kpi-icon clock" />
+                <div>
+                  <span>Alerta 72h</span>
+                  <strong>{adminAnalytics.critical.length}</strong>
+                  <small>A atención: {adminAnalytics.critical.length}</small>
+                </div>
+                <span className="kpi-spark orange" />
+              </div>
+              <div className="admin-kpi-card sessions">
+                <span className="kpi-icon calendar" />
+                <div>
+                  <span>Más de 1 sesión hoy</span>
+                  <strong>{adminAnalytics.moreThanOnceToday.length}</strong>
+                  <small>Estudiantes con actividad</small>
+                </div>
+                <span className="kpi-spark blue" />
+              </div>
+              <button
+                type="button"
+                className="admin-alert-button"
+                onClick={() => setAdminView("alerts")}
+              >
+                <span>Revisar alertas</span>
+                <small>Ver estudiantes en riesgo</small>
+              </button>
+            </section>
+
+            <section className="admin-toolbar card">
+              <label className="admin-search-field" aria-label="Buscar estudiante">
+                <span>⌕</span>
                 <input
                   type="search"
-                  placeholder="Buscar estudiante…"
+                  placeholder="Buscar estudiante..."
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
-                <span className="muted">
-                  {adminRowsForView.length} / {adminStudents.length}
-                </span>
-              </div>
-              <div className="link-list">
-                {adminRowsForView
-                  .map((item) => {
-                    const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
-                    const advancedInfo = getAdvancedAccessInfo(item);
-                    const hasBeginnerAudio = Boolean(item.audioWorkflow?.beginnerAudioKey);
-                    const hasAdvancedAudio = Boolean(item.audioWorkflow?.editorAudioKey);
-                    const readyToApproveWorkflow = workflowStatus === "edited" && hasBeginnerAudio && hasAdvancedAudio;
-                    return (
-                      <div key={item.slug} className={`link-row ${item.alertLevel === "critical" ? "row-critical" : ""}`}>
-                        <div>
-                          <strong>{item.name}</strong>
-                          <div className="muted">{item.slug}</div>
-                          {item.createdAt && (
-                            <div className="muted">Creado: {new Date(item.createdAt).toLocaleDateString()}</div>
-                          )}
-                          <div className="workflow-meta">
-                            Audio:{" "}
-                            <span className={`workflow-pill ${workflowStatus}`}>
-                              {WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}
-                            </span>
-                          </div>
-                          {item.audioWorkflow?.rawFileName && (
-                            <div className="muted">Original alumno: {item.audioWorkflow.rawFileName}</div>
-                          )}
-                          {item.audioWorkflow?.beginnerFileName && (
-                            <div className="muted">Editado 30 min: {item.audioWorkflow.beginnerFileName}</div>
-                          )}
-                          {item.audioWorkflow?.editorFileName && (
-                            <div className="muted">Crudo Advanced: {item.audioWorkflow.editorFileName}</div>
-                          )}
-                          {workflowStatus === "approved" && item.audioWorkflow?.advancedUnlockAt && (
-                            <div className="muted">
-                              {advancedInfo.unlocked ? "Advanced desde" : "Advanced se libera"}:{" "}
-                              {new Date(item.audioWorkflow.advancedUnlockAt).toLocaleDateString()}
-                            </div>
-                          )}
-                          {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
-                            <div className="muted">
-                              Advanced: se libera en {advancedInfo.daysUntil || AUDIO_WORKFLOW_DAYS_TO_ADVANCED} días
-                            </div>
-                          )}
-                          {advancedInfo.unlocked && (
-                            <div className="muted">Advanced: habilitado</div>
-                          )}
-                          <div className="muted">
-                            Visualizacion de colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}
-                          </div>
-                          {item.usage?.lastSessionAt && (
-                            <div className="muted">
-                              Última práctica: {new Date(item.usage.lastSessionAt).toLocaleString()}
-                            </div>
-                          )}
-                          {adminView !== "students" && (
-                            <div className="muted">
-                              Sesiones: {item.totalSessions || 0} · Rondas: {item.totalRounds || 0}
-                              {Array.isArray(item.roundAvg) && item.roundAvg.length > 0
-                                ? ` · Promedio apnea R1-R5: ${item.roundAvg.map((v, idx) => `R${idx + 1}:${v || 0}s`).join(" | ")}`
-                                : ""}
-                            </div>
-                          )}
-                          <div className="muted">
-                            Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}
-                            {item.colorVisionSessions
-                              ? ` · Color: ${item.colorVisionSessions} sesiones (${Math.round(item.colorVisionAccuracy || 0)}% prom.)`
-                              : ""}
-                          </div>
-                          <div className="flow-semaforo" aria-label="Estado de flujo del alumno">
-                            <span className={`flow-dot ${item.flowState?.onboarding ? "on" : "off"}`} />
-                            <span className={`flow-dot ${item.flowState?.prePractice ? "on" : "off"}`} />
-                            <span className={`flow-dot ${item.flowState?.practice ? "on" : "off"}`} />
-                            <span className="muted flow-legend">Onboarding · Pre-práctica · Práctica</span>
-                          </div>
-                          {item.alertLevel === "warning" && (
-                            <div className="warn">Alerta 48h sin práctica</div>
-                          )}
-                          {item.alertLevel === "critical" && (
-                            <div className="warn">Alerta roja 72h sin práctica</div>
-                          )}
+              </label>
+              <span className="admin-count">{adminRowsForView.length} / {adminStudents.length} estudiantes</span>
+              <select aria-label="Ordenar estudiantes" defaultValue="name">
+                <option value="name">Ordenar por: Nombre A-Z</option>
+              </select>
+              <button type="button" className="ghost admin-filter-button">Filtros</button>
+            </section>
+
+            <section className="admin-students-list" aria-label="Listado de estudiantes">
+              {adminRowsForView.map((item) => {
+                const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
+                const advancedInfo = getAdvancedAccessInfo(item);
+                const hasBeginnerAudio = Boolean(item.audioWorkflow?.beginnerAudioKey);
+                const hasAdvancedAudio = Boolean(item.audioWorkflow?.editorAudioKey);
+                const readyToApproveWorkflow = workflowStatus === "edited" && hasBeginnerAudio && hasAdvancedAudio;
+                const initial = (item.name || item.slug || "E").trim().slice(0, 1).toUpperCase();
+                const createdLabel = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "-";
+                const alertCopy = item.alertLevel === "critical"
+                  ? "Alerta 72h"
+                  : item.alertLevel === "warning"
+                    ? "Alerta 48h"
+                    : "Sin alerta";
+                return (
+                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""}`}>
+                    <div className="student-identity">
+                      <span className="student-avatar-ring">{initial}</span>
+                      <div>
+                        <h3>{item.name}</h3>
+                        <p>{item.slug}</p>
+                        <small>Creado: {createdLabel}</small>
+                        <div className="workflow-meta">
+                          <span>Audio:</span>
+                          <span className={`workflow-pill ${workflowStatus}`}>
+                            {WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}
+                          </span>
                         </div>
-                        <div className="link-actions">
-                          <button
-                            className="secondary"
-                            onClick={() => copyLink(item.slug, item.token, false)}
-                          >
+                      </div>
+                    </div>
+
+                    <div className="student-progress-stack">
+                      <span className={item.flowState?.onboarding ? "done" : ""}>Onboarding</span>
+                      <span className={item.flowState?.prePractice ? "done" : ""}>Pre-práctica</span>
+                      <span className={item.flowState?.practice ? "done" : ""}>Práctica</span>
+                    </div>
+
+                    <div className="student-main-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => copyLink(item.slug, item.token, true)}
+                      >
+                        Copiar link con token
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => handleRequestStudentAudio(item.slug)}
+                      >
+                        Solicitar audio
+                      </button>
+                      <a
+                        className="ghost link-button"
+                        href={buildStudentLink(item.slug, item.token, true)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Abrir link
+                      </a>
+                      <details className="student-more-menu">
+                        <summary aria-label="Más acciones">•••</summary>
+                        <div className="student-more-panel">
+                          <button type="button" onClick={() => copyLink(item.slug, item.token, false)}>
                             Copiar link
                           </button>
-                          <button
-                            className="primary"
-                            onClick={() => copyLink(item.slug, item.token, true)}
-                          >
-                            Copiar link con token
-                          </button>
-                          <button
-                            className="ghost"
-                            onClick={() => copyToken(item.token)}
-                          >
+                          <button type="button" onClick={() => copyToken(item.token)}>
                             Copiar token
                           </button>
-                          <a
-                            className="ghost link-button"
-                            href={buildStudentLink(item.slug, item.token, true)}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Abrir link
-                          </a>
-                          <button
-                            className="secondary"
-                            onClick={() => copyUploadLink(item.slug, item.token)}
-                          >
+                          <button type="button" onClick={() => copyUploadLink(item.slug, item.token)}>
                             Copiar link carga
                           </button>
+                          <button type="button" onClick={() => handleReplaceClick(item.slug)}>
+                            Reemplazar audio
+                          </button>
                           <button
-                            className="ghost"
-                            onClick={() => handleRequestStudentAudio(item.slug)}
+                            type="button"
+                            onClick={() => handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled)}
                           >
-                            Solicitar audio
+                            {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
                           </button>
                           {item.audioWorkflow?.rawAudioKey && (
-                            <a
-                              className="ghost link-button"
-                              href={buildWorkflowAudioUrl(item, "raw")}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Original
+                            <a href={buildWorkflowAudioUrl(item, "raw")} target="_blank" rel="noreferrer">
+                              Original alumno
                             </a>
                           )}
                           {item.audioWorkflow?.editorAudioKey && (
-                            <a
-                              className="ghost link-button"
-                              href={buildWorkflowAudioUrl(item, "edited")}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
+                            <a href={buildWorkflowAudioUrl(item, "edited")} target="_blank" rel="noreferrer">
                               Crudo Advanced
                             </a>
                           )}
                           {item.audioWorkflow?.beginnerAudioKey && (
-                            <a
-                              className="ghost link-button"
-                              href={buildWorkflowAudioUrl(item, "beginner")}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
+                            <a href={buildWorkflowAudioUrl(item, "beginner")} target="_blank" rel="noreferrer">
                               Editado 30 min
                             </a>
                           )}
-                          {readyToApproveWorkflow && (
-                            <button
-                              className="primary"
-                              onClick={() => handleApproveEditedAudio(item.slug)}
-                            >
-                              Aprobar audio
-                            </button>
-                          )}
-                          {workflowStatus === "edited" && !readyToApproveWorkflow && (
-                            <span className="workflow-pill pending">
-                              {!hasBeginnerAudio && !hasAdvancedAudio
-                                ? "Faltan editado 30 min y crudo Advanced"
-                                : !hasBeginnerAudio
-                                  ? "Falta editado 30 min"
-                                  : "Falta crudo Advanced"}
-                            </span>
-                          )}
-                          {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
-                            <button
-                              className="primary"
-                              onClick={() => handleUnlockAdvanced(item.slug)}
-                            >
-                              Activar Advanced
-                            </button>
-                          )}
-                          {advancedInfo.unlocked && (
-                            <span className="workflow-pill approved">Advanced ON</span>
-                          )}
-                          <button
-                            className="secondary"
-                            onClick={() => handleReplaceClick(item.slug)}
-                          >
-                            Reemplazar audio
-                          </button>
-                          <button
-                            className={item.features?.colorVisionEnabled ? "primary" : "secondary"}
-                            onClick={() =>
-                              handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled)
-                            }
-                          >
-                            {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
-                          </button>
-                          <button
-                            className="ghost"
-                            onClick={() => handleAdminDelete(item.slug)}
-                          >
+                          <button className="danger-action" type="button" onClick={() => handleAdminDelete(item.slug)}>
                             Eliminar
                           </button>
                         </div>
-                      </div>
-                    );
-                  })}
-                {adminRowsForView.length === 0 && (
-                  <p className="muted">
-                    {adminStudents.length === 0
-                      ? "Aún no hay estudiantes cargados."
-                      : "Sin resultados para esa vista."}
-                  </p>
+                      </details>
+                    </div>
+
+                    <div className="student-status-line">
+                      <span>Avanzado: {advancedInfo.unlocked ? "habilitado" : "bloqueado"}</span>
+                      <span>Colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}</span>
+                      <span>Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}</span>
+                    </div>
+
+                    <div className={`student-alert-badge ${item.alertLevel || "ok"}`}>
+                      <strong>{alertCopy}</strong>
+                      <span>{item.alertLevel ? "Sin práctica" : "Actividad normal"}</span>
+                    </div>
+
+                    <div className="student-secondary-actions">
+                      {readyToApproveWorkflow && (
+                        <button type="button" className="primary" onClick={() => handleApproveEditedAudio(item.slug)}>
+                          Aprobar audio
+                        </button>
+                      )}
+                      {workflowStatus === "edited" && !readyToApproveWorkflow && (
+                        <span className="workflow-pill pending">
+                          {!hasBeginnerAudio && !hasAdvancedAudio
+                            ? "Faltan editado 30 min y crudo Advanced"
+                            : !hasBeginnerAudio
+                              ? "Falta editado 30 min"
+                              : "Falta crudo Advanced"}
+                        </span>
+                      )}
+                      {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
+                        <button type="button" className="primary" onClick={() => handleUnlockAdvanced(item.slug)}>
+                          Activar Advanced
+                        </button>
+                      )}
+                      {advancedInfo.unlocked && <span className="workflow-pill approved">Advanced ON</span>}
+                    </div>
+                  </article>
+                );
+              })}
+              {adminRowsForView.length === 0 && (
+                <section className="card empty-admin-state">
+                  {adminStudents.length === 0 ? "Aún no hay estudiantes cargados." : "Sin resultados para esa vista."}
+                </section>
+              )}
+            </section>
+
+            <section className="admin-lower-grid">
+              {adminLoginCard}
+
+              <section className="card new-student-card">
+                <h3>Nuevo estudiante</h3>
+                <div className="form-grid">
+                  <label>
+                    Nombre
+                    <input
+                      type="text"
+                      value={adminName}
+                      onChange={(event) => setAdminName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Audio inicial aprobado (opcional)
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={(event) => setAdminFile(event.target.files?.[0] || null)}
+                    />
+                    <span className="muted">
+                      Si lo dejas vacío, se crea un link para que el alumno suba su audio original.
+                    </span>
+                  </label>
+                </div>
+                <div className="audio-tools">
+                  <button type="button" className="primary" onClick={handleAdminCreate}>
+                    Crear estudiante
+                  </button>
+                  {adminStatus === "loading" && <span className="muted">Procesando...</span>}
+                  {adminMessage && <span className="muted">{adminMessage}</span>}
+                </div>
+                {adminLink && (
+                  <div className="summary">
+                    Link listo: <span className="code">{adminLink}</span>
+                  </div>
                 )}
-              </div>
-            </div>
-          </>
+              </section>
+
+              <section className="card admin-config-card">
+                <h3>Configurar habilitaciones</h3>
+                <p className="muted">
+                  Define el score semanal objetivo y decide si Canalización aparece o no en el menú del alumno.
+                </p>
+                <div className="admin-config-grid">
+                  <label>
+                    Objetivo Canalización (%)
+                    <input
+                      type="number"
+                      min="60"
+                      max="98"
+                      step="1"
+                      value={magicUnlockConfigDraft}
+                      onChange={(event) => setMagicUnlockConfigDraft(event.target.value)}
+                    />
+                  </label>
+                  <div className="admin-semaforo-panel">
+                    <strong>Semáforo objetivo</strong>
+                    <div className="semaforo-lights">
+                      <span className={`semaforo-light green ${magicPolicyLevel === "green" ? "on" : ""}`} />
+                      <span className={`semaforo-light yellow ${magicPolicyLevel === "yellow" ? "on" : ""}`} />
+                      <span className={`semaforo-light red ${magicPolicyLevel === "red" ? "on" : ""}`} />
+                    </div>
+                    <small>
+                      {magicPolicyLevel === "green"
+                        ? "Objetivo fácil de alcanzar"
+                        : magicPolicyLevel === "yellow"
+                          ? "Objetivo medio"
+                          : "Objetivo exigente"}
+                    </small>
+                  </div>
+                  <div className="admin-flow-summary compact">
+                    <div className={`alert-pill ${adminAnalytics.flowSemaforoLevel}`}>
+                      Avance de flujo: {adminAnalytics.flowProgressPct}%
+                    </div>
+                    <div className="flow-semaforo" aria-label="Semáforo de flujo por etapa">
+                      <span className={`flow-dot ${adminAnalytics.flowCounts.onboarding > 0 ? "on" : "off"}`} />
+                      <span className={`flow-dot ${adminAnalytics.flowCounts.prePractice > 0 ? "on" : "off"}`} />
+                      <span className={`flow-dot ${adminAnalytics.flowCounts.practice > 0 ? "on" : "off"}`} />
+                      <span className="muted flow-legend">
+                        Onboarding {adminAnalytics.flowCounts.onboarding} · Pre-práctica {adminAnalytics.flowCounts.prePractice} · Práctica {adminAnalytics.flowCounts.practice}
+                      </span>
+                    </div>
+                    <div className="muted">
+                      Color habilitado en {adminAnalytics.flowCounts.colorEnabled} de {adminStudents.length} estudiantes.
+                    </div>
+                  </div>
+                </div>
+                <div className="audio-tools">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={handleSaveMagicUnlockScore}
+                    disabled={magicUnlockConfigSaving}
+                  >
+                    {magicUnlockConfigSaving ? "Guardando..." : "Guardar objetivo"}
+                  </button>
+                  <button
+                    type="button"
+                    className={channelingEnabled ? "primary" : "secondary"}
+                    onClick={() => handleToggleChannelingEnabled(!channelingEnabled)}
+                    disabled={channelingConfigSaving}
+                  >
+                    {channelingConfigSaving
+                      ? "Guardando..."
+                      : channelingEnabled
+                        ? "Canalización ON"
+                        : "Canalización OFF"}
+                  </button>
+                  {magicUnlockConfigMessage && <span className="muted">{magicUnlockConfigMessage}</span>}
+                  {channelingConfigMessage && <span className="muted">{channelingConfigMessage}</span>}
+                </div>
+              </section>
+
+              <section className="card admin-managers-card">
+                <h3>Administradores (v2)</h3>
+                <p className="muted">Solo el administrador principal puede crear o eliminar administradores secundarios.</p>
+                <button
+                  type="button"
+                  className="ghost wide-action"
+                  onClick={() => window.open(SEGUIMIENTO_DASHBOARD_URL, "_blank", "noopener,noreferrer")}
+                >
+                  Abrir dashboard Seguimiento
+                </button>
+                {adminStudents.length === 0 && (
+                  <button type="button" className="secondary wide-action" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
+                    {adminBridgeLoading ? "Sincronizando..." : "Importacion inicial de alumnos"}
+                  </button>
+                )}
+                {adminBridgeMessage && <p className="muted">{adminBridgeMessage}</p>}
+                <details className="admin-manager-details">
+                  <summary>Gestionar administradores</summary>
+                  <div className="form-grid">
+                    <label>
+                      Nombre admin
+                      <input type="text" value={newAdminName} onChange={(event) => setNewAdminName(event.target.value)} />
+                    </label>
+                    <label>
+                      Password admin
+                      <input type="password" value={newAdminPassword} onChange={(event) => setNewAdminPassword(event.target.value)} />
+                    </label>
+                    <label>
+                      Doble confirmación
+                      <input
+                        type="text"
+                        placeholder={newAdminName ? `CONFIRMAR ${newAdminName}` : "CONFIRMAR nombre"}
+                        value={newAdminConfirmation}
+                        onChange={(event) => setNewAdminConfirmation(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <div className="audio-tools">
+                    <label className="inline-check">
+                      <input
+                        type="checkbox"
+                        checked={newAdminConfirmedTwice}
+                        onChange={(event) => setNewAdminConfirmedTwice(event.target.checked)}
+                      />
+                      Confirmo por segunda vez que deseo crear este administrador.
+                    </label>
+                    <button type="button" className="secondary" onClick={handleCreateAdmin}>
+                      Crear administrador
+                    </button>
+                    {adminManagerMessage && <span className="muted">{adminManagerMessage}</span>}
+                  </div>
+                  <div className="link-list compact-admin-list">
+                    {adminsList.map((admin) => (
+                      <div key={admin.name} className="link-row">
+                        <div>
+                          <strong>{admin.name}</strong>
+                          <div className="muted">
+                            {admin.role === "admin-total" ? "Administrador total" : "Administrador"}
+                            {admin.source === "env" ? " · acceso fijo" : ""}
+                          </div>
+                          <div className="muted">Creado: {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "-"}</div>
+                        </div>
+                        <div className="link-actions">
+                          {admin.locked ? (
+                            <span className="muted">Protegido por Vercel</span>
+                          ) : (
+                            <button type="button" className="ghost" onClick={() => handleRemoveAdmin(admin.name)}>
+                              Eliminar admin
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </section>
+            </section>
+          </main>
         )}
       </div>
     );
