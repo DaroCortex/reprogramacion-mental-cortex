@@ -1809,8 +1809,64 @@ input[type="range"]:focus {
   color: #ff625b;
 }
 
-.student-secondary-actions {
+.student-secondary {
   grid-area: secondary;
+  display: grid;
+  gap: 10px;
+}
+
+.student-weekly-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(118px, 1fr));
+  gap: 8px;
+}
+
+.student-weekly-stat {
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--stroke) 82%, transparent);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--card) 88%, transparent), color-mix(in srgb, var(--accent) 4%, transparent)),
+    color-mix(in srgb, var(--card) 94%, #061523 6%);
+}
+
+.student-weekly-stat span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.student-weekly-stat strong {
+  display: block;
+  color: var(--ink);
+  font-size: clamp(13px, 1.6vw, 17px);
+  line-height: 1.2;
+}
+
+.student-weekly-stat.ok {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--stroke));
+}
+
+.student-weekly-stat.warning {
+  border-color: color-mix(in srgb, #f2aa4c 48%, var(--stroke));
+  background:
+    radial-gradient(circle at 12% 16%, rgba(242, 170, 76, 0.12), transparent 36%),
+    color-mix(in srgb, var(--card) 94%, #061523 6%);
+}
+
+.student-weekly-stat.critical {
+  border-color: color-mix(in srgb, #ff625b 58%, var(--stroke));
+  background:
+    radial-gradient(circle at 12% 16%, rgba(255, 98, 91, 0.14), transparent 38%),
+    color-mix(in srgb, var(--card) 94%, #061523 6%);
+}
+
+.student-secondary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -2216,6 +2272,15 @@ input[type="range"]:focus {
     grid-template-columns: 1fr;
   }
 
+  .student-weekly-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .student-weekly-stat {
+    min-height: 62px;
+    padding: 9px 10px;
+  }
+
   .student-main-actions > button,
   .student-main-actions > .link-button,
   .student-more-menu > summary,
@@ -2292,6 +2357,10 @@ input[type="range"]:focus {
   .student-main-actions,
   .student-secondary-actions {
     justify-content: flex-start;
+  }
+
+  .student-weekly-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .student-alert-badge {

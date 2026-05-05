@@ -194,6 +194,84 @@ const toIsoDate = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+const WEEKDAY_SHORT = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
+
+const padDatePart = (value) => String(value).padStart(2, "0");
+
+const localStartOfDay = (date = new Date()) => (
+  new Date(date.getFullYear(), date.getMonth(), date.getDate())
+);
+
+const localDateKey = (input = new Date()) => {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+};
+
+const shiftLocalDate = (date, offsetDays) => {
+  const next = localStartOfDay(date instanceof Date ? date : new Date(date));
+  next.setDate(next.getDate() + offsetDays);
+  return next;
+};
+
+const compareDateKey = (a, b) => String(a || "").localeCompare(String(b || ""));
+
+const formatWeeklyDay = (key) => {
+  const [year, month, day] = String(key || "").split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return key || "-";
+  return WEEKDAY_SHORT[date.getDay()] || key;
+};
+
+const buildWeeklyPracticeStats = (studentItem, nowInput = new Date()) => {
+  const nowDate = nowInput instanceof Date ? nowInput : new Date(nowInput);
+  const usage = studentItem?.usage || {};
+  const sessionsByDay = usage.sessionsByDay || {};
+  const todayKey = localDateKey(nowDate);
+  const createdKey = studentItem?.createdAt ? localDateKey(studentItem.createdAt) : "";
+  const weekKeys = Array.from({ length: 7 }, (_, index) => (
+    localDateKey(shiftLocalDate(nowDate, index - 6))
+  )).filter(Boolean);
+  const trackedKeys = weekKeys.filter((key) => !createdKey || compareDateKey(key, createdKey) >= 0);
+  const completedKeys = trackedKeys.filter((key) => Number(sessionsByDay[key] || 0) > 0);
+  const missedKeys = trackedKeys
+    .filter((key) => key !== todayKey)
+    .filter((key) => Number(sessionsByDay[key] || 0) <= 0);
+  const weeklySessions = trackedKeys.reduce((sum, key) => sum + Number(sessionsByDay[key] || 0), 0);
+  const todaySessions = Number(sessionsByDay[todayKey] || 0);
+
+  let currentStreak = 0;
+  const streakStartOffset = todaySessions > 0 ? 0 : 1;
+  for (let offset = streakStartOffset; offset < 90; offset += 1) {
+    const key = localDateKey(shiftLocalDate(nowDate, -offset));
+    if (createdKey && compareDateKey(key, createdKey) < 0) break;
+    if (Number(sessionsByDay[key] || 0) <= 0) break;
+    currentStreak += 1;
+  }
+
+  let consecutiveMisses = 0;
+  for (let offset = 1; offset < 90; offset += 1) {
+    const key = localDateKey(shiftLocalDate(nowDate, -offset));
+    if (createdKey && compareDateKey(key, createdKey) < 0) break;
+    if (Number(sessionsByDay[key] || 0) > 0) break;
+    consecutiveMisses += 1;
+  }
+
+  return {
+    weekKeys: trackedKeys,
+    practicedDays: completedKeys.length,
+    expectedDays: trackedKeys.length,
+    weeklySessions,
+    missedKeys,
+    missedLabels: missedKeys.map(formatWeeklyDay),
+    currentStreak,
+    consecutiveMisses,
+    todaySessions,
+    needsAttention: consecutiveMisses >= 2,
+    warning: consecutiveMisses === 1
+  };
+};
+
 const normalizeRoundArray = (value, limit = 5) => {
   const list = Array.isArray(value) ? value : [];
   return list
@@ -941,23 +1019,35 @@ export default function App() {
   }, [adminStudents, searchTerm]);
 
   const adminAnalytics = useMemo(() => {
-    const now = Date.now();
+    const nowDate = new Date();
+    const now = nowDate.getTime();
     const rows = adminStudents.map((item) => {
       const usage = item.usage || {};
       const sessionsByDay = usage.sessionsByDay || {};
       const lastSessionAt = usage.lastSessionAt || "";
-      const lastMs = lastSessionAt ? Date.parse(lastSessionAt) : 0;
+      const createdMs = item.createdAt ? Date.parse(item.createdAt) : 0;
+      const lastMs = lastSessionAt ? Date.parse(lastSessionAt) : createdMs;
       const inactiveHours = lastMs ? (now - lastMs) / MS_PER_HOUR : Number.POSITIVE_INFINITY;
-      const isActive = Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
-      const alertLevel = !Number.isFinite(inactiveHours)
-        ? "warning"
+      const isActive = Boolean(lastSessionAt) && Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
+      const inactivityAlertLevel = !Number.isFinite(inactiveHours)
+        ? "ok"
         : inactiveHours >= ALERT_CRITICAL_HOURS
           ? "critical"
           : inactiveHours >= ALERT_WARNING_HOURS
             ? "warning"
             : "ok";
-      const today = toIsoDate(new Date().toISOString());
-      const todaySessions = Number(sessionsByDay[today] || 0);
+      const weeklyPractice = buildWeeklyPracticeStats(item, nowDate);
+      const missedAlertLevel = weeklyPractice.consecutiveMisses >= 2
+        ? "critical"
+        : weeklyPractice.consecutiveMisses >= 1
+          ? "warning"
+          : "ok";
+      const alertLevel = inactivityAlertLevel === "critical" || missedAlertLevel === "critical"
+        ? "critical"
+        : inactivityAlertLevel === "warning" || missedAlertLevel === "warning"
+          ? "warning"
+          : "ok";
+      const todaySessions = weeklyPractice.todaySessions;
       const roundSums = normalizeRoundArray(usage.apneaRoundSums, 5);
       const roundCounts = normalizeRoundArray(usage.apneaRoundCounts, 5);
       const flowStats = usage.flowStats || {};
@@ -987,6 +1077,7 @@ export default function App() {
         colorVisionAccuracy: Number(colorVisionUsage.averageAccuracy || 0),
         flowState,
         roundAvg,
+        weeklyPractice,
         lastSessionAt
       };
     });
@@ -997,6 +1088,7 @@ export default function App() {
     const moreThanOnceToday = rows.filter((item) => item.todaySessions > 1);
     const abandoned = rows.filter((item) => item.alertLevel === "critical");
     const practicingDaily = rows.filter((item) => item.todaySessions >= 1);
+    const twoDayPracticeAlerts = rows.filter((item) => item.weeklyPractice?.consecutiveMisses >= 2);
     const flowCounts = rows.reduce(
       (acc, item) => {
         if (item.flowState?.onboarding) acc.onboarding += 1;
@@ -1024,6 +1116,7 @@ export default function App() {
       moreThanOnceToday,
       abandoned,
       practicingDaily,
+      twoDayPracticeAlerts,
       flowCounts,
       flowProgressPct,
       flowSemaforoLevel,
@@ -3570,7 +3663,10 @@ export default function App() {
     if (adminView === "active") return adminAnalytics.active;
     if (adminView === "alerts") {
       return [...adminAnalytics.critical, ...adminAnalytics.warning]
-        .sort((a, b) => b.inactiveHours - a.inactiveHours);
+        .sort((a, b) => (
+          (b.weeklyPractice?.consecutiveMisses || 0) - (a.weeklyPractice?.consecutiveMisses || 0) ||
+          b.inactiveHours - a.inactiveHours
+        ));
     }
     return filteredAdminStudents.map((item) => {
       const found = adminAnalytics.rows.find((row) => row.slug === item.slug);
@@ -3884,7 +3980,7 @@ export default function App() {
                 <div>
                   <span>Alerta 48h</span>
                   <strong>{adminAnalytics.warning.length}</strong>
-                  <small>Abandono potencial: {adminAnalytics.abandoned.length}</small>
+                  <small>2 dias seguidos: {adminAnalytics.twoDayPracticeAlerts.length}</small>
                 </div>
                 <span className="kpi-spark red" />
               </div>
@@ -3893,7 +3989,7 @@ export default function App() {
                 <div>
                   <span>Alerta 72h</span>
                   <strong>{adminAnalytics.critical.length}</strong>
-                  <small>A atención: {adminAnalytics.critical.length}</small>
+                  <small>A revisar: {adminAnalytics.critical.length}</small>
                 </div>
                 <span className="kpi-spark orange" />
               </div>
@@ -3942,11 +4038,20 @@ export default function App() {
                 const readyToApproveWorkflow = workflowStatus === "edited" && hasBeginnerAudio && hasAdvancedAudio;
                 const initial = (item.name || item.slug || "E").trim().slice(0, 1).toUpperCase();
                 const createdLabel = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "-";
-                const alertCopy = item.alertLevel === "critical"
-                  ? "Alerta 72h"
-                  : item.alertLevel === "warning"
-                    ? "Alerta 48h"
-                    : "Sin alerta";
+                const weekly = item.weeklyPractice || buildWeeklyPracticeStats(item);
+                const missedCopy = weekly.missedLabels?.length ? weekly.missedLabels.join(", ") : "ninguna";
+                const alertCopy = weekly.consecutiveMisses >= 2
+                  ? `${weekly.consecutiveMisses} dias sin practica`
+                  : item.alertLevel === "critical"
+                    ? "Alerta 72h"
+                    : item.alertLevel === "warning"
+                      ? "Alerta 48h"
+                      : "Sin alerta";
+                const alertDetail = weekly.consecutiveMisses >= 2
+                  ? "Revisar hoy"
+                  : item.alertLevel && item.alertLevel !== "ok"
+                    ? "Sin practica"
+                    : "Actividad normal";
                 return (
                   <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""}`}>
                     <div className="student-identity">
@@ -4044,30 +4149,51 @@ export default function App() {
 
                     <div className={`student-alert-badge ${item.alertLevel || "ok"}`}>
                       <strong>{alertCopy}</strong>
-                      <span>{item.alertLevel ? "Sin práctica" : "Actividad normal"}</span>
+                      <span>{alertDetail}</span>
                     </div>
 
-                    <div className="student-secondary-actions">
-                      {readyToApproveWorkflow && (
-                        <button type="button" className="primary" onClick={() => handleApproveEditedAudio(item.slug)}>
-                          Aprobar audio
-                        </button>
-                      )}
-                      {workflowStatus === "edited" && !readyToApproveWorkflow && (
-                        <span className="workflow-pill pending">
-                          {!hasBeginnerAudio && !hasAdvancedAudio
-                            ? "Faltan editado 30 min y crudo Advanced"
-                            : !hasBeginnerAudio
-                              ? "Falta editado 30 min"
-                              : "Falta crudo Advanced"}
-                        </span>
-                      )}
-                      {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
-                        <button type="button" className="primary" onClick={() => handleUnlockAdvanced(item.slug)}>
-                          Activar Advanced
-                        </button>
-                      )}
-                      {advancedInfo.unlocked && <span className="workflow-pill approved">Advanced ON</span>}
+                    <div className="student-secondary">
+                      <div className="student-weekly-panel" aria-label={`Seguimiento semanal de ${item.name}`}>
+                        <div className="student-weekly-stat">
+                          <span>Semana</span>
+                          <strong>{weekly.practicedDays || 0}/{weekly.expectedDays || 7}</strong>
+                        </div>
+                        <div className={`student-weekly-stat ${weekly.missedLabels?.length ? "warning" : "ok"}`}>
+                          <span>Fallo</span>
+                          <strong>{missedCopy}</strong>
+                        </div>
+                        <div className="student-weekly-stat">
+                          <span>Racha</span>
+                          <strong>{weekly.currentStreak || 0} dias</strong>
+                        </div>
+                        <div className={`student-weekly-stat ${weekly.consecutiveMisses >= 2 ? "critical" : weekly.consecutiveMisses >= 1 ? "warning" : "ok"}`}>
+                          <span>Seguidos sin practica</span>
+                          <strong>{weekly.consecutiveMisses || 0}</strong>
+                        </div>
+                      </div>
+
+                      <div className="student-secondary-actions">
+                        {readyToApproveWorkflow && (
+                          <button type="button" className="primary" onClick={() => handleApproveEditedAudio(item.slug)}>
+                            Aprobar audio
+                          </button>
+                        )}
+                        {workflowStatus === "edited" && !readyToApproveWorkflow && (
+                          <span className="workflow-pill pending">
+                            {!hasBeginnerAudio && !hasAdvancedAudio
+                              ? "Faltan editado 30 min y crudo Advanced"
+                              : !hasBeginnerAudio
+                                ? "Falta editado 30 min"
+                                : "Falta crudo Advanced"}
+                          </span>
+                        )}
+                        {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
+                          <button type="button" className="primary" onClick={() => handleUnlockAdvanced(item.slug)}>
+                            Activar Advanced
+                          </button>
+                        )}
+                        {advancedInfo.unlocked && <span className="workflow-pill approved">Advanced ON</span>}
+                      </div>
                     </div>
                   </article>
                 );
