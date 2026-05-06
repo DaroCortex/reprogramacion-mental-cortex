@@ -138,6 +138,17 @@ const WORKFLOW_STATUS_LABELS = {
   edited: "Editado listo",
   approved: "Aprobado"
 };
+const STUDENT_STATUS_LABELS = {
+  active: "Activo",
+  inactive: "Inactivo"
+};
+const AGE_BUCKET_LABELS = {
+  "age-30": "0-30 dias",
+  "age-60": "31-60 dias",
+  "age-90": "61-90 dias",
+  "age-90plus": "+90 dias",
+  "age-unknown": "Sin fecha"
+};
 const PRACTICE_OPTIONS = [
   { id: "principiante", label: "Reprogramacion Mental Principiante", enabled: false },
   { id: "reprogramacion", label: "Reprogramacion Mental Advanced", enabled: false },
@@ -168,6 +179,23 @@ const isSpecialWorkflow = (workflow = {}) =>
 const safeTimestamp = (value) => {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getStudentStatus = (studentItem = {}) =>
+  studentItem.status === "inactive" || studentItem.inactive ? "inactive" : "active";
+
+const getStudentAgeDays = (studentItem = {}, now = Date.now()) => {
+  const createdAt = safeTimestamp(studentItem.createdAt);
+  if (!createdAt) return null;
+  return Math.max(0, Math.floor((now - createdAt) / DAY_MS));
+};
+
+const getAgeBucket = (ageDays) => {
+  if (!Number.isFinite(ageDays)) return "age-unknown";
+  if (ageDays <= 30) return "age-30";
+  if (ageDays <= 60) return "age-60";
+  if (ageDays <= 90) return "age-90";
+  return "age-90plus";
 };
 
 const getAdvancedAccessInfo = (studentItem) => {
@@ -1068,16 +1096,6 @@ export default function App() {
     return "";
   }, [config.septasyncTrack, septasyncAudioMap]);
 
-  const filteredAdminStudents = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return adminStudents;
-    return adminStudents.filter((item) => (
-      String(item.name || "").toLowerCase().includes(term) ||
-      String(item.slug || "").toLowerCase().includes(term) ||
-      String(item.audioKey || "").toLowerCase().includes(term)
-    ));
-  }, [adminStudents, searchTerm]);
-
   const adminAnalytics = useMemo(() => {
     const nowDate = new Date();
     const now = nowDate.getTime();
@@ -1085,11 +1103,16 @@ export default function App() {
       const usage = item.usage || {};
       const lastSessionAt = usage.lastSessionAt || "";
       const lastActivityAt = usage.lastActivityAt || item.lastAudioAccessAt || lastSessionAt;
+      const status = getStudentStatus(item);
+      const ageDays = getStudentAgeDays(item, now);
+      const ageBucket = getAgeBucket(ageDays);
+      const isManuallyInactive = status === "inactive";
       const createdMs = item.createdAt ? Date.parse(item.createdAt) : 0;
       const lastMs = lastActivityAt ? Date.parse(lastActivityAt) : createdMs;
       const inactiveHours = lastMs ? (now - lastMs) / MS_PER_HOUR : Number.POSITIVE_INFINITY;
-      const isActive = Boolean(lastActivityAt) && Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
-      const inactivityAlertLevel = !Number.isFinite(inactiveHours)
+      const hasRecentActivity = Boolean(lastActivityAt) && Number.isFinite(inactiveHours) && inactiveHours < ALERT_WARNING_HOURS;
+      const isActive = !isManuallyInactive;
+      const inactivityAlertLevel = isManuallyInactive || !Number.isFinite(inactiveHours)
         ? "ok"
         : inactiveHours >= ALERT_CRITICAL_HOURS
           ? "critical"
@@ -1124,6 +1147,11 @@ export default function App() {
       return {
         ...item,
         usage,
+        status,
+        ageDays,
+        ageBucket,
+        isManuallyInactive,
+        hasRecentActivity,
         isActive,
         alertLevel,
         inactiveHours,
@@ -1143,17 +1171,25 @@ export default function App() {
       };
     });
 
-    const active = rows.filter((item) => item.isActive);
-    const warning = rows.filter((item) => item.alertLevel === "warning");
-    const critical = rows.filter((item) => item.alertLevel === "critical");
-    const moreThanOnceToday = rows.filter((item) => item.todaySessions > 1);
-    const abandoned = rows.filter((item) => item.alertLevel === "critical");
-    const practicingDaily = rows.filter((item) => item.todaySessions >= 1);
-    const twoDayPracticeAlerts = rows.filter((item) => item.weeklyPractice?.consecutiveMisses >= 2);
-    const specialRequests = rows.filter((item) =>
+    const active = rows.filter((item) => item.status !== "inactive");
+    const inactive = rows.filter((item) => item.status === "inactive");
+    const warning = active.filter((item) => item.alertLevel === "warning");
+    const critical = active.filter((item) => item.alertLevel === "critical");
+    const moreThanOnceToday = active.filter((item) => item.todaySessions > 1);
+    const abandoned = active.filter((item) => item.alertLevel === "critical");
+    const practicingDaily = active.filter((item) => item.todaySessions >= 1);
+    const twoDayPracticeAlerts = active.filter((item) => item.weeklyPractice?.consecutiveMisses >= 2);
+    const specialRequests = active.filter((item) =>
       isSpecialWorkflow(item.audioWorkflow) && item.audioWorkflow?.status !== "approved"
     );
-    const flowCounts = rows.reduce(
+    const ageBuckets = {
+      "age-30": active.filter((item) => item.ageBucket === "age-30"),
+      "age-60": active.filter((item) => item.ageBucket === "age-60"),
+      "age-90": active.filter((item) => item.ageBucket === "age-90"),
+      "age-90plus": active.filter((item) => item.ageBucket === "age-90plus"),
+      "age-unknown": active.filter((item) => item.ageBucket === "age-unknown")
+    };
+    const flowCounts = active.reduce(
       (acc, item) => {
         if (item.flowState?.onboarding) acc.onboarding += 1;
         if (item.flowState?.prePractice) acc.prePractice += 1;
@@ -1163,10 +1199,10 @@ export default function App() {
       },
       { onboarding: 0, prePractice: 0, practice: 0, colorEnabled: 0 }
     );
-    const flowProgressPct = rows.length
+    const flowProgressPct = active.length
       ? Math.round(
           ((flowCounts.onboarding + flowCounts.prePractice + flowCounts.practice) /
-            (rows.length * 3)) *
+            (active.length * 3)) *
             100
         )
       : 0;
@@ -1175,6 +1211,8 @@ export default function App() {
     return {
       rows,
       active,
+      inactive,
+      ageBuckets,
       warning,
       critical,
       moreThanOnceToday,
@@ -3901,20 +3939,57 @@ export default function App() {
     }
   };
 
+  const handleToggleStudentStatus = async (slugToUpdate, nextStatus) => {
+    if (!adminPassword || !slugToUpdate) return;
+    const isInactive = nextStatus === "inactive";
+    if (isInactive) {
+      const confirmed = window.confirm(
+        "¿Marcar este estudiante como inactivo? Pasará a la lista Inactivos y no molestará en las alertas."
+      );
+      if (!confirmed) return;
+    }
+    try {
+      await updateStudentWorkflow({
+        slug: slugToUpdate,
+        action: "set-student-status",
+        studentStatus: isInactive ? "inactive" : "active"
+      });
+      await ensureAdminList(adminPassword);
+      setAdminMessage(isInactive ? "Estudiante movido a Inactivos." : "Estudiante marcado como activo.");
+    } catch (error) {
+      setAdminMessage(error?.message || "No se pudo cambiar el estado del estudiante.");
+    }
+  };
+
   const adminRowsForView = useMemo(() => {
-    if (adminView === "active") return adminAnalytics.active;
+    const term = searchTerm.trim().toLowerCase();
+    const matchesSearch = (item) => {
+      if (!term) return true;
+      return (
+        String(item.name || "").toLowerCase().includes(term) ||
+        String(item.slug || "").toLowerCase().includes(term) ||
+        String(item.audioKey || "").toLowerCase().includes(term)
+      );
+    };
+    const searchedRows = adminAnalytics.rows.filter(matchesSearch);
+    const activeRows = searchedRows.filter((item) => item.status !== "inactive");
+
     if (adminView === "alerts") {
-      return [...adminAnalytics.critical, ...adminAnalytics.warning]
+      return activeRows
+        .filter((item) => item.alertLevel === "critical" || item.alertLevel === "warning")
         .sort((a, b) => (
           (b.weeklyPractice?.consecutiveMisses || 0) - (a.weeklyPractice?.consecutiveMisses || 0) ||
           b.inactiveHours - a.inactiveHours
         ));
     }
-    return filteredAdminStudents.map((item) => {
-      const found = adminAnalytics.rows.find((row) => row.slug === item.slug);
-      return found || item;
-    });
-  }, [adminAnalytics, adminView, filteredAdminStudents]);
+    if (adminView === "inactive") return searchedRows.filter((item) => item.status === "inactive");
+    if (adminView === "age-30") return activeRows.filter((item) => item.ageBucket === "age-30");
+    if (adminView === "age-60") return activeRows.filter((item) => item.ageBucket === "age-60");
+    if (adminView === "age-90") return activeRows.filter((item) => item.ageBucket === "age-90");
+    if (adminView === "age-90plus") return activeRows.filter((item) => item.ageBucket === "age-90plus");
+    if (adminView === "age-unknown") return activeRows.filter((item) => item.ageBucket === "age-unknown");
+    return activeRows;
+  }, [adminAnalytics, adminView, searchTerm]);
 
   const magicPolicyLevel = useMemo(() => {
     if (magicUnlockScoreConfig >= 88) return "red";
@@ -4192,14 +4267,51 @@ export default function App() {
                     className={`chip ${adminView === "students" ? "active" : ""}`}
                     onClick={() => setAdminView("students")}
                   >
-                    Todos
+                    Activos ({adminAnalytics.active.length})
                   </button>
                   <button
                     type="button"
-                    className={`chip ${adminView === "active" ? "active" : ""}`}
-                    onClick={() => setAdminView("active")}
+                    className={`chip ${adminView === "age-30" ? "active" : ""}`}
+                    onClick={() => setAdminView("age-30")}
                   >
-                    Activos
+                    0-30 ({adminAnalytics.ageBuckets["age-30"].length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${adminView === "age-60" ? "active" : ""}`}
+                    onClick={() => setAdminView("age-60")}
+                  >
+                    31-60 ({adminAnalytics.ageBuckets["age-60"].length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${adminView === "age-90" ? "active" : ""}`}
+                    onClick={() => setAdminView("age-90")}
+                  >
+                    61-90 ({adminAnalytics.ageBuckets["age-90"].length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${adminView === "age-90plus" ? "active" : ""}`}
+                    onClick={() => setAdminView("age-90plus")}
+                  >
+                    +90 ({adminAnalytics.ageBuckets["age-90plus"].length})
+                  </button>
+                  {adminAnalytics.ageBuckets["age-unknown"].length > 0 && (
+                    <button
+                      type="button"
+                      className={`chip ${adminView === "age-unknown" ? "active" : ""}`}
+                      onClick={() => setAdminView("age-unknown")}
+                    >
+                      Sin fecha ({adminAnalytics.ageBuckets["age-unknown"].length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`chip ${adminView === "inactive" ? "active" : ""}`}
+                    onClick={() => setAdminView("inactive")}
+                  >
+                    Inactivos ({adminAnalytics.inactive.length})
                   </button>
                   <button
                     type="button"
@@ -4222,7 +4334,7 @@ export default function App() {
                 <div>
                   <span>Estudiantes activos</span>
                   <strong>{adminAnalytics.active.length}</strong>
-                  <small>Diario: {adminAnalytics.practicingDaily.length} practicaron hoy</small>
+                  <small>Diario: {adminAnalytics.practicingDaily.length} practicaron hoy · Inactivos: {adminAnalytics.inactive.length}</small>
                 </div>
                 <span className="kpi-spark green" />
               </div>
@@ -4273,7 +4385,9 @@ export default function App() {
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
               </label>
-              <span className="admin-count">{adminRowsForView.length} / {adminStudents.length} estudiantes</span>
+              <span className="admin-count">
+                {adminRowsForView.length} visibles · {adminAnalytics.active.length} activos · {adminAnalytics.inactive.length} inactivos
+              </span>
               <select aria-label="Ordenar estudiantes" defaultValue="name">
                 <option value="name">Ordenar por: Nombre A-Z</option>
               </select>
@@ -4291,6 +4405,11 @@ export default function App() {
                 const readyToApproveWorkflow = workflowStatus === "edited" && hasBeginnerAudio && hasAdvancedAudio;
                 const initial = (item.name || item.slug || "E").trim().slice(0, 1).toUpperCase();
                 const createdLabel = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "-";
+                const studentStatus = getStudentStatus(item);
+                const isInactive = studentStatus === "inactive";
+                const ageLabel = Number.isFinite(item.ageDays)
+                  ? `${item.ageDays} dias`
+                  : AGE_BUCKET_LABELS[item.ageBucket] || "Sin fecha";
                 const weekly = item.weeklyPractice || buildWeeklyPracticeStats(item);
                 const missedCopy = weekly.missedLabels?.length ? weekly.missedLabels.join(", ") : "ninguna";
                 const alertCopy = specialWorkflow && workflowStatus !== "approved"
@@ -4310,13 +4429,19 @@ export default function App() {
                       ? "Sin practica"
                       : "Actividad normal";
                 return (
-                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""} ${specialWorkflow ? "is-special" : ""}`}>
+                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""} ${specialWorkflow ? "is-special" : ""} ${isInactive ? "is-inactive" : ""}`}>
                     <div className="student-identity">
                       <span className="student-avatar-ring">{initial}</span>
                       <div>
                         <h3>{item.name}</h3>
                         <p>{item.slug}</p>
                         <small>Creado: {createdLabel}</small>
+                        <div className="student-state-row">
+                          <span className={`student-state-pill ${studentStatus}`}>
+                            {STUDENT_STATUS_LABELS[studentStatus] || "Activo"}
+                          </span>
+                          <span className="student-age-pill">{ageLabel}</span>
+                        </div>
                         <div className="workflow-meta">
                           <span>Audio:</span>
                           <span className={`workflow-pill ${workflowStatus}`}>
@@ -4381,6 +4506,13 @@ export default function App() {
                           >
                             {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
                           </button>
+                          <button
+                            type="button"
+                            className={isInactive ? "" : "danger-action"}
+                            onClick={() => handleToggleStudentStatus(item.slug, isInactive ? "active" : "inactive")}
+                          >
+                            {isInactive ? "Marcar activo" : "Marcar inactivo"}
+                          </button>
                           {item.audioWorkflow?.rawAudioKey && (
                             <a href={buildWorkflowAudioUrl(item, "raw")} target="_blank" rel="noreferrer">
                               Original alumno
@@ -4404,6 +4536,8 @@ export default function App() {
                     </div>
 
                     <div className="student-status-line">
+                      <span>Estado: {STUDENT_STATUS_LABELS[studentStatus] || "Activo"}</span>
+                      <span>Antigüedad: {ageLabel}</span>
                       <span>Avanzado: {advancedInfo.unlocked ? "habilitado" : "bloqueado"}</span>
                       <span>Colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}</span>
                       <span>Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}</span>

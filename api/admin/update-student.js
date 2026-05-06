@@ -45,6 +45,7 @@ export default async function handler(req, res) {
       editorFileName,
       contentType,
       settings,
+      studentStatus,
       requestType,
       requestLabel,
       requestSource
@@ -114,6 +115,15 @@ export default async function handler(req, res) {
       };
       let nextWorkflow = { ...(item.audioWorkflow || {}) };
       let activeAudioKey = item.audioKey || "";
+      let nextStatus = item.status === "inactive" || item.inactive ? "inactive" : "active";
+
+      if (action === "set-student-status") {
+        const safeStatus = String(studentStatus || "").trim().toLowerCase();
+        if (safeStatus !== "active" && safeStatus !== "inactive") {
+          throw new Error("Estado invalido");
+        }
+        nextStatus = safeStatus;
+      }
 
       if (action === "request-audio") {
         nextWorkflow = {
@@ -236,6 +246,8 @@ export default async function handler(req, res) {
         audioKey: activeAudioKey,
         audioWorkflow: nextWorkflow,
         features: nextFeatures,
+        status: nextStatus,
+        inactive: nextStatus === "inactive",
         updatedAt: nowIso,
         lastAudioAccessAt: activeAudioKey ? item.lastAudioAccessAt || nowIso : item.lastAudioAccessAt || ""
       };

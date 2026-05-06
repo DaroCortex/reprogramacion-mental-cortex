@@ -1635,6 +1635,14 @@ input[type="range"]:focus {
     linear-gradient(135deg, color-mix(in srgb, var(--card) 92%, #201305 8%), color-mix(in srgb, var(--card) 86%, #231707 14%));
 }
 
+.admin-student-card.is-inactive {
+  opacity: 0.72;
+  border-color: color-mix(in srgb, var(--muted) 36%, var(--stroke) 64%);
+  background:
+    radial-gradient(circle at 18% 20%, color-mix(in srgb, var(--muted) 8%, transparent), transparent 36%),
+    linear-gradient(135deg, color-mix(in srgb, var(--card) 94%, #111827 6%), color-mix(in srgb, var(--card) 88%, #111827 12%));
+}
+
 .student-identity {
   grid-area: identity;
   display: grid;
@@ -1679,6 +1687,38 @@ input[type="range"]:focus {
 .student-identity small {
   margin: 0;
   color: var(--muted);
+}
+
+.student-state-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.student-state-pill,
+.student-age-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--stroke) 72%, transparent);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--card) 82%, #061523 18%);
+}
+
+.student-state-pill.active {
+  color: #1fbf9f;
+  border-color: color-mix(in srgb, #1fbf9f 48%, var(--stroke) 52%);
+  background: color-mix(in srgb, #1fbf9f 10%, var(--card) 90%);
+}
+
+.student-state-pill.inactive {
+  color: #a0a7b4;
+  border-color: color-mix(in srgb, #a0a7b4 42%, var(--stroke) 58%);
 }
 
 .student-progress-stack {
