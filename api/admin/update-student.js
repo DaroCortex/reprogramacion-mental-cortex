@@ -44,7 +44,10 @@ export default async function handler(req, res) {
       beginnerFileName,
       editorFileName,
       contentType,
-      settings
+      settings,
+      requestType,
+      requestLabel,
+      requestSource
     } = req.body || {};
     const isAdmin = await verifyAdminPassword(password);
     const isEditorAction = action === "attach-edited-audio" || action === "attach-beginner-audio";
@@ -84,6 +87,22 @@ export default async function handler(req, res) {
     const previousAudioKey = current.audioKey || "";
     const previousWorkflow = current.audioWorkflow || {};
     const nowIso = new Date().toISOString();
+    const workflowRequestMeta = (workflow = {}) => {
+      const safeType = String(requestType || workflow.requestType || "student-audio").trim();
+      const safeLabel = String(
+        requestLabel ||
+          workflow.requestLabel ||
+          (safeType === "special-binaural" ? "Pedido especial binaural" : "Audio de estudiante")
+      ).trim();
+      const safeSource = String(
+        requestSource || workflow.requestSource || (safeType === "special-binaural" ? "special" : "admin")
+      ).trim();
+      return {
+        requestType: safeType,
+        requestLabel: safeLabel,
+        requestSource: safeSource
+      };
+    };
     let cleanupCandidates = [];
 
     const next = students.map((item) => {
@@ -100,7 +119,8 @@ export default async function handler(req, res) {
         nextWorkflow = {
           ...nextWorkflow,
           status: nextWorkflow.status === "approved" ? "approved" : "requested",
-          requestedAt: nextWorkflow.requestedAt || nowIso
+          requestedAt: nextWorkflow.requestedAt || nowIso,
+          ...workflowRequestMeta(nextWorkflow)
         };
       }
 

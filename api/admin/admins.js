@@ -2,8 +2,37 @@ import crypto from "crypto";
 import { addAdmin, isSuperAdmin, listAdmins, removeAdmin, verifyAdminPassword } from "../../lib/auth.js";
 import { readAppSettings, readStudents, writeAppSettings, writeStudents } from "../../lib/r2.js";
 
-const DEFAULT_SEGUIMIENTO_URL =
-  "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/data/students.json";
+const DEFAULT_SEGUIMIENTO_URLS = [
+  "https://academia-seguimiento.vercel.app/data/students.json",
+  "https://seguimiento-academia-v2-m4j7pg92s-darocortexs-projects.vercel.app/data/students.json"
+];
+
+const getSeguimientoUrls = (sourceUrl) =>
+  [sourceUrl, process.env.SEGUIMIENTO_STUDENTS_URL, ...DEFAULT_SEGUIMIENTO_URLS]
+    .map((url) => String(url || "").trim())
+    .filter((url, index, list) => url && list.indexOf(url) === index);
+
+const fetchSeguimientoStudents = async (urls) => {
+  let lastError = "";
+  for (const url of urls) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        lastError = `${url}: ${response.status}`;
+        continue;
+      }
+      const raw = await response.json();
+      const students = Array.isArray(raw) ? raw : Array.isArray(raw?.students) ? raw.students : [];
+      if (students.length) {
+        return { url, students };
+      }
+      lastError = `${url}: sin estudiantes`;
+    } catch (error) {
+      lastError = `${url}: ${error?.message || "error"}`;
+    }
+  }
+  throw new Error(lastError || "No se pudo leer la base externa");
+};
 
 const slugify = (value) =>
   String(value || "")
@@ -123,17 +152,9 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: "No autorizado" });
       }
 
-      const url = String(sourceUrl || DEFAULT_SEGUIMIENTO_URL).trim();
+      const candidateUrls = getSeguimientoUrls(sourceUrl);
       const settings = await readAppSettings();
-      const externalResponse = await fetch(url);
-      if (!externalResponse.ok) {
-        return res.status(400).json({ error: "No se pudo leer la base externa" });
-      }
-      const externalRaw = await externalResponse.json();
-      const externalStudents = Array.isArray(externalRaw) ? externalRaw : [];
-      if (!externalStudents.length) {
-        return res.status(400).json({ error: "La base externa no tiene estudiantes" });
-      }
+      const { url, students: externalStudents } = await fetchSeguimientoStudents(candidateUrls);
 
       const students = await readStudents();
       let created = 0;

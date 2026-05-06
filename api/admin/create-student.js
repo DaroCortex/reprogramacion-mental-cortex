@@ -62,7 +62,18 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Metodo no permitido" });
     }
 
-    const { password, name, fileName, audioBase64, contentType, audioKey, requestAudio } = req.body || {};
+    const {
+      password,
+      name,
+      fileName,
+      audioBase64,
+      contentType,
+      audioKey,
+      requestAudio,
+      requestType,
+      requestLabel,
+      requestSource
+    } = req.body || {};
     if (!(await verifyAdminPassword(password))) {
       return res.status(401).json({ error: "No autorizado" });
     }
@@ -75,6 +86,18 @@ export default async function handler(req, res) {
     let optimization = null;
     const nowIso = new Date().toISOString();
     const hasUploadedAudio = Boolean(key || (fileName && audioBase64));
+    const safeRequestType = String(requestType || (requestAudio ? "student-audio" : "")).trim();
+    const safeRequestLabel = String(
+      requestLabel ||
+        (safeRequestType === "special-binaural"
+          ? "Pedido especial binaural"
+          : safeRequestType === "student-audio" || requestAudio
+            ? "Audio de estudiante"
+            : "")
+    ).trim();
+    const safeRequestSource = String(
+      requestSource || (safeRequestType === "special-binaural" ? "special" : requestAudio ? "admin" : "")
+    ).trim();
 
     if (!key && fileName && audioBase64) {
       const inputBuffer = Buffer.from(String(audioBase64), "base64");
@@ -99,9 +122,13 @@ export default async function handler(req, res) {
       createdAt: nowIso,
       updatedAt: nowIso,
       lastAudioAccessAt: hasUploadedAudio ? nowIso : "",
+      studentType: safeRequestType === "special-binaural" ? "special-binaural" : "academy",
       audioWorkflow: {
         status: workflowStatus,
         requestedAt: requestAudio && !hasUploadedAudio ? nowIso : "",
+        requestType: safeRequestType,
+        requestLabel: safeRequestLabel,
+        requestSource: safeRequestSource,
         rawAudioKey: "",
         rawFileName: "",
         rawSource: "",

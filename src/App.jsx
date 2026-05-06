@@ -153,6 +153,18 @@ const MS_PER_HOUR = 1000 * 60 * 60;
 const DAILY_QUICK_STATUS = ["done", "partial", "missed"];
 const hasColorPracticeAccess = (studentItem) => Boolean(studentItem?.features?.colorVisionEnabled);
 
+const getWorkflowRequestLabel = (workflow = {}) => {
+  if (workflow?.requestLabel) return workflow.requestLabel;
+  if (workflow?.requestType === "special-binaural" || workflow?.requestSource === "special") {
+    return "Pedido especial binaural";
+  }
+  if (workflow?.requestType === "student-audio") return "Audio de estudiante";
+  return "";
+};
+
+const isSpecialWorkflow = (workflow = {}) =>
+  workflow?.requestType === "special-binaural" || workflow?.requestSource === "special";
+
 const safeTimestamp = (value) => {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1138,6 +1150,9 @@ export default function App() {
     const abandoned = rows.filter((item) => item.alertLevel === "critical");
     const practicingDaily = rows.filter((item) => item.todaySessions >= 1);
     const twoDayPracticeAlerts = rows.filter((item) => item.weeklyPractice?.consecutiveMisses >= 2);
+    const specialRequests = rows.filter((item) =>
+      isSpecialWorkflow(item.audioWorkflow) && item.audioWorkflow?.status !== "approved"
+    );
     const flowCounts = rows.reduce(
       (acc, item) => {
         if (item.flowState?.onboarding) acc.onboarding += 1;
@@ -1166,10 +1181,11 @@ export default function App() {
       abandoned,
       practicingDaily,
       twoDayPracticeAlerts,
+      specialRequests,
       flowCounts,
       flowProgressPct,
       flowSemaforoLevel,
-      hasAttention: critical.length > 0 || warning.length > 0
+      hasAttention: critical.length > 0 || warning.length > 0 || specialRequests.length > 0
     };
   }, [adminStudents]);
 
@@ -3337,7 +3353,7 @@ export default function App() {
       return;
     }
     const confirmImport = window.confirm(
-      "Esto sincroniza estudiantes desde Seguimiento v2 a Cortex. ¿Continuar?"
+      "Esto sincroniza estudiantes desde Seguimiento/Academia a Cortex. ¿Continuar?"
     );
     if (!confirmImport) return;
 
@@ -3447,9 +3463,13 @@ export default function App() {
     });
     if (!term) return workflowRows;
     return workflowRows.filter((item) =>
-      [item.name, item.slug, item.audioWorkflow?.status].some((value) =>
-        String(value || "").toLowerCase().includes(term)
-      )
+      [
+        item.name,
+        item.slug,
+        item.audioWorkflow?.status,
+        item.audioWorkflow?.requestLabel,
+        item.audioWorkflow?.requestType
+      ].some((value) => String(value || "").toLowerCase().includes(term))
     );
   }, [editorStudents, editorSearchTerm]);
 
@@ -3464,10 +3484,16 @@ export default function App() {
     return payload;
   };
 
-  const handleRequestStudentAudio = async (slugToUpdate) => {
+  const handleRequestStudentAudio = async (slugToUpdate, options = {}) => {
     if (!adminPassword || !slugToUpdate) return;
     try {
-      await updateStudentWorkflow({ slug: slugToUpdate, action: "request-audio" });
+      await updateStudentWorkflow({
+        slug: slugToUpdate,
+        action: "request-audio",
+        requestType: options.requestType || "student-audio",
+        requestLabel: options.requestLabel || "Audio de estudiante",
+        requestSource: options.requestSource || "admin"
+      });
       await ensureAdminList(adminPassword);
       setAdminMessage("Solicitud creada. Copia el link de carga y envíaselo al estudiante.");
     } catch (error) {
@@ -3729,6 +3755,44 @@ export default function App() {
     } catch (error) {
       setAdminStatus("ready");
       setAdminMessage(error?.message || "No se pudo crear el estudiante.");
+    }
+  };
+
+  const handleAdminCreateSpecialRequest = async () => {
+    if (!adminPassword || !adminName.trim()) {
+      setAdminMessage("Completa nombre para el pedido especial.");
+      return;
+    }
+    setAdminStatus("loading");
+    setAdminMessage("");
+    setAdminLink("");
+    try {
+      const addRes = await fetch("/api/admin/create-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: adminPassword,
+          name: adminName,
+          requestAudio: true,
+          requestType: "special-binaural",
+          requestLabel: "Pedido especial binaural",
+          requestSource: "special"
+        })
+      });
+      const payload = await addRes.json().catch(() => ({}));
+      if (!addRes.ok) {
+        throw new Error(`No se pudo crear pedido especial (${payload?.error || "error"}).`);
+      }
+      const created = payload.student;
+      setAdminLink(buildUploadLink(created.slug, created.token));
+      setAdminName("");
+      setAdminFile(null);
+      await ensureAdminList(adminPassword);
+      setAdminStatus("ready");
+      setAdminMessage("Pedido especial creado. Queda en alertas y en la cola del editor.");
+    } catch (error) {
+      setAdminStatus("ready");
+      setAdminMessage(error?.message || "No se pudo crear el pedido especial.");
     }
   };
 
@@ -3996,8 +4060,10 @@ export default function App() {
             <div className="link-list">
               {filteredEditorStudents.map((item) => {
                 const workflowStatus = item.audioWorkflow?.status || "pending";
+                const requestLabel = getWorkflowRequestLabel(item.audioWorkflow);
+                const specialWorkflow = isSpecialWorkflow(item.audioWorkflow);
                 return (
-                  <div key={item.slug} className="link-row editor-row">
+                  <div key={item.slug} className={`link-row editor-row ${specialWorkflow ? "is-special" : ""}`}>
                     <div>
                       <strong>{item.name}</strong>
                       <div className="muted">{item.slug}</div>
@@ -4006,6 +4072,11 @@ export default function App() {
                         <span className={`workflow-pill ${workflowStatus}`}>
                           {WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}
                         </span>
+                        {requestLabel && (
+                          <span className={`workflow-request-badge ${specialWorkflow ? "special" : ""}`}>
+                            {requestLabel}
+                          </span>
+                        )}
                       </div>
                       {item.audioWorkflow?.rawFileName && (
                         <div className="muted">Original alumno: {item.audioWorkflow.rawFileName}</div>
@@ -4071,7 +4142,9 @@ export default function App() {
                 );
               })}
               {filteredEditorStudents.length === 0 && (
-                <p className="muted">No hay audios pendientes.</p>
+                <p className="muted">
+                  No hay audios pendientes. Desde admin usa Solicitar audio o Crear pedido especial.
+                </p>
               )}
             </div>
           </section>
@@ -4158,7 +4231,7 @@ export default function App() {
                 <div>
                   <span>Alerta 48h</span>
                   <strong>{adminAnalytics.warning.length}</strong>
-                  <small>2 dias seguidos: {adminAnalytics.twoDayPracticeAlerts.length}</small>
+                  <small>2 dias seguidos: {adminAnalytics.twoDayPracticeAlerts.length} · Especiales: {adminAnalytics.specialRequests.length}</small>
                 </div>
                 <span className="kpi-spark red" />
               </div>
@@ -4210,6 +4283,8 @@ export default function App() {
             <section className="admin-students-list" aria-label="Listado de estudiantes">
               {adminRowsForView.map((item) => {
                 const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
+                const requestLabel = getWorkflowRequestLabel(item.audioWorkflow);
+                const specialWorkflow = isSpecialWorkflow(item.audioWorkflow);
                 const advancedInfo = getAdvancedAccessInfo(item);
                 const hasBeginnerAudio = Boolean(item.audioWorkflow?.beginnerAudioKey);
                 const hasAdvancedAudio = Boolean(item.audioWorkflow?.editorAudioKey);
@@ -4218,20 +4293,24 @@ export default function App() {
                 const createdLabel = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "-";
                 const weekly = item.weeklyPractice || buildWeeklyPracticeStats(item);
                 const missedCopy = weekly.missedLabels?.length ? weekly.missedLabels.join(", ") : "ninguna";
-                const alertCopy = weekly.consecutiveMisses >= 2
-                  ? `${weekly.consecutiveMisses} dias sin practica`
-                  : item.alertLevel === "critical"
-                    ? "Alerta 72h"
-                    : item.alertLevel === "warning"
-                      ? "Alerta 48h"
-                      : "Sin alerta";
-                const alertDetail = weekly.consecutiveMisses >= 2
-                  ? "Revisar hoy"
-                  : item.alertLevel && item.alertLevel !== "ok"
-                    ? "Sin practica"
-                    : "Actividad normal";
+                const alertCopy = specialWorkflow && workflowStatus !== "approved"
+                  ? "Pedido especial"
+                  : weekly.consecutiveMisses >= 2
+                    ? `${weekly.consecutiveMisses} dias sin practica`
+                    : item.alertLevel === "critical"
+                      ? "Alerta 72h"
+                      : item.alertLevel === "warning"
+                        ? "Alerta 48h"
+                        : "Sin alerta";
+                const alertDetail = specialWorkflow && workflowStatus !== "approved"
+                  ? "Revisar audio"
+                  : weekly.consecutiveMisses >= 2
+                    ? "Revisar hoy"
+                    : item.alertLevel && item.alertLevel !== "ok"
+                      ? "Sin practica"
+                      : "Actividad normal";
                 return (
-                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""}`}>
+                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""} ${specialWorkflow ? "is-special" : ""}`}>
                     <div className="student-identity">
                       <span className="student-avatar-ring">{initial}</span>
                       <div>
@@ -4243,6 +4322,11 @@ export default function App() {
                           <span className={`workflow-pill ${workflowStatus}`}>
                             {WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}
                           </span>
+                          {requestLabel && (
+                            <span className={`workflow-request-badge ${specialWorkflow ? "special" : ""}`}>
+                              {requestLabel}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -4413,9 +4497,15 @@ export default function App() {
                   <button type="button" className="primary" onClick={handleAdminCreate}>
                     Crear estudiante
                   </button>
+                  <button type="button" className="secondary" onClick={handleAdminCreateSpecialRequest}>
+                    Crear pedido especial
+                  </button>
                   {adminStatus === "loading" && <span className="muted">Procesando...</span>}
                   {adminMessage && <span className="muted">{adminMessage}</span>}
                 </div>
+                <p className="muted">
+                  Pedido especial crea un audio binaural fuera de academia y queda visible en alertas/editor.
+                </p>
                 {adminLink && (
                   <div className="summary">
                     Link listo: <span className="code">{adminLink}</span>
@@ -4508,11 +4598,9 @@ export default function App() {
                 >
                   Abrir dashboard Seguimiento
                 </button>
-                {adminStudents.length === 0 && (
-                  <button type="button" className="secondary wide-action" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
-                    {adminBridgeLoading ? "Sincronizando..." : "Importacion inicial de alumnos"}
-                  </button>
-                )}
+                <button type="button" className="secondary wide-action" onClick={handleImportSeguimiento} disabled={adminBridgeLoading}>
+                  {adminBridgeLoading ? "Sincronizando..." : "Sincronizar alumnos desde Seguimiento"}
+                </button>
                 {adminBridgeMessage && <p className="muted">{adminBridgeMessage}</p>}
                 <details className="admin-manager-details">
                   <summary>Gestionar administradores</summary>

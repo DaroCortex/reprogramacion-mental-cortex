@@ -320,6 +320,9 @@ export default async function handler(req, res) {
         lastAudioAccessAt: item.lastAudioAccessAt || "",
         audioWorkflow: {
           status: workflow.status || (item.audioKey ? "approved" : "pending"),
+          requestType: workflow.requestType || "",
+          requestLabel: workflow.requestLabel || "",
+          requestSource: workflow.requestSource || "",
           requestedAt: workflow.requestedAt || "",
           rawUploadedAt: workflow.rawUploadedAt || workflow.submittedAt || "",
           rawFileName: workflow.rawFileName || "",
