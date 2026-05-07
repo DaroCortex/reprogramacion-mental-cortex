@@ -2464,3 +2464,397 @@ input[type="range"]:focus {
     padding: 40px 32px 80px;
   }
 }
+
+/* ── Cortex mobile flow polish / snap screens ───────────────── */
+.practice-app {
+  max-width: 1280px;
+}
+
+.practice-section,
+.menu-card,
+.precheck-screen {
+  overflow: clip;
+}
+
+.practice-section-config {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.practice-section-config h3 {
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.02;
+  margin-bottom: 4px;
+}
+
+.practice-section-config > .muted {
+  margin: 0 0 4px;
+}
+
+.preset-label {
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.chip.active {
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+@media (min-width: 1080px) {
+  .practice-app {
+    max-width: 1320px;
+  }
+
+  .practice-grid {
+    grid-template-columns: minmax(420px, 0.95fr) minmax(500px, 1.05fr);
+    gap: 28px;
+    align-items: start;
+  }
+
+  .practice-section-session {
+    position: sticky;
+    top: 24px;
+    min-height: calc(100vh - 120px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .practice-section-session .breath-visual {
+    flex: 1;
+    align-content: center;
+  }
+
+  .practice-section-config {
+    min-height: calc(100vh - 120px);
+  }
+}
+
+@media (max-width: 760px) {
+  body:has(.practice-app) {
+    overflow: hidden;
+  }
+
+  html:has(.practice-app) {
+    scroll-snap-type: none;
+  }
+
+  .app.menu-app,
+  .app.precheck-app,
+  .app.practice-app {
+    width: 100%;
+    max-width: 100%;
+    padding: max(14px, env(safe-area-inset-top)) clamp(14px, 4.5vw, 20px) max(18px, env(safe-area-inset-bottom));
+  }
+
+  .app.practice-app {
+    height: 100svh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  .app.practice-app::-webkit-scrollbar {
+    display: none;
+  }
+
+  .practice-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .practice-section-config {
+    order: 1;
+  }
+
+  .practice-section-session {
+    order: 2;
+  }
+
+  .practice-section-progress {
+    order: 3;
+  }
+
+  .practice-app .practice-section {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+  }
+
+  .header-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    width: 100%;
+    gap: 10px;
+  }
+
+  .theme-toggle,
+  .student-chip {
+    width: 100%;
+    min-width: 0;
+    min-height: 52px;
+    border-radius: 999px;
+    text-align: center;
+  }
+
+  .brand-logo {
+    max-width: min(72vw, 300px);
+    margin: 10px 0 0;
+  }
+
+  .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.24em;
+  }
+
+  .practice-nav {
+    margin: 0 0 12px;
+  }
+
+  .practice-nav .ghost {
+    width: 100%;
+    min-height: 46px;
+    border-radius: 999px;
+  }
+
+  .menu-card,
+  .precheck-screen,
+  .practice-section {
+    border-radius: 28px;
+    padding: clamp(20px, 4.8vw, 28px);
+  }
+
+  .menu-card {
+    max-width: none;
+    min-height: calc(100svh - 206px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .menu-card h2 {
+    font-size: clamp(32px, 8.5vw, 44px);
+    line-height: 1;
+  }
+
+  .practice-menu {
+    gap: 10px;
+  }
+
+  .menu-button {
+    min-height: 56px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    font-size: 16px;
+  }
+
+  .practice-section-config,
+  .practice-section-session {
+    min-height: calc(100svh - 24px);
+  }
+
+  .practice-section-config {
+    gap: 6px;
+    padding-top: clamp(24px, 5vw, 32px);
+  }
+
+  .practice-section-config h3 {
+    font-size: clamp(32px, 8.5vw, 42px);
+    margin: 0 0 2px;
+  }
+
+  .practice-section-config > .muted {
+    font-size: 13px;
+    line-height: 1.28;
+    margin-bottom: 4px;
+  }
+
+  .preset-group {
+    margin-top: 5px;
+    gap: 6px;
+  }
+
+  .preset-label {
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+  }
+
+  .preset-row {
+    gap: 7px;
+  }
+
+  .practice-app .chip {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 999px;
+  }
+
+  .preset-group .muted {
+    font-size: 10.5px;
+    line-height: 1.22;
+    margin-top: 0;
+  }
+
+  .practice-section-config label {
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .practice-section-config input[type="range"] {
+    height: 18px;
+    padding: 4px 0;
+  }
+
+  .audio-tools {
+    margin-top: 6px;
+    gap: 8px;
+  }
+
+  .practice-app .audio-tools button {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .practice-section-manual {
+    scroll-snap-align: start;
+    margin-top: 10px;
+    padding-top: 14px;
+    border-top: 1px solid color-mix(in srgb, var(--stroke) 60%, transparent);
+  }
+
+  .practice-section-session {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .session-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .session-header h2 {
+    font-size: clamp(30px, 8vw, 42px);
+    line-height: 1;
+    margin-bottom: 0;
+  }
+
+  .timer {
+    font-size: clamp(30px, 8.8vw, 44px);
+  }
+
+  .breath-visual {
+    flex: 1;
+    margin: 8px 0;
+    gap: 10px;
+    align-content: center;
+  }
+
+  .breath-orb {
+    width: clamp(220px, 62vw, 330px);
+    height: clamp(220px, 62vw, 330px);
+  }
+
+  .breath-orb::before {
+    inset: -24%;
+    filter: blur(18px);
+  }
+
+  .breath-counter-top strong {
+    font-size: clamp(30px, 10vw, 52px);
+  }
+
+  .breath-text {
+    font-size: clamp(22px, 6vw, 32px);
+  }
+
+  .session-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    padding: 12px 0;
+    font-size: 12px;
+  }
+
+  .session-meta > div {
+    padding: 0 5px;
+  }
+
+  .session-meta strong {
+    font-size: clamp(15px, 4vw, 18px);
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .practice-app .actions button {
+    min-height: 50px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .actions button.primary:not(.hold-to-end),
+  .actions .hold-to-end {
+    grid-column: 1 / -1;
+  }
+
+  .precheck-screen {
+    min-height: calc(100svh - 90px);
+  }
+
+  .precheck-actions .chip {
+    min-height: 38px;
+    font-size: 13px;
+    padding: 7px 8px;
+  }
+}
+
+@media (max-height: 760px) and (max-width: 760px) {
+  .practice-section-config > .muted,
+  .preset-group .muted,
+  .audio-tools .muted {
+    display: none;
+  }
+
+  .practice-section-config {
+    gap: 4px;
+  }
+
+  .practice-app .chip {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  .practice-app .chip {
+    min-height: 36px;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  .breath-orb {
+    width: clamp(200px, 58vw, 260px);
+    height: clamp(200px, 58vw, 260px);
+  }
+}

@@ -4837,10 +4837,10 @@ export default function App() {
 
   if (practiceScreen === "menu") {
     return (
-      <div className="app">
+      <div className="app menu-app">
         {renderHeader()}
         <div className="card menu-card">
-          <h2>Selecciona practica</h2>
+          <h2>Selecciona práctica</h2>
           <p className="muted">
             Principiante se habilita cuando administración aprueba tu audio. Advanced se libera a los 30 días.
             {" "}
@@ -5011,7 +5011,7 @@ export default function App() {
 
   if (practiceScreen === "practice-check") {
     return (
-      <div className="app">
+      <div className="app precheck-app">
         {renderHeader()}
         <div className="practice-nav">
           <button type="button" className="ghost" onClick={handleBackToMenu}>
@@ -5659,7 +5659,7 @@ export default function App() {
         </section>
 
         {phase === "complete" && (
-          <section className="card">
+          <section className="card practice-section practice-section-progress">
             <h3>Seguimiento local</h3>
             <div className="stats-grid">
               <div>
