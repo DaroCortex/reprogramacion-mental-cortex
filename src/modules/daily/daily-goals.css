@@ -62,6 +62,16 @@
   gap: 12px;
 }
 
+.topbar.student-topbar {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.topbar.student-topbar h1 {
+  margin: 0;
+  font-size: clamp(20px, 4.4vw, 26px);
+}
+
 .eyebrow {
   margin: 0;
   font-size: 11px;

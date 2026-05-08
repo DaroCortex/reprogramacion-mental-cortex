@@ -120,6 +120,18 @@ const BREATH_STYLE_OPTIONS = [
   { id: "comfort", label: "Confort" }
 ];
 
+const BREATH_STYLE_SHORT_LABELS = {
+  activation: "Activación",
+  reset: "Reset",
+  comfort: "Confort"
+};
+
+const SPEED_SHORT_LABELS = {
+  rapida: "Rápida",
+  normal: "Normal",
+  lenta: "Lenta"
+};
+
 const BREATHS_OPTIONS = [36, 42, 48];
 const CYCLES_OPTIONS = [3, 5, 8, 15];
 const REVERB_MODE_OPTIONS = [
@@ -503,7 +515,7 @@ const buildImpulseResponse = (audioContext, seconds = 1.4, decay = 2.2) => {
 
 export default function App() {
   const [theme, setTheme] = useState(
-    localStorage.getItem("rmcortex_theme") || "light"
+    localStorage.getItem("rmcortex_theme") || "dark"
   );
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -572,6 +584,31 @@ export default function App() {
     gamma: "",
     trance: ""
   });
+
+  useEffect(() => {
+    if (!["menu", "practice-check", "practice"].includes(practiceScreen)) return undefined;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [practiceScreen]);
+
+  useEffect(() => {
+    if (practiceScreen !== "practice" || !manualConfigOpen) return undefined;
+    const frame = requestAnimationFrame(() => {
+      manualSectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [practiceScreen, manualConfigOpen]);
+
+  useEffect(() => {
+    const path = window.location.pathname;
+    const isSystemRoute =
+      path.startsWith("/upload") ||
+      path.startsWith("/editor") ||
+      path.startsWith("/admin");
+    if (!isSystemRoute) setTheme("dark");
+  }, []);
 
   const [phase, setPhase] = useState("idle");
   const [subphase, setSubphase] = useState("inhale");
@@ -737,6 +774,7 @@ export default function App() {
   const septasyncFadeStopRef = useRef(null);
   const quickDailyPayloadRef = useRef(null);
   const quickDailySaveTimerRef = useRef(null);
+  const manualSectionRef = useRef(null);
   const lastBreathBeepKeyRef = useRef("");
   const lastRecoveryBeepKeyRef = useRef("");
   const studentMediaRecorderRef = useRef(null);
@@ -2860,47 +2898,82 @@ export default function App() {
     return nostrilState;
   }, [phase, subphase, timeLeftMs, nextNostrilState, nostrilState]);
 
-  const renderHeader = () => (
-    <header className="header">
-      <div>
-        <p className="eyebrow">
-          {window.location.pathname.startsWith("/upload")
-            ? "Carga de audio"
-            : window.location.pathname.startsWith("/editor")
-              ? "Editor de audio"
-              : practiceScreen === "daily-goals"
-                ? "Metas Diarias"
-                : practiceScreen === "color-vision"
-                  ? "Visualizacion de colores"
-                  : practiceScreen === "principiante"
-                    ? "Reprogramacion mental principiante"
-                    : "Reprogramación mental"}
-        </p>
-        {!brandLogoMissing && (
-          <img
-            className="brand-logo"
-            src={theme === "dark" ? "/logo-10-dark.png" : "/logo-10-light.png"}
-            alt="Cortex"
-            onError={() => setBrandLogoMissing(true)}
-          />
-        )}
-        {brandLogoMissing && <h1 className="brand-fallback">Reprogramación Mental / Cortex</h1>}
-      </div>
-      <div className="header-controls">
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-        >
-          {theme === "dark" ? "Modo claro" : "Modo oscuro"}
-        </button>
-        <div className="student-chip">
-          <span>Estudiante</span>
-          <strong>{student?.name || "Sin asignación"}</strong>
-        </div>
-      </div>
-    </header>
+  const selectedSpeedOption = useMemo(
+    () =>
+      SPEED_OPTIONS.find(
+        (option) =>
+          config.inhaleSeconds === option.inhale &&
+          config.exhaleSeconds === option.exhale
+      ) || SPEED_OPTIONS[1],
+    [config.inhaleSeconds, config.exhaleSeconds]
   );
+
+  const sessionModeLabel = `${BREATH_STYLE_SHORT_LABELS[config.breathStyle] || "Activación"} · ${
+    SPEED_SHORT_LABELS[selectedSpeedOption.id] || "Normal"
+  }`;
+
+  const isSessionActive = isRunning && phase !== "idle" && phase !== "complete";
+  const breathProgressPercent = Math.min(
+    100,
+    Math.max(0, (currentBreathNumber / Math.max(1, config.breathsPerCycle)) * 100)
+  );
+
+  const renderHeader = () => {
+    const path = window.location.pathname;
+    const isSystemRoute =
+      path.startsWith("/upload") ||
+      path.startsWith("/editor") ||
+      path.startsWith("/admin");
+    const isPastStudentStart = !isSystemRoute && practiceScreen !== "menu";
+
+    return (
+      <header className={`header ${isPastStudentStart ? "compact-flow-header" : ""}`}>
+        {!isPastStudentStart && (
+          <div>
+            <p className="eyebrow">
+              {path.startsWith("/upload")
+                ? "Carga de audio"
+                : path.startsWith("/editor")
+                  ? "Editor de audio"
+                  : practiceScreen === "daily-goals"
+                    ? "Metas Diarias"
+                    : practiceScreen === "color-vision"
+                      ? "Visualizacion de colores"
+                      : practiceScreen === "principiante"
+                        ? "Reprogramacion mental principiante"
+                        : "Reprogramación mental"}
+            </p>
+            {!brandLogoMissing && (
+              <img
+                className="brand-logo"
+                src={theme === "dark" ? "/logo-10-dark.png" : "/logo-10-light.png"}
+                alt="Cortex"
+                onError={() => setBrandLogoMissing(true)}
+              />
+            )}
+            {brandLogoMissing && <h1 className="brand-fallback">Reprogramación Mental / Cortex</h1>}
+          </div>
+        )}
+        <div className="header-controls">
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+            title={theme === "dark" ? "Modo claro" : "Modo oscuro"}
+            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+          >
+            {isPastStudentStart ? (theme === "dark" ? "☀" : "☾") : theme === "dark" ? "Modo claro" : "Modo oscuro"}
+          </button>
+          {!isPastStudentStart && (
+            <div className="student-chip">
+              <span>Estudiante</span>
+              <strong>{student?.name || "Sin asignación"}</strong>
+            </div>
+          )}
+        </div>
+      </header>
+    );
+  };
 
   const buildStudentLink = (studentSlug, studentToken, includeToken) => {
     const origin = window.location.origin;
@@ -3081,7 +3154,7 @@ export default function App() {
       quickDailyPayloadRef.current = normalizedPayload;
 
       if (changed) {
-        await fetch("/api/daily/data", {
+        fetch("/api/daily/data", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3089,7 +3162,7 @@ export default function App() {
             token,
             payload: normalizedPayload
           })
-        });
+        }).catch(() => {});
       }
 
       const visibleItems = (store.days[dayKey]?.items || []).filter((item) => item.status !== "na");
@@ -4843,8 +4916,6 @@ export default function App() {
           <h2>Selecciona práctica</h2>
           <p className="muted">
             Principiante se habilita cuando administración aprueba tu audio. Advanced se libera a los 30 días.
-            {" "}
-            Metas Diarias está activa. Visualización de colores y Canalización dependen del dashboard.
           </p>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
@@ -5011,7 +5082,7 @@ export default function App() {
 
   if (practiceScreen === "practice-check") {
     return (
-      <div className="app precheck-app">
+      <div className="app practice-check-app precheck-app">
         {renderHeader()}
         <div className="practice-nav">
           <button type="button" className="ghost" onClick={handleBackToMenu}>
@@ -5021,14 +5092,14 @@ export default function App() {
         <section className="card precheck-screen">
           <div className="precheck-head">
             <p className="eyebrow">Checklist previo</p>
-            <h2>Checks antes de la respiración</h2>
+            <h2>Checks de respiración</h2>
             {quickChecklistDoneToday ? (
               <p className="status success precheck-done-banner">
                 Checklist hecho hoy. Puedes tocar <strong>Siguiente</strong> directo.
               </p>
             ) : (
               <p className="muted">
-                Marca tus tareas y toca <strong>Siguiente</strong> para entrar a la práctica.
+                Puedes tocar <strong>Siguiente</strong> directo para entrar a la práctica.
               </p>
             )}
             {quickCheckState.dayKey && (
@@ -5105,7 +5176,6 @@ export default function App() {
               type="button"
               className="secondary"
               onClick={proceedFromPrecheck}
-              disabled={quickCheckState.loading}
             >
               Siguiente
             </button>
@@ -5134,173 +5204,197 @@ export default function App() {
   }
 
   return (
-    <div className="app practice-app" onPointerUp={onPointerUp} onDoubleClick={onAppDoubleClick}>
-      {renderHeader()}
-      <div className="practice-nav">
-        <button type="button" className="ghost" onClick={handleBackToMenu}>
-          Volver al menu
-        </button>
-      </div>
-
+    <div
+      className={`app practice-app phase-${phase} ${isSessionActive ? "is-session-active" : ""}`}
+      onPointerUp={onPointerUp}
+      onDoubleClick={onAppDoubleClick}
+    >
       <main className="grid practice-grid">
-        <section className="session card practice-section practice-section-session">
-          <div className="session-header">
-            <div>
-              <p className="eyebrow">{PHASE_LABELS[phase]}</p>
-              <h2>{phase === "complete" ? "Buen trabajo" : "Sesión en curso"}</h2>
-            </div>
-            <div className="timer-wrap">
-              <div className="timer">
-                {phase === "idle" || phase === "complete" ? "--:--" : formatSeconds(timeLeftMs)}
-              </div>
-              {!isRunning && startCountdown > 0 && (
-                <div className="timer-sub">Comienza en {startCountdown}...</div>
-              )}
-              {phase === "apnea" && previousApneaSeconds > 0 && (
-                <div className="timer-sub">Apnea anterior: {formatSeconds(previousApneaSeconds * 1000)}</div>
-              )}
-            </div>
+        <section className="practice-screen practice-screen-session">
+          {renderHeader()}
+          <div className="practice-nav">
+            <button type="button" className="ghost" onClick={handleBackToMenu}>
+              Volver al menu
+            </button>
           </div>
 
-          <div className="breath-visual">
-            {phase === "breathing" && (
-              <div className="breath-counter-top">
-                <strong>{currentBreathNumber}</strong>
-                <span>{getNostrilHint(nostrilState)}</span>
-                <div className="nostril-preview" aria-label="Siguiente respiración">
-                  <span className={`nostril-dot ${nextNostrilState === "left" ? "active" : ""}`} />
-                  <span className={`nostril-dot ${nextNostrilState === "both" ? "active" : ""}`} />
-                  <span className={`nostril-dot ${nextNostrilState === "right" ? "active" : ""}`} />
+          <section className="session card practice-section practice-section-session">
+            <div className="session-header">
+              <div>
+                <p className="eyebrow session-mode-pill">
+                  {isSessionActive ? sessionModeLabel : PHASE_LABELS[phase]}
+                </p>
+                <h2>{phase === "complete" ? "Buen trabajo" : "Sesión en curso"}</h2>
+              </div>
+              <div className="timer-wrap">
+                {isSessionActive ? (
+                  <div className="cycle-live-pill">
+                    <span />
+                    Ciclo {cycleIndex} / {config.cycles}
+                  </div>
+                ) : (
+                  <>
+                    <div className="timer">
+                      {phase === "idle" || phase === "complete" ? "--:--" : formatSeconds(timeLeftMs)}
+                    </div>
+                    {!isRunning && startCountdown > 0 && (
+                      <div className="timer-sub">Comienza en {startCountdown}...</div>
+                    )}
+                    {phase === "apnea" && previousApneaSeconds > 0 && (
+                      <div className="timer-sub">Apnea anterior: {formatSeconds(previousApneaSeconds * 1000)}</div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="breath-visual">
+              {phase === "breathing" && (
+                <div className="breath-counter-top">
+                  <strong>
+                    <span>{currentBreathNumber}</span>
+                    <em>/ {config.breathsPerCycle}</em>
+                  </strong>
+                  <span>Respiraciones</span>
+                  <div className="nostril-preview" aria-label="Siguiente respiración">
+                    <span className={`nostril-dot ${nextNostrilState === "left" ? "active" : ""}`} />
+                    <span className={`nostril-dot ${nextNostrilState === "both" ? "active" : ""}`} />
+                    <span className={`nostril-dot ${nextNostrilState === "right" ? "active" : ""}`} />
+                  </div>
                 </div>
-              </div>
-            )}
-
-            <div className={`breath-orb ${phaseClass()} nostril-${glowNostrilState}`} style={phaseStyle()}>
-              {!breathLogoMissing && (
-                <img
-                  className="breath-logo"
-                  src={theme === "dark" ? "/logo-05-dark.png" : "/logo-05-light.png"}
-                  alt="Cortex breath"
-                  onError={() => setBreathLogoMissing(true)}
-                />
               )}
-              {breathLogoMissing && <div className="breath-logo-fallback">Falta logo de respiración en /public</div>}
-            </div>
-            <div className="breath-text">
-              {phase === "breathing" && subphase === "inhale" && "Inhala"}
-              {phase === "breathing" && subphase === "exhale" && "Exhala"}
-              {phase === "apnea" && "Mantén la apnea"}
-              {phase === "recovery" && "Recupera"}
-              {(phase === "idle" || phase === "complete") && "Preparado"}
-            </div>
-          </div>
 
-          <div className="session-meta">
-            <div>
-              <span>Ciclo</span>
-              <strong>{cycleIndex} / {config.cycles}</strong>
+              <div className={`breath-orb ${phaseClass()} nostril-${glowNostrilState}`} style={phaseStyle()}>
+                {!breathLogoMissing && (
+                  <img
+                    className="breath-logo"
+                    src={theme === "dark" ? "/logo-05-dark.png" : "/logo-05-light.png"}
+                    alt="Cortex breath"
+                    onError={() => setBreathLogoMissing(true)}
+                  />
+                )}
+                {breathLogoMissing && <div className="breath-logo-fallback">Falta logo de respiración en /public</div>}
+              </div>
+              <div className="breath-text">
+                {phase === "breathing" && subphase === "inhale" && "Inhala"}
+                {phase === "breathing" && subphase === "exhale" && "Exhala"}
+                {phase === "apnea" && "Mantén la apnea"}
+                {phase === "recovery" && "Recupera"}
+                {(phase === "idle" || phase === "complete") && "Preparado"}
+              </div>
             </div>
-            <div>
-              <span>Respiraciones</span>
-              <strong>{breathsDone} / {config.breathsPerCycle}</strong>
-            </div>
-            <div>
-              <span>Audio apnea</span>
-              <strong>{student ? "Asignado" : "No"}</strong>
-            </div>
-          </div>
 
-          <div className="actions">
-            {!isRunning && (
-              <button
-                className="primary"
-                onClick={startSession}
-                disabled={
-                  audioCheckStatus === "checking" ||
-                  isStarting ||
-                  startCountdown > 0
-                }
-              >
-                {audioCheckStatus === "checking"
-                  ? "Chequeando audio..."
-                  : isStarting
-                    ? "Iniciando..."
-                  : startCountdown > 0
-                    ? `Inicia en ${startCountdown}...`
-                    : "Iniciar sesión"}
-              </button>
+            {phase === "breathing" && (
+              <div className="breath-progress" style={{ "--breath-progress": `${breathProgressPercent}%` }} />
             )}
-            {isRunning && !isPaused && phase !== "complete" && (
-              <button className="secondary" onClick={pauseSession}>Pausar</button>
-            )}
-            {isRunning && isPaused && phase !== "complete" && (
-              <button className="secondary" onClick={resumeSession}>Reanudar</button>
-            )}
-            {isRunning && phase !== "complete" && phase !== "apnea" && (
-              <button
-                className="ghost hold-to-end"
-                style={{ "--hold-pct": `${stopHoldProgress}%` }}
-                onPointerDown={startStopHold}
-                onPointerUp={cancelStopHold}
-                onPointerLeave={cancelStopHold}
-                onPointerCancel={cancelStopHold}
-              >
-                <span>Mantener 1s para detener</span>
-              </button>
-            )}
-            {phase === "apnea" && (
-              <button
-                className="primary hold-to-end"
-                style={{ "--hold-pct": `${endHoldProgress}%` }}
-                onPointerDown={startEndApneaHold}
-                onPointerUp={cancelEndApneaHold}
-                onPointerLeave={cancelEndApneaHold}
-                onPointerCancel={cancelEndApneaHold}
-              >
-                <span>Mantener 1.5s para terminar apnea</span>
-              </button>
-            )}
-            {phase === "complete" && isAwaitingFinalClose && (
-              <button
-                className="primary hold-to-end"
-                style={{ "--hold-pct": `${finalHoldProgress}%` }}
-                onPointerDown={startFinalizeHold}
-                onPointerUp={cancelFinalizeHold}
-                onPointerLeave={cancelFinalizeHold}
-                onPointerCancel={cancelFinalizeHold}
-              >
-                <span>Mantener 1.5s para finalizar ejercicio</span>
-              </button>
-            )}
-          </div>
 
-          <audio ref={audioRef} src={audioSrc} preload="auto" playsInline />
-          <audio ref={breathAudioRef} preload="auto" playsInline />
-          <audio ref={breathAudioAltRef} preload="auto" playsInline />
-          <audio
-            ref={bosqueAudioRef}
-            preload="auto"
-            playsInline
-            onEnded={reviveAmbientIfNeeded}
-            onPause={() => {
-              setTimeout(reviveAmbientIfNeeded, 120);
-            }}
-          />
-          <audio ref={endApneaAudioRef} preload="auto" playsInline />
-          <audio
-            ref={septasyncAudioRef}
-            preload="auto"
-            playsInline
-            onEnded={reviveSeptasyncIfNeeded}
-            onPause={() => {
-              setTimeout(reviveSeptasyncIfNeeded, 120);
-            }}
-          />
-          <audio ref={preApneaCueAudioRef} src="/pre-apnea-cue.mp3" preload="auto" playsInline />
-          <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" playsInline />
+            <div className="session-meta">
+              <div>
+                <span>Ciclo</span>
+                <strong>{cycleIndex} / {config.cycles}</strong>
+              </div>
+              <div>
+                <span>Respiraciones</span>
+                <strong>{breathsDone} / {config.breathsPerCycle}</strong>
+              </div>
+              <div>
+                <span>Audio apnea</span>
+                <strong>{student ? "Asignado" : "No"}</strong>
+              </div>
+            </div>
+
+            <div className="actions">
+              {!isRunning && (
+                <button
+                  className="primary"
+                  onClick={startSession}
+                  disabled={
+                    audioCheckStatus === "checking" ||
+                    isStarting ||
+                    startCountdown > 0
+                  }
+                >
+                  {audioCheckStatus === "checking"
+                    ? "Chequeando audio..."
+                    : isStarting
+                      ? "Iniciando..."
+                    : startCountdown > 0
+                      ? `Inicia en ${startCountdown}...`
+                      : "Iniciar sesión"}
+                </button>
+              )}
+              {isRunning && !isPaused && phase !== "complete" && (
+                <button className="secondary" onClick={pauseSession}>Pausar</button>
+              )}
+              {isRunning && isPaused && phase !== "complete" && (
+                <button className="secondary" onClick={resumeSession}>Reanudar</button>
+              )}
+              {isRunning && phase !== "complete" && phase !== "apnea" && (
+                <button
+                  className="ghost hold-to-end"
+                  style={{ "--hold-pct": `${stopHoldProgress}%` }}
+                  onPointerDown={startStopHold}
+                  onPointerUp={cancelStopHold}
+                  onPointerLeave={cancelStopHold}
+                  onPointerCancel={cancelStopHold}
+                >
+                  <span>Mantener 1s para detener</span>
+                </button>
+              )}
+              {phase === "apnea" && (
+                <button
+                  className="primary hold-to-end"
+                  style={{ "--hold-pct": `${endHoldProgress}%` }}
+                  onPointerDown={startEndApneaHold}
+                  onPointerUp={cancelEndApneaHold}
+                  onPointerLeave={cancelEndApneaHold}
+                  onPointerCancel={cancelEndApneaHold}
+                >
+                  <span>Mantener 1.5s para terminar apnea</span>
+                </button>
+              )}
+              {phase === "complete" && isAwaitingFinalClose && (
+                <button
+                  className="primary hold-to-end"
+                  style={{ "--hold-pct": `${finalHoldProgress}%` }}
+                  onPointerDown={startFinalizeHold}
+                  onPointerUp={cancelFinalizeHold}
+                  onPointerLeave={cancelFinalizeHold}
+                  onPointerCancel={cancelFinalizeHold}
+                >
+                  <span>Mantener 1.5s para finalizar ejercicio</span>
+                </button>
+              )}
+            </div>
+
+            <audio ref={audioRef} src={audioSrc} preload="auto" playsInline />
+            <audio ref={breathAudioRef} preload="auto" playsInline />
+            <audio ref={breathAudioAltRef} preload="auto" playsInline />
+            <audio
+              ref={bosqueAudioRef}
+              preload="auto"
+              playsInline
+              onEnded={reviveAmbientIfNeeded}
+              onPause={() => {
+                setTimeout(reviveAmbientIfNeeded, 120);
+              }}
+            />
+            <audio ref={endApneaAudioRef} preload="auto" playsInline />
+            <audio
+              ref={septasyncAudioRef}
+              preload="auto"
+              playsInline
+              onEnded={reviveSeptasyncIfNeeded}
+              onPause={() => {
+                setTimeout(reviveSeptasyncIfNeeded, 120);
+              }}
+            />
+            <audio ref={preApneaCueAudioRef} src="/pre-apnea-cue.mp3" preload="auto" playsInline />
+            <audio ref={finalApneaCueAudioRef} src="/finaliza-ultima-apnea.mp3" preload="auto" playsInline />
+          </section>
         </section>
 
-        <section className="card practice-section practice-section-config">
+        <section className="card practice-screen practice-section practice-section-config">
           <h3>Configuración rápida</h3>
           <p className="muted">Presets rápidos para no tocar sliders en cada sesión.</p>
 
@@ -5496,8 +5590,38 @@ export default function App() {
             </button>
           </div>
 
-          {manualConfigOpen && (
-            <div className="form-grid practice-section-manual">
+          <div className="audio-tools">
+            <button className="secondary" onClick={runAudioCheck}>
+              Chequear audios
+            </button>
+            <button className="secondary" onClick={previewAudio}>
+              Probar audio
+            </button>
+            <button className="ghost" onClick={resetConfig}>
+              Resetear ajustes
+            </button>
+            <span className="muted">
+              Ajusta el volumen antes de iniciar la sesión.
+            </span>
+            {audioStatus === "loading" && (
+              <span className="muted">Preparando audio…</span>
+            )}
+            {audioStatus === "error" && (
+              <span className="muted">No se pudo cargar el audio.</span>
+            )}
+            {audioCheckMessage && (
+              <span className="muted">{audioCheckMessage}</span>
+            )}
+          </div>
+        </section>
+
+        {manualConfigOpen && (
+          <section ref={manualSectionRef} className="card practice-screen practice-section practice-section-manual-card">
+            <div className="manual-head">
+              <p className="eyebrow">Ajustes finos</p>
+              <h3>Manual</h3>
+            </div>
+            <div className="form-grid practice-section-manual manual-config-grid">
               <label>
                 Respiraciones por ciclo
                 <input
@@ -5573,7 +5697,7 @@ export default function App() {
                   }
                 />
               </label>
-              <label>
+              <label className="span-full">
                 Volumen audio apnea
                 <input
                   type="range"
@@ -5589,9 +5713,9 @@ export default function App() {
                   }
                 />
               </label>
-              <label>
+              <label className="span-full">
                 Reverb audio apnea
-                <div className="preset-row" style={{ marginBottom: 8 }}>
+                <div className="preset-row">
                   {REVERB_MODE_OPTIONS.map((option) => (
                     <button
                       key={option.id}
@@ -5631,35 +5755,14 @@ export default function App() {
                 </span>
               </label>
             </div>
-          )}
-
-          <div className="audio-tools">
-            <button className="secondary" onClick={runAudioCheck}>
-              Chequear audios
+            <button type="button" className="ghost manual-close" onClick={() => setManualConfigOpen(false)}>
+              Ocultar manual
             </button>
-            <button className="secondary" onClick={previewAudio}>
-              Probar audio
-            </button>
-            <button className="ghost" onClick={resetConfig}>
-              Resetear ajustes
-            </button>
-            <span className="muted">
-              Ajusta el volumen antes de iniciar la sesión.
-            </span>
-            {audioStatus === "loading" && (
-              <span className="muted">Preparando audio…</span>
-            )}
-            {audioStatus === "error" && (
-              <span className="muted">No se pudo cargar el audio.</span>
-            )}
-            {audioCheckMessage && (
-              <span className="muted">{audioCheckMessage}</span>
-            )}
-          </div>
-        </section>
+          </section>
+        )}
 
         {phase === "complete" && (
-          <section className="card practice-section practice-section-progress">
+          <section className="card practice-screen practice-section practice-section-progress">
             <h3>Seguimiento local</h3>
             <div className="stats-grid">
               <div>

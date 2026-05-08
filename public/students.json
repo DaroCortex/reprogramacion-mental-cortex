@@ -4,7 +4,10 @@
       "name": "Estudiante Demo",
       "audioKey": "audios/demo.mp3",
       "slug": "estudiante-demo",
-      "token": "0d9f82781b49a318b8847e5a6a8a7d88"
+      "token": "0d9f82781b49a318b8847e5a6a8a7d88",
+      "features": {
+        "advancedReprogrammingEnabled": true
+      }
     },
     {
       "name": "Ana Garcia",

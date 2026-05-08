@@ -863,15 +863,15 @@ function DailyGoalsModule({
 
   return (
     <div className="app-shell">
-      <header className="topbar">
+      <header className={`topbar ${mode === "student" ? "student-topbar" : ""}`}>
         <div>
-          <p className="eyebrow">Metas Diarias</p>
-          <h1>{mode === "admin" ? "Panel Administrador" : "Panel Estudiante"}</h1>
-          <p className="subtitle">
-            {mode === "admin"
-              ? "Carga informes y genera checklist asistido sin abrumar"
-              : "Acciones claras por dia para mantener foco"}
-          </p>
+          {mode === "admin" && <p className="eyebrow">Metas Diarias</p>}
+          <h1>{mode === "admin" ? "Panel Administrador" : "Metas Diarias"}</h1>
+          {mode === "admin" && (
+            <p className="subtitle">
+              Carga informes y genera checklist asistido sin abrumar
+            </p>
+          )}
         </div>
         <div className="topbar-controls">
           {allowAdmin && (
