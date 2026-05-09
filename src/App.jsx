@@ -622,6 +622,7 @@ export default function App() {
   const [studentRecordedBlob, setStudentRecordedBlob] = useState(null);
   const [studentRecordingStatus, setStudentRecordingStatus] = useState("idle");
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
+  const [apneaHistoryOpen, setApneaHistoryOpen] = useState(false);
   const [practiceScreen, setPracticeScreen] = useState("menu");
   const [whiteMagicUnlocked, setWhiteMagicUnlocked] = useState(false);
   const [whiteMagicScore, setWhiteMagicScore] = useState(0);
@@ -666,6 +667,10 @@ export default function App() {
     });
     return () => cancelAnimationFrame(frame);
   }, [practiceScreen, manualConfigOpen]);
+
+  useEffect(() => {
+    if (practiceScreen !== "menu") setApneaHistoryOpen(false);
+  }, [practiceScreen]);
 
   useEffect(() => {
     const path = window.location.pathname;
@@ -3311,6 +3316,7 @@ export default function App() {
     if (isRunningRef.current) {
       stopSession();
     }
+    setApneaHistoryOpen(false);
     setPracticeScreen("menu");
   };
 
@@ -3320,6 +3326,7 @@ export default function App() {
   };
 
   const openPracticeOption = (practiceId) => {
+    setApneaHistoryOpen(false);
     if (practiceId === "principiante") {
       if (!hasApprovedAudio) return;
       setPracticeScreen("principiante");
@@ -5130,44 +5137,22 @@ export default function App() {
       <div className="app menu-app">
         {renderHeader()}
         <div className="card menu-card">
-          <h2>Selecciona práctica</h2>
+          <div className="menu-card-title-row">
+            <h2>Selecciona práctica</h2>
+            <button
+              type="button"
+              className="apnea-history-button"
+              aria-label="Ver historial de tiempos de apnea"
+              title="Historial de apnea"
+              onClick={() => setApneaHistoryOpen(true)}
+            >
+              <span>⏱</span>
+              {studentApneaDailyLog.length > 0 && <em>{studentApneaDailyLog.length}</em>}
+            </button>
+          </div>
           <p className="muted">
             Principiante se habilita cuando administración aprueba tu audio. Advanced se libera a los 30 días.
           </p>
-          <div className="student-apnea-panel" aria-label="Panel de apneas del alumno">
-            <div className="student-apnea-panel-head">
-              <span>Mis apneas</span>
-              <strong>{studentApneaDailyLog.length || 0} días</strong>
-            </div>
-            <div className="student-apnea-panel-stats">
-              <div>
-                <span>Racha</span>
-                <strong>{studentWeeklyStats.currentStreak || progress.streak || 0}d</strong>
-              </div>
-              <div>
-                <span>Mejor</span>
-                <strong>{studentBestApneaSeconds ? formatDurationClock(studentBestApneaSeconds) : "0:00"}</strong>
-              </div>
-              <div>
-                <span>Última</span>
-                <strong>{studentLastApneaSeconds ? formatDurationClock(studentLastApneaSeconds) : "0:00"}</strong>
-              </div>
-            </div>
-            <div className="student-apnea-panel-days">
-              {studentApneaDailyLog.length > 0 ? (
-                studentApneaDailyLog.slice(0, 2).map((day) => (
-                  <span key={day.dateKey}>
-                    <b>{day.label}</b>
-                    {day.times.slice(0, 3).map((seconds, index) => (
-                      <em key={`${day.dateKey}-${seconds}-${index}`}>{formatDurationClock(seconds)}</em>
-                    ))}
-                  </span>
-                ))
-              ) : (
-                <span>Sin apneas registradas todavía</span>
-              )}
-            </div>
-          </div>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
               <button
@@ -5197,6 +5182,65 @@ export default function App() {
             ))}
           </div>
         </div>
+        {apneaHistoryOpen && (
+          <div
+            className="apnea-history-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Historial de tiempos de apnea"
+            onClick={() => setApneaHistoryOpen(false)}
+          >
+            <section className="apnea-history-sheet" onClick={(event) => event.stopPropagation()}>
+              <div className="apnea-history-head">
+                <div>
+                  <p className="eyebrow">Mis apneas</p>
+                  <h3>Tiempos de apnea</h3>
+                </div>
+                <button
+                  type="button"
+                  className="apnea-history-close"
+                  aria-label="Cerrar historial de apnea"
+                  onClick={() => setApneaHistoryOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="apnea-history-summary">
+                <div>
+                  <span>Racha</span>
+                  <strong>{studentWeeklyStats.currentStreak || progress.streak || 0}d</strong>
+                </div>
+                <div>
+                  <span>Mejor</span>
+                  <strong>{studentBestApneaSeconds ? formatDurationClock(studentBestApneaSeconds) : "0:00"}</strong>
+                </div>
+                <div>
+                  <span>Última</span>
+                  <strong>{studentLastApneaSeconds ? formatDurationClock(studentLastApneaSeconds) : "0:00"}</strong>
+                </div>
+              </div>
+              <div className="apnea-history-days">
+                {studentApneaDailyLog.length > 0 ? (
+                  studentApneaDailyLog.map((day) => (
+                    <article key={day.dateKey} className="apnea-history-day">
+                      <div>
+                        <strong>{day.label}</strong>
+                        <span>{day.total} apneas</span>
+                      </div>
+                      <div>
+                        {day.times.map((seconds, index) => (
+                          <em key={`${day.dateKey}-${seconds}-${index}`}>{formatDurationClock(seconds)}</em>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className="muted">Sin tiempos de apnea registrados todavía.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     );
   }
