@@ -254,6 +254,32 @@ body {
   text-align: center;
 }
 
+.apnea-corner-timer {
+  justify-self: end;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 7px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--stroke));
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.apnea-corner-timer strong {
+  color: var(--accent);
+  font-size: 15px;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .quick-check-card {
   border: 1px solid var(--stroke);
   border-radius: 14px;
@@ -439,6 +465,41 @@ body {
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;
+}
+
+.session-apnea-board {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.apnea-round-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--stroke) 78%, transparent);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.apnea-round-chip b {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.apnea-round-chip.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--card) 82%);
+  border-color: color-mix(in srgb, var(--accent) 64%, var(--stroke));
+  color: var(--ink);
 }
 
 .nostril-preview {
@@ -647,6 +708,100 @@ body {
   margin-top: 14px;
   display: grid;
   gap: 8px;
+}
+
+.student-apnea-panel {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 8px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--stroke));
+  background:
+    radial-gradient(circle at 8% 14%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 40%),
+    color-mix(in srgb, var(--card) 88%, var(--bg) 12%);
+}
+
+.student-apnea-panel-head,
+.student-apnea-panel-stats,
+.student-apnea-panel-days span {
+  display: flex;
+  align-items: center;
+}
+
+.student-apnea-panel-head {
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.student-apnea-panel-head strong {
+  color: var(--accent);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.student-apnea-panel-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.student-apnea-panel-stats > div {
+  min-height: 44px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--stroke) 70%, transparent);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+}
+
+.student-apnea-panel-stats span,
+.student-apnea-panel-days b {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.student-apnea-panel-stats strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-apnea-panel-days {
+  display: grid;
+  gap: 5px;
+}
+
+.student-apnea-panel-days span {
+  justify-content: space-between;
+  gap: 7px;
+  min-height: 26px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.student-apnea-panel-days em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+  font-style: normal;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .color-practice-shell {
@@ -1946,6 +2101,77 @@ input[type="range"]:focus {
   line-height: 1.2;
 }
 
+.student-apnea-log {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--stroke));
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 12% 14%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 36%),
+    color-mix(in srgb, var(--card) 90%, #061523 10%);
+}
+
+.student-apnea-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.student-apnea-log-head strong {
+  color: var(--accent);
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-apnea-log-days {
+  display: grid;
+  gap: 6px;
+}
+
+.student-apnea-log-days > .muted {
+  margin: 0;
+  font-size: 12px;
+}
+
+.student-apnea-log-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.3fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.student-apnea-log-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.student-apnea-log-row em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+  font-style: normal;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .student-weekly-stat.ok {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--stroke));
 }
@@ -2372,6 +2598,15 @@ input[type="range"]:focus {
 
   .student-weekly-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .student-apnea-log-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .student-apnea-log-row > div {
+    justify-content: flex-start;
   }
 
   .student-weekly-stat {
@@ -3843,6 +4078,16 @@ input[type="range"]:focus {
   box-shadow: 0 0 15px rgba(88, 228, 213, 0.95);
 }
 
+[data-theme="dark"] .practice-app .apnea-corner-timer {
+  background: rgba(6, 18, 23, 0.72);
+  border-color: rgba(88, 228, 213, 0.3);
+  color: rgba(224, 240, 241, 0.62);
+}
+
+[data-theme="dark"] .practice-app .apnea-corner-timer strong {
+  color: #f2fbfb;
+}
+
 [data-theme="dark"] .practice-app .breath-text {
   color: #f2fbfb;
 }
@@ -3872,6 +4117,27 @@ input[type="range"]:focus {
 
 [data-theme="dark"] .practice-app .breath-counter-top > span {
   color: rgba(210, 225, 226, 0.58);
+}
+
+[data-theme="dark"] .practice-app .session-apnea-board {
+  color: rgba(210, 225, 226, 0.6);
+}
+
+[data-theme="dark"] .practice-app .apnea-round-chip {
+  background: rgba(4, 16, 20, 0.58);
+  border-color: rgba(88, 228, 213, 0.18);
+  color: rgba(224, 240, 241, 0.74);
+}
+
+[data-theme="dark"] .practice-app .apnea-round-chip b {
+  color: var(--accent);
+}
+
+[data-theme="dark"] .practice-app .apnea-round-chip.active {
+  background: rgba(88, 228, 213, 0.16);
+  border-color: rgba(88, 228, 213, 0.44);
+  color: #f4fbfb;
+  box-shadow: 0 10px 26px rgba(88, 228, 213, 0.12);
 }
 
 [data-theme="dark"] .practice-app .breath-progress {
@@ -4024,10 +4290,54 @@ input[type="range"]:focus {
     margin-bottom: 8px;
   }
 
+  [data-theme="dark"] .menu-app .student-apnea-panel {
+    flex: 0 0 auto;
+    margin: 0 0 7px;
+    padding: 8px;
+    gap: 6px;
+    border-radius: 16px;
+    background: rgba(8, 18, 23, 0.62);
+    border-color: rgba(88, 228, 213, 0.2);
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-stats {
+    gap: 5px;
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-stats > div {
+    min-height: 36px;
+    padding: 5px 7px;
+    background: rgba(3, 13, 17, 0.44);
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-stats span,
+  [data-theme="dark"] .menu-app .student-apnea-panel-days b {
+    font-size: 8px;
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-stats strong {
+    font-size: clamp(11px, 3vw, 14px);
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-days {
+    gap: 3px;
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-days span {
+    min-height: 20px;
+    font-size: 10px;
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-days em {
+    min-width: 34px;
+    padding: 2px 6px;
+    background: rgba(88, 228, 213, 0.12);
+  }
+
   [data-theme="dark"] .menu-app .practice-menu {
     flex: 1 1 auto;
     grid-template-rows: repeat(8, minmax(0, 1fr));
-    gap: 5px;
+    gap: 4px;
     min-height: 0;
   }
 
@@ -4136,6 +4446,29 @@ input[type="range"]:focus {
   [data-theme="dark"] .practice-app.is-session-active .breath-counter-top > span {
     font-size: clamp(8px, 2.5vw, 11px);
     letter-spacing: 0.24em;
+  }
+
+  [data-theme="dark"] .practice-app.is-session-active .session-apnea-board {
+    order: 4;
+    gap: 6px;
+    margin-top: calc(clamp(18px, 4dvh, 34px) * -0.45);
+    padding-inline: 4px;
+  }
+
+  [data-theme="dark"] .practice-app.is-session-active .apnea-round-chip {
+    min-height: 26px;
+    padding: 5px 8px;
+    font-size: clamp(10px, 2.8vw, 12px);
+  }
+
+  [data-theme="dark"] .practice-app.is-session-active .apnea-corner-timer {
+    min-height: 28px;
+    padding: 5px 9px;
+    font-size: 9px;
+  }
+
+  [data-theme="dark"] .practice-app.is-session-active .apnea-corner-timer strong {
+    font-size: 13px;
   }
 
   [data-theme="dark"] .practice-app.is-session-active .nostril-preview {
@@ -4248,5 +4581,20 @@ input[type="range"]:focus {
 
   [data-theme="dark"] .practice-app.is-session-active .breath-counter-top strong {
     font-size: clamp(42px, 13vw, 62px);
+  }
+
+  [data-theme="dark"] .practice-app.is-session-active .session-apnea-board {
+    gap: 4px;
+    margin-top: -10px;
+  }
+
+  [data-theme="dark"] .practice-app.is-session-active .apnea-round-chip {
+    min-height: 23px;
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  [data-theme="dark"] .menu-app .student-apnea-panel-days {
+    display: none;
   }
 }

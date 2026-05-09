@@ -275,6 +275,72 @@ const formatWeeklyDay = (key) => {
   return WEEKDAY_SHORT[date.getDay()] || key;
 };
 
+const formatDurationClock = (secondsInput = 0) => {
+  const seconds = Math.max(0, Math.round(Number(secondsInput) || 0));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+};
+
+const formatDateShortLabel = (key) => {
+  const [year, month, day] = String(key || "").split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return key || "-";
+  return `${WEEKDAY_SHORT[date.getDay()] || ""} ${padDatePart(day)}/${padDatePart(month)}`.trim();
+};
+
+const normalizeApneaTimes = (session) => {
+  const source = Array.isArray(session?.apneaByRound)
+    ? session.apneaByRound
+    : Array.isArray(session?.rounds)
+      ? session.rounds
+      : Number(session?.seconds || 0) > 0
+        ? [session.seconds]
+        : [];
+  return source
+    .map((value) => Math.max(0, Math.round(Number(value) || 0)))
+    .filter((value) => value > 0)
+    .slice(0, 10);
+};
+
+const buildApneaDailyLog = (usage = {}, limit = 5) => {
+  const recent = Array.isArray(usage.recentSessions) ? usage.recentSessions : [];
+  const sessions = usage.lastSession ? [usage.lastSession, ...recent] : recent;
+  const byDay = new Map();
+  const seen = new Set();
+
+  sessions.forEach((session) => {
+    const sessionKey = `${session.completedAt || ""}|${session.startedAt || ""}|${JSON.stringify(session.apneaByRound || session.rounds || [])}`;
+    if (seen.has(sessionKey)) return;
+    seen.add(sessionKey);
+    const times = normalizeApneaTimes(session);
+    if (!times.length) return;
+    const explicitDate = String(session.date || "");
+    const dayKey = /^\d{4}-\d{2}-\d{2}$/.test(explicitDate)
+      ? explicitDate
+      : localDateKey(session.completedAt || session.timestamp || session.startedAt || "");
+    if (!dayKey) return;
+    const day = byDay.get(dayKey) || {
+      dateKey: dayKey,
+      label: formatDateShortLabel(dayKey),
+      sessions: 0,
+      times: []
+    };
+    day.sessions += 1;
+    day.times.push(...times);
+    byDay.set(dayKey, day);
+  });
+
+  return Array.from(byDay.values())
+    .map((day) => ({
+      ...day,
+      total: day.times.length,
+      best: Math.max(...day.times)
+    }))
+    .sort((a, b) => compareDateKey(b.dateKey, a.dateKey))
+    .slice(0, limit);
+};
+
 const buildWeeklyPracticeStats = (studentItem, nowInput = new Date()) => {
   const nowDate = nowInput instanceof Date ? nowInput : new Date(nowInput);
   const usage = studentItem?.usage || {};
@@ -633,6 +699,7 @@ export default function App() {
     lastApneaSeconds: 0,
     apneaHistory: []
   });
+  const [studentUsageSummary, setStudentUsageSummary] = useState(null);
   const [quickCheckState, setQuickCheckState] = useState({
     loading: false,
     error: "",
@@ -1042,6 +1109,30 @@ export default function App() {
         : "",
     [hasApprovedAudio, slug, token]
   );
+
+  useEffect(() => {
+    if (!student?.slug || !token) {
+      setStudentUsageSummary(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const loadStudentUsage = async () => {
+      try {
+        const data = await fetchJsonWithTimeout(
+          `/api/students?slug=${encodeURIComponent(student.slug)}&token=${encodeURIComponent(token)}`,
+          2200
+        );
+        if (!cancelled) setStudentUsageSummary(data?.student?.usage || null);
+      } catch (_error) {
+        if (!cancelled) setStudentUsageSummary(null);
+      }
+    };
+    loadStudentUsage();
+    return () => {
+      cancelled = true;
+    };
+  }, [student?.slug, token]);
+
   const recordedPreviewUrl = useMemo(
     () => (studentRecordedBlob ? URL.createObjectURL(studentRecordedBlob) : ""),
     [studentRecordedBlob]
@@ -1177,6 +1268,8 @@ export default function App() {
         const count = roundCounts[idx] || 0;
         return count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
       });
+      const apneaDailyLog = buildApneaDailyLog(usage, 5);
+      const apneaBestSeconds = apneaDailyLog.reduce((best, day) => Math.max(best, day.best || 0), 0);
       const flowState = {
         onboarding: Number(flowStats.onboarding || 0) > 0,
         prePractice: Number(flowStats.prePractice || 0) > 0,
@@ -1203,6 +1296,8 @@ export default function App() {
         colorVisionAccuracy: Number(colorVisionUsage.averageAccuracy || 0),
         flowState,
         roundAvg,
+        apneaDailyLog,
+        apneaBestSeconds,
         weeklyPractice,
         lastActivityAt,
         lastSessionAt
@@ -2333,6 +2428,7 @@ export default function App() {
           {
             date: today,
             seconds: Math.round((lastApneaMsRef.current || 0) / 1000),
+            rounds: apneaByRound.filter((seconds) => seconds > 0),
             timestamp: new Date().toISOString()
           }
         ].slice(-10),
@@ -2340,7 +2436,8 @@ export default function App() {
           date: today,
           cycles: config.cycles,
           breaths: addedBreaths,
-          apneaSeconds: Math.round((lastApneaMsRef.current || 0) / 1000)
+          apneaSeconds: Math.round((lastApneaMsRef.current || 0) / 1000),
+          rounds: apneaByRound.filter((seconds) => seconds > 0)
         }
       };
 
@@ -3911,6 +4008,7 @@ export default function App() {
     if (!adminPassword) return;
     const confirmed = window.confirm("¿Eliminar este estudiante?");
     if (!confirmed) return;
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
     try {
       const response = await fetch("/api/admin/delete-student", {
         method: "POST",
@@ -3922,6 +4020,11 @@ export default function App() {
         throw new Error(data?.error || "No se pudo eliminar");
       }
       await ensureAdminList(adminPassword);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollTop, left: 0, behavior: "auto" });
+        });
+      });
     } catch (error) {
       setAdminMessage(error?.message || "No se pudo eliminar");
     }
@@ -4063,6 +4166,92 @@ export default function App() {
     if (adminView === "age-unknown") return activeRows.filter((item) => item.ageBucket === "age-unknown");
     return activeRows;
   }, [adminAnalytics, adminView, searchTerm]);
+
+  const localProgressSessions = useMemo(() => (
+    (progress.apneaHistory || [])
+      .slice()
+      .reverse()
+      .map((entry) => ({
+        completedAt: entry.timestamp || entry.date || "",
+        date: entry.date || "",
+        apneaByRound: Array.isArray(entry.rounds) && entry.rounds.length
+          ? entry.rounds
+          : [entry.seconds || 0]
+      }))
+  ), [progress.apneaHistory]);
+
+  const studentUsageForPanel = useMemo(() => {
+    const serverRecent = Array.isArray(studentUsageSummary?.recentSessions)
+      ? studentUsageSummary.recentSessions
+      : [];
+    const sessionsByDay = { ...(studentUsageSummary?.sessionsByDay || {}) };
+    const practiceActivityByDay = { ...(studentUsageSummary?.practiceActivityByDay || {}) };
+
+    localProgressSessions.forEach((session) => {
+      const key = session.date || localDateKey(session.completedAt || "");
+      if (!key) return;
+      sessionsByDay[key] = Math.max(Number(sessionsByDay[key] || 0), 1);
+      practiceActivityByDay[key] = Math.max(Number(practiceActivityByDay[key] || 0), 1);
+    });
+
+    return {
+      totalSessions: Math.max(
+        Number(progress.totalSessions || 0),
+        Number(studentUsageSummary?.totalSessions || 0)
+      ),
+      totalBreaths: Math.max(
+        Number(progress.totalBreaths || 0),
+        Number(studentUsageSummary?.totalBreaths || 0)
+      ),
+      sessionsByDay,
+      practiceActivityByDay,
+      lastActivityAt:
+        studentUsageSummary?.lastActivityAt ||
+        localProgressSessions[0]?.completedAt ||
+        progress.lastSessionDate ||
+        "",
+      lastSessionAt:
+        studentUsageSummary?.lastSessionAt ||
+        localProgressSessions[0]?.completedAt ||
+        progress.lastSessionDate ||
+        "",
+      recentSessions: [...localProgressSessions, ...serverRecent].slice(0, 60),
+      lastSession: studentUsageSummary?.lastSession || localProgressSessions[0] || null
+    };
+  }, [localProgressSessions, progress.lastSessionDate, progress.totalBreaths, progress.totalSessions, studentUsageSummary]);
+
+  const studentWeeklyStats = useMemo(
+    () => buildWeeklyPracticeStats({ ...student, usage: studentUsageForPanel }, new Date()),
+    [student, studentUsageForPanel]
+  );
+
+  const studentApneaDailyLog = useMemo(
+    () => buildApneaDailyLog(studentUsageForPanel, 4),
+    [studentUsageForPanel]
+  );
+
+  const studentBestApneaSeconds = useMemo(
+    () => studentApneaDailyLog.reduce((best, day) => Math.max(best, day.best || 0), 0),
+    [studentApneaDailyLog]
+  );
+
+  const latestStudentApneaTimes = studentApneaDailyLog[0]?.times || [];
+  const studentLastApneaSeconds =
+    latestStudentApneaTimes[latestStudentApneaTimes.length - 1] ||
+    progress.lastApneaSeconds ||
+    0;
+
+  const sessionApneaBoard = Array.from({ length: Math.max(1, Number(config.cycles || 1)) }, (_, index) => {
+    const recordedSeconds = Math.max(0, Number(roundApneaByCycleRef.current[index] || 0));
+    const isActiveRound = phase === "apnea" && index === Math.max(0, cycleIndex - 1);
+    const liveSeconds = isActiveRound ? Math.max(0, Math.floor(timeLeftMs / 1000)) : 0;
+    return {
+      round: index + 1,
+      seconds: Math.max(recordedSeconds, liveSeconds),
+      active: isActiveRound
+    };
+  });
+  const visibleSessionApneas = sessionApneaBoard.filter((item) => item.seconds > 0 || item.active);
 
   const magicPolicyLevel = useMemo(() => {
     if (magicUnlockScoreConfig >= 88) return "red";
@@ -4485,6 +4674,8 @@ export default function App() {
                   : AGE_BUCKET_LABELS[item.ageBucket] || "Sin fecha";
                 const weekly = item.weeklyPractice || buildWeeklyPracticeStats(item);
                 const missedCopy = weekly.missedLabels?.length ? weekly.missedLabels.join(", ") : "ninguna";
+                const apneaDailyLog = item.apneaDailyLog || [];
+                const apneaBestSeconds = item.apneaBestSeconds || 0;
                 const alertCopy = specialWorkflow && workflowStatus !== "approved"
                   ? "Pedido especial"
                   : weekly.consecutiveMisses >= 2
@@ -4638,6 +4829,32 @@ export default function App() {
                         <div className={`student-weekly-stat ${weekly.consecutiveMisses >= 2 ? "critical" : weekly.consecutiveMisses >= 1 ? "warning" : "ok"}`}>
                           <span>Seguidos sin practica</span>
                           <strong>{weekly.consecutiveMisses || 0}</strong>
+                        </div>
+                      </div>
+
+                      <div className="student-apnea-log" aria-label={`Registro de apneas de ${item.name}`}>
+                        <div className="student-apnea-log-head">
+                          <span>Apneas por día</span>
+                          <strong>{apneaBestSeconds ? `${formatDurationClock(apneaBestSeconds)} mejor` : "Sin datos"}</strong>
+                        </div>
+                        <div className="student-apnea-log-days">
+                          {apneaDailyLog.length > 0 ? (
+                            apneaDailyLog.map((day) => (
+                              <div className="student-apnea-log-row" key={`${item.slug}-${day.dateKey}`}>
+                                <span>{day.label}</span>
+                                <div>
+                                  {day.times.slice(0, 5).map((seconds, index) => (
+                                    <em key={`${item.slug}-${day.dateKey}-${seconds}-${index}`}>
+                                      {formatDurationClock(seconds)}
+                                    </em>
+                                  ))}
+                                  {day.times.length > 5 && <em>+{day.times.length - 5}</em>}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="muted">Sin apneas registradas todavía.</p>
+                          )}
                         </div>
                       </div>
 
@@ -4917,6 +5134,40 @@ export default function App() {
           <p className="muted">
             Principiante se habilita cuando administración aprueba tu audio. Advanced se libera a los 30 días.
           </p>
+          <div className="student-apnea-panel" aria-label="Panel de apneas del alumno">
+            <div className="student-apnea-panel-head">
+              <span>Mis apneas</span>
+              <strong>{studentApneaDailyLog.length || 0} días</strong>
+            </div>
+            <div className="student-apnea-panel-stats">
+              <div>
+                <span>Racha</span>
+                <strong>{studentWeeklyStats.currentStreak || progress.streak || 0}d</strong>
+              </div>
+              <div>
+                <span>Mejor</span>
+                <strong>{studentBestApneaSeconds ? formatDurationClock(studentBestApneaSeconds) : "0:00"}</strong>
+              </div>
+              <div>
+                <span>Última</span>
+                <strong>{studentLastApneaSeconds ? formatDurationClock(studentLastApneaSeconds) : "0:00"}</strong>
+              </div>
+            </div>
+            <div className="student-apnea-panel-days">
+              {studentApneaDailyLog.length > 0 ? (
+                studentApneaDailyLog.slice(0, 2).map((day) => (
+                  <span key={day.dateKey}>
+                    <b>{day.label}</b>
+                    {day.times.slice(0, 3).map((seconds, index) => (
+                      <em key={`${day.dateKey}-${seconds}-${index}`}>{formatDurationClock(seconds)}</em>
+                    ))}
+                  </span>
+                ))
+              ) : (
+                <span>Sin apneas registradas todavía</span>
+              )}
+            </div>
+          </div>
           <div className="practice-menu">
             {practiceOptions.map((item) => (
               <button
@@ -5228,10 +5479,18 @@ export default function App() {
               </div>
               <div className="timer-wrap">
                 {isSessionActive ? (
-                  <div className="cycle-live-pill">
-                    <span />
-                    Ciclo {cycleIndex} / {config.cycles}
-                  </div>
+                  <>
+                    <div className="cycle-live-pill">
+                      <span />
+                      Ciclo {cycleIndex} / {config.cycles}
+                    </div>
+                    {phase === "apnea" && (
+                      <div className="apnea-corner-timer" aria-live="polite">
+                        <span>Apnea</span>
+                        <strong>{formatSeconds(timeLeftMs)}</strong>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <div className="timer">
@@ -5282,6 +5541,19 @@ export default function App() {
                 {phase === "recovery" && "Recupera"}
                 {(phase === "idle" || phase === "complete") && "Preparado"}
               </div>
+              {visibleSessionApneas.length > 0 && (
+                <div className="session-apnea-board" aria-label="Apneas registradas en la sesión">
+                  {visibleSessionApneas.map((item) => (
+                    <span
+                      key={`round-apnea-${item.round}`}
+                      className={`apnea-round-chip ${item.active ? "active" : ""}`}
+                    >
+                      <b>A{item.round}</b>
+                      {formatDurationClock(item.seconds)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {phase === "breathing" && (
@@ -5798,7 +6070,11 @@ export default function App() {
                   {progress.apneaHistory.map((entry, index) => (
                     <div key={`${entry.timestamp || entry.date}-${index}`} className="history-item">
                       <span>{entry.date}</span>
-                      <strong>{entry.seconds}s</strong>
+                      <strong>
+                        {Array.isArray(entry.rounds) && entry.rounds.length
+                          ? entry.rounds.map(formatDurationClock).join(" · ")
+                          : formatDurationClock(entry.seconds || 0)}
+                      </strong>
                     </div>
                   ))}
                 </div>

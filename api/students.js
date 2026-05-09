@@ -92,6 +92,54 @@ const normalizeSessionPayload = (payload) => {
   };
 };
 
+const normalizeUsageMap = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(String(key)))
+      .map(([key, count]) => [key, clampNumber(count, 0, 9999, 0)])
+  );
+};
+
+const buildPublicSessionSummary = (session = {}) => ({
+  sessionType: String(session.sessionType || "breathing"),
+  flowStage: String(session.flowStage || ""),
+  completedRounds: clampNumber(session.completedRounds, 0, 50, 0),
+  plannedRounds: clampNumber(session.plannedRounds, 0, 50, 0),
+  breathsPerCycle: clampNumber(session.breathsPerCycle, 0, 200, 0),
+  breathsDoneTotal: clampNumber(session.breathsDoneTotal, 0, 100000, 0),
+  apneaByRound: Array.isArray(session.apneaByRound)
+    ? session.apneaByRound.slice(0, 10).map((seconds) => clampNumber(seconds, 0, 36000, 0))
+    : [],
+  completedAt: String(session.completedAt || ""),
+  startedAt: String(session.startedAt || ""),
+  durationSeconds: clampNumber(session.durationSeconds, 0, 86400, 0),
+  partial: Boolean(session.partial),
+  manualStop: Boolean(session.manualStop)
+});
+
+const buildSafeUsageSummary = (usage = {}) => ({
+  totalSessions: clampNumber(usage.totalSessions, 0, 1e9, 0),
+  totalRounds: clampNumber(usage.totalRounds, 0, 1e9, 0),
+  totalBreaths: clampNumber(usage.totalBreaths, 0, 1e9, 0),
+  firstActivityAt: String(usage.firstActivityAt || ""),
+  lastActivityAt: String(usage.lastActivityAt || ""),
+  firstSessionAt: String(usage.firstSessionAt || ""),
+  lastSessionAt: String(usage.lastSessionAt || ""),
+  sessionsByDay: normalizeUsageMap(usage.sessionsByDay),
+  practiceActivityByDay: normalizeUsageMap(usage.practiceActivityByDay),
+  apneaRoundSums: Array.isArray(usage.apneaRoundSums)
+    ? usage.apneaRoundSums.slice(0, 10).map((seconds) => clampNumber(seconds, 0, 1e9, 0))
+    : [],
+  apneaRoundCounts: Array.isArray(usage.apneaRoundCounts)
+    ? usage.apneaRoundCounts.slice(0, 10).map((count) => clampNumber(count, 0, 1e9, 0))
+    : [],
+  recentSessions: Array.isArray(usage.recentSessions)
+    ? usage.recentSessions.slice(0, 60).map(buildPublicSessionSummary)
+    : [],
+  lastSession: usage.lastSession ? buildPublicSessionSummary(usage.lastSession) : null
+});
+
 export default async function handler(req, res) {
   try {
     if (req.method === "POST") {
@@ -304,6 +352,30 @@ export default async function handler(req, res) {
     }
 
     const [students, appSettings] = await Promise.all([readStudents(), readAppSettings()]);
+    const requestedSlug = String(req.query.slug || "").trim();
+    const requestedToken = String(req.query.token || "").trim();
+    if (requestedSlug || requestedToken) {
+      if (!requestedSlug || !requestedToken) {
+        return res.status(400).json({ error: "Datos incompletos" });
+      }
+      const student = students.find((item) => item.slug === requestedSlug);
+      if (!student) {
+        return res.status(404).json({ error: "Estudiante no encontrado" });
+      }
+      if (String(student.token || "") !== requestedToken) {
+        return res.status(403).json({ error: "Token inválido" });
+      }
+      return res.status(200).json({
+        student: {
+          name: student.name,
+          slug: student.slug,
+          createdAt: student.createdAt || "",
+          updatedAt: student.updatedAt || "",
+          usage: buildSafeUsageSummary(student.usage || {})
+        }
+      });
+    }
+
     const safe = students.map((item) => {
       const workflow = item.audioWorkflow || {};
       const advancedUnlockTarget = getAdvancedUnlockTarget(item, workflow);
