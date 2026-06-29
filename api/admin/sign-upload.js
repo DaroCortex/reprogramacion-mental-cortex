@@ -31,10 +31,15 @@ export default async function handler(req, res) {
       }
       prefix = `student-submissions/${safeSlug}`;
     } else {
-      const isEditorUpload = scope === "editor-final" || scope === "editor-beginner";
+      const isEditorUpload =
+        scope === "editor-final" ||
+        scope === "editor-beginner" ||
+        scope === "editor-beginner-alt" ||
+        scope === "editor-raw";
+      const isAdmin = await verifyAdminPassword(password);
       const canUpload = isEditorUpload
-        ? await verifyEditorPassword(password)
-        : await verifyAdminPassword(password);
+        ? isAdmin || (await verifyEditorPassword(password))
+        : isAdmin;
       if (!canUpload) {
         return res.status(401).json({ error: "No autorizado" });
       }
@@ -44,7 +49,15 @@ export default async function handler(req, res) {
         if (!student) {
           return res.status(404).json({ error: "Estudiante no encontrado" });
         }
-        prefix = scope === "editor-beginner" ? `student-beginner/${safeSlug}` : `student-edited/${safeSlug}`;
+        if (scope === "editor-beginner") {
+          prefix = `student-beginner/${safeSlug}`;
+        } else if (scope === "editor-beginner-alt") {
+          prefix = `student-beginner-alt/${safeSlug}`;
+        } else if (scope === "editor-raw") {
+          prefix = `student-legacy-raw/${safeSlug}`;
+        } else {
+          prefix = `student-edited/${safeSlug}`;
+        }
       }
     }
 

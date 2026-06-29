@@ -1,6 +1,7 @@
-import { deleteObject, readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
+import { deleteObject, getObjectBuffer, readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
 import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
+import { normalizeEmail } from "../../lib/student-auth.js";
 
 const BEGINNER_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -13,6 +14,7 @@ const uniqueKeysReferencedByOthers = (students, slug, key) =>
       item.audioKey === key ||
       workflow.rawAudioKey === key ||
       workflow.beginnerAudioKey === key ||
+      workflow.beginnerAltAudioKey === key ||
       workflow.editorAudioKey === key
     );
   });
@@ -26,6 +28,35 @@ const cleanupKey = async (students, slug, key) => {
   }
 };
 
+const safeTimestamp = (value) => {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const assertCurrentAdvancedAudio = (workflow = {}, advancedKey = "") => {
+  const key = String(advancedKey || workflow.editorAudioKey || "").trim();
+  if (!key) {
+    throw new Error("Falta el audio final Advanced");
+  }
+  if (workflow.beginnerAudioKey && key === workflow.beginnerAudioKey) {
+    throw new Error("El audio Advanced no puede ser el mismo archivo de Principiante");
+  }
+  if (workflow.beginnerAltAudioKey && key === workflow.beginnerAltAudioKey) {
+    throw new Error("El audio Advanced no puede ser el mismo archivo de Principiante 2");
+  }
+
+  const rawUploadedAt = Math.max(
+    safeTimestamp(workflow.rawUploadedAt),
+    safeTimestamp(workflow.submittedAt)
+  );
+  const editedAt = safeTimestamp(workflow.editedAt);
+  if (rawUploadedAt && (!editedAt || rawUploadedAt > editedAt)) {
+    throw new Error("El audio final Advanced debe cargarse despues del crudo actual");
+  }
+
+  return key;
+};
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
@@ -37,27 +68,41 @@ export default async function handler(req, res) {
       slug,
       action = "",
       audioKey,
+      rawAudioKey,
       beginnerAudioKey,
+      beginnerAltAudioKey,
       editorAudioKey,
       audioBase64,
       fileName,
+      rawFileName,
       beginnerFileName,
+      beginnerAltFileName,
       editorFileName,
       contentType,
       settings,
+      email,
+      sourceExternalId,
+      sourceSystem,
       studentStatus,
       requestType,
       requestLabel,
       requestSource
     } = req.body || {};
     const isAdmin = await verifyAdminPassword(password);
-    const isEditorAction = action === "attach-edited-audio" || action === "attach-beginner-audio";
+    const isEditorAction =
+      action === "attach-edited-audio" ||
+      action === "attach-beginner-audio" ||
+      action === "attach-beginner-alt-audio" ||
+      action === "attach-raw-audio" ||
+      action === "unlock-advanced";
     const isEditor = !isAdmin && isEditorAction ? await verifyEditorPassword(password) : false;
     if (!isAdmin && !isEditor) {
       return res.status(401).json({ error: "No autorizado" });
     }
 
-    const hasAudioUpdate = Boolean(audioKey || beginnerAudioKey || editorAudioKey || audioBase64);
+    const hasAudioUpdate = Boolean(
+      audioKey || rawAudioKey || beginnerAudioKey || beginnerAltAudioKey || editorAudioKey || audioBase64
+    );
     const hasSettingsUpdate = Boolean(settings && typeof settings === "object");
     const hasAction = Boolean(action);
     if (isEditor && hasSettingsUpdate) {
@@ -67,8 +112,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Datos incompletos" });
     }
 
-    let nextAudioKey = String(audioKey || beginnerAudioKey || editorAudioKey || "").trim();
-    const nextFileName = fileName || beginnerFileName || editorFileName;
+    const nextRawAudioKey = String(rawAudioKey || "").trim();
+    let nextAudioKey = String(audioKey || beginnerAudioKey || beginnerAltAudioKey || editorAudioKey || "").trim();
+    const nextFileName = fileName || rawFileName || beginnerFileName || beginnerAltFileName || editorFileName;
     let optimization = null;
     if (hasAudioUpdate && !nextAudioKey && audioBase64 && nextFileName) {
       const inputBuffer = Buffer.from(String(audioBase64), "base64");
@@ -88,6 +134,27 @@ export default async function handler(req, res) {
     const previousAudioKey = current.audioKey || "";
     const previousWorkflow = current.audioWorkflow || {};
     const nowIso = new Date().toISOString();
+    let processedRawUpload = null;
+    if (action === "attach-raw-audio") {
+      if (!nextRawAudioKey) {
+        throw new Error("Falta audio original legacy");
+      }
+      const { buffer: rawBuffer, contentType: rawContentType } = await getObjectBuffer(nextRawAudioKey);
+      const legacyFileName = String(nextFileName || "audio-legacy-alumno");
+      const optimized = await optimizeAudioBuffer({
+        inputBuffer: rawBuffer,
+        fileName: legacyFileName
+      });
+      optimization = optimized.optimization;
+      nextAudioKey = buildAudioKey(legacyFileName, optimized.extension || "mp3");
+      await uploadObject(nextAudioKey, optimized.buffer, optimized.contentType || rawContentType || contentType);
+      processedRawUpload = {
+        rawAudioKey: nextRawAudioKey,
+        rawFileName: legacyFileName,
+        editorAudioKey: nextAudioKey,
+        editorFileName: `${legacyFileName} procesado`
+      };
+    }
     const workflowRequestMeta = (workflow = {}) => {
       const safeType = String(requestType || workflow.requestType || "student-audio").trim();
       const safeLabel = String(
@@ -105,6 +172,9 @@ export default async function handler(req, res) {
       };
     };
     let cleanupCandidates = [];
+    const safeEmail = normalizeEmail(email);
+    const safeSourceExternalId = String(sourceExternalId || "").trim();
+    const safeSourceSystem = String(sourceSystem || (safeSourceExternalId ? "formulario-cortex" : "")).trim();
 
     const next = students.map((item) => {
       if (item.slug !== slug) return item;
@@ -123,6 +193,19 @@ export default async function handler(req, res) {
           throw new Error("Estado invalido");
         }
         nextStatus = safeStatus;
+      }
+
+      let nextEmail = item.email || "";
+      let nextSource = item.source || item.externalSource || null;
+      if (action === "update-profile") {
+        if (safeEmail) nextEmail = safeEmail;
+        if (safeSourceExternalId) {
+          nextSource = {
+            ...(nextSource || {}),
+            system: safeSourceSystem,
+            externalId: safeSourceExternalId
+          };
+        }
       }
 
       if (action === "request-audio") {
@@ -168,25 +251,65 @@ export default async function handler(req, res) {
         };
       }
 
+      if (action === "attach-beginner-alt-audio") {
+        if (!nextAudioKey) {
+          throw new Error("Falta audio principiante 2");
+        }
+        const previousBeginnerAltKey = nextWorkflow.beginnerAltAudioKey || "";
+        if (previousBeginnerAltKey && previousBeginnerAltKey !== nextAudioKey && previousBeginnerAltKey !== activeAudioKey) {
+          cleanupCandidates.push(previousBeginnerAltKey);
+        }
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: "edited",
+          beginnerAltAudioKey: nextAudioKey,
+          beginnerAltFileName: String(nextFileName || nextWorkflow.rawFileName || "audio-principiante-2"),
+          beginnerAltEditedAt: nowIso
+        };
+      }
+
+      if (action === "attach-raw-audio") {
+        const previousRawKey = nextWorkflow.rawAudioKey || "";
+        const previousEditedKey = nextWorkflow.editorAudioKey || "";
+        if (previousRawKey && previousRawKey !== processedRawUpload.rawAudioKey && previousRawKey !== activeAudioKey) {
+          cleanupCandidates.push(previousRawKey);
+        }
+        if (previousEditedKey && previousEditedKey !== activeAudioKey) {
+          cleanupCandidates.push(previousEditedKey);
+        }
+        nextWorkflow = {
+          ...nextWorkflow,
+          status: "edited",
+          rawAudioKey: processedRawUpload.rawAudioKey,
+          rawFileName: processedRawUpload.rawFileName,
+          rawSource: "editor-legacy",
+          rawUploadedAt: nowIso,
+          submittedAt: nowIso,
+          editorAudioKey: processedRawUpload.editorAudioKey,
+          editorFileName: processedRawUpload.editorFileName,
+          editedAt: nowIso
+        };
+      }
+
       if (action === "approve-edited-audio") {
         const advancedKey = nextWorkflow.editorAudioKey || nextAudioKey;
         const beginnerKey = nextWorkflow.beginnerAudioKey || "";
         if (!beginnerKey) {
           throw new Error("Falta el audio editado 30 min para Principiante");
         }
-        if (!advancedKey) {
-          throw new Error("Falta el audio crudo para Advanced");
-        }
-        if (activeAudioKey && advancedKey && activeAudioKey !== advancedKey) {
+        const currentAdvancedKey = assertCurrentAdvancedAudio(nextWorkflow, advancedKey);
+        if (activeAudioKey && currentAdvancedKey && activeAudioKey !== currentAdvancedKey) {
           cleanupCandidates.push(activeAudioKey);
         }
-        activeAudioKey = advancedKey;
+        activeAudioKey = currentAdvancedKey;
         nextWorkflow = {
           ...nextWorkflow,
           status: "approved",
           beginnerAudioKey: beginnerKey,
           beginnerFileName: nextWorkflow.beginnerFileName || "",
-          editorAudioKey: advancedKey,
+          beginnerAltAudioKey: nextWorkflow.beginnerAltAudioKey || "",
+          beginnerAltFileName: nextWorkflow.beginnerAltFileName || "",
+          editorAudioKey: currentAdvancedKey,
           approvedAt: nowIso,
           advancedUnlockAt: nextWorkflow.advancedUnlockAt || new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
         };
@@ -195,26 +318,27 @@ export default async function handler(req, res) {
       }
 
       if (action === "unlock-advanced") {
-        if (!activeAudioKey && !nextWorkflow.editorAudioKey) {
-          throw new Error("Primero debe haber un audio aprobado");
-        }
-        const approvedKey = activeAudioKey || nextWorkflow.editorAudioKey;
+        const approvedKey = assertCurrentAdvancedAudio(nextWorkflow, nextWorkflow.editorAudioKey || nextAudioKey);
         activeAudioKey = approvedKey;
+        const hasBeginnerKey = Boolean(nextWorkflow.beginnerAudioKey);
         nextWorkflow = {
           ...nextWorkflow,
           status: "approved",
           editorAudioKey: nextWorkflow.editorAudioKey || approvedKey,
-          approvedAt: nextWorkflow.approvedAt || nowIso,
+          editorFileName: nextWorkflow.editorFileName || nextWorkflow.rawFileName || "audio-crudo-advanced",
+          approvedAt: nowIso,
           advancedUnlockAt: nowIso,
           advancedUnlockedAt: nowIso
         };
-        nextFeatures.beginnerReprogrammingEnabled = true;
+        nextFeatures.beginnerReprogrammingEnabled = hasBeginnerKey;
         nextFeatures.advancedReprogrammingEnabled = true;
       }
 
       if (
         hasAudioUpdate &&
         action !== "attach-beginner-audio" &&
+        action !== "attach-beginner-alt-audio" &&
+        action !== "attach-raw-audio" &&
         action !== "attach-edited-audio" &&
         action !== "approve-edited-audio" &&
         action !== "unlock-advanced"
@@ -230,6 +354,8 @@ export default async function handler(req, res) {
             beginnerAudioKey: nextAudioKey,
             beginnerFileName: String(fileName || nextWorkflow.beginnerFileName || "audio-principiante"),
             beginnerEditedAt: nowIso,
+            beginnerAltAudioKey: nextWorkflow.beginnerAltAudioKey || "",
+            beginnerAltFileName: nextWorkflow.beginnerAltFileName || "",
             editorAudioKey: nextAudioKey,
             editorFileName: String(fileName || nextWorkflow.editorFileName || "audio-aprobado"),
             editedAt: nowIso,
@@ -243,6 +369,8 @@ export default async function handler(req, res) {
 
       return {
         ...item,
+        email: nextEmail,
+        ...(nextSource ? { source: nextSource } : {}),
         audioKey: activeAudioKey,
         audioWorkflow: nextWorkflow,
         features: nextFeatures,
@@ -259,9 +387,18 @@ export default async function handler(req, res) {
       nextAudioKey &&
       previousAudioKey !== nextAudioKey &&
       action !== "attach-beginner-audio" &&
+      action !== "attach-beginner-alt-audio" &&
+      action !== "attach-raw-audio" &&
       action !== "attach-edited-audio"
     ) {
       cleanupCandidates.push(previousAudioKey);
+    }
+    if (
+      previousWorkflow.beginnerAltAudioKey &&
+      action === "attach-beginner-alt-audio" &&
+      previousWorkflow.beginnerAltAudioKey !== nextAudioKey
+    ) {
+      cleanupCandidates.push(previousWorkflow.beginnerAltAudioKey);
     }
     if (
       previousWorkflow.beginnerAudioKey &&

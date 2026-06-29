@@ -783,6 +783,10 @@ body {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
 }
 
+.admin-apnea-history-sheet {
+  width: min(760px, 100%);
+}
+
 .apnea-history-head {
   display: flex;
   justify-content: space-between;
@@ -1176,6 +1180,41 @@ input[type="range"]:focus {
 .beginner-player {
   width: 100%;
   margin-top: 12px;
+}
+
+.beginner-audio-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.beginner-audio-option {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--stroke));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card) 88%, var(--bg) 12%);
+}
+
+.beginner-audio-option-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.beginner-audio-option-head small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.beginner-audio-option .beginner-player {
+  margin-top: 10px;
 }
 
 .recording-dot {
@@ -1615,6 +1654,7 @@ input[type="range"]:focus {
 }
 
 .admin-hero {
+  order: 1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1687,6 +1727,7 @@ input[type="range"]:focus {
 }
 
 .admin-kpi-strip {
+  order: 2;
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr)) minmax(190px, 0.85fr);
   gap: 14px;
@@ -1801,6 +1842,7 @@ input[type="range"]:focus {
 }
 
 .admin-toolbar {
+  order: 4;
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto minmax(220px, 0.38fr) auto;
   align-items: center;
@@ -1857,6 +1899,7 @@ input[type="range"]:focus {
 }
 
 .admin-students-list {
+  order: 5;
   display: grid;
   gap: 10px;
 }
@@ -1884,6 +1927,13 @@ input[type="range"]:focus {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke) 55%);
   box-shadow: 0 22px 56px rgba(0, 0, 0, 0.12), inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+}
+
+.admin-student-card.is-menu-open {
+  position: relative;
+  z-index: 9998;
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--stroke) 52%);
 }
 
 .admin-student-card.has-critical,
@@ -2024,7 +2074,7 @@ input[type="range"]:focus {
 
 .student-main-actions > button,
 .student-main-actions > .link-button,
-.student-more-menu > summary {
+.student-more-trigger {
   min-height: 42px;
   padding: 10px 16px;
   font-size: 13px;
@@ -2085,7 +2135,11 @@ input[type="range"]:focus {
   position: relative;
 }
 
-.student-more-menu summary {
+.student-more-menu.is-open {
+  z-index: 9999;
+}
+
+.student-more-trigger {
   list-style: none;
   display: inline-grid;
   place-items: center;
@@ -2097,13 +2151,15 @@ input[type="range"]:focus {
   user-select: none;
 }
 
-.student-more-menu summary::-webkit-details-marker {
-  display: none;
+.student-more-trigger:hover,
+.student-more-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--stroke) 52%);
+  color: var(--ink);
 }
 
 .student-more-panel {
   position: absolute;
-  z-index: 5;
+  z-index: 10000;
   right: 0;
   top: calc(100% + 8px);
   min-width: 220px;
@@ -2114,6 +2170,7 @@ input[type="range"]:focus {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.26);
   display: grid;
   gap: 4px;
+  pointer-events: auto;
 }
 
 .student-more-panel button,
@@ -2142,6 +2199,11 @@ input[type="range"]:focus {
 
 .student-more-panel .danger-action {
   color: #ff625b;
+}
+
+.student-more-panel .primary-menu-action {
+  color: color-mix(in srgb, var(--accent) 86%, white 14%);
+  font-weight: 800;
 }
 
 .student-secondary {
@@ -2194,6 +2256,102 @@ input[type="range"]:focus {
     color-mix(in srgb, var(--card) 90%, #061523 10%);
 }
 
+.student-audio-log {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--stroke) 76%, transparent);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 12% 14%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 34%),
+    color-mix(in srgb, var(--card) 91%, #061523 9%);
+}
+
+.student-audio-log.ok {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--stroke));
+}
+
+.student-audio-log.warning {
+  border-color: color-mix(in srgb, #f2aa4c 54%, var(--stroke));
+  background:
+    radial-gradient(circle at 12% 14%, rgba(242, 170, 76, 0.12), transparent 36%),
+    color-mix(in srgb, var(--card) 92%, #061523 8%);
+}
+
+.student-audio-log.critical {
+  border-color: color-mix(in srgb, #ff625b 58%, var(--stroke));
+  background:
+    radial-gradient(circle at 12% 14%, rgba(255, 98, 91, 0.12), transparent 36%),
+    color-mix(in srgb, var(--card) 92%, #061523 8%);
+}
+
+.student-audio-log-head,
+.student-audio-log-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.student-audio-log-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.student-audio-log-head strong {
+  color: var(--accent);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.student-audio-log.warning .student-audio-log-head strong {
+  color: #f2aa4c;
+}
+
+.student-audio-log.critical .student-audio-log-head strong {
+  color: #ff625b;
+}
+
+.student-audio-log-main strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.student-audio-log-main span,
+.student-audio-log small,
+.student-audio-log .muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.student-audio-progress {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--stroke) 52%, transparent);
+}
+
+.student-audio-progress::before {
+  content: "";
+  display: block;
+  width: var(--audio-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 46%, transparent);
+}
+
+.student-audio-log.warning .student-audio-progress::before {
+  background: #f2aa4c;
+}
+
+.student-audio-log.critical .student-audio-progress::before {
+  background: #ff625b;
+}
+
 .student-apnea-log-head {
   display: flex;
   align-items: center;
@@ -2211,6 +2369,26 @@ input[type="range"]:focus {
   letter-spacing: 0;
   text-transform: none;
   font-variant-numeric: tabular-nums;
+}
+
+.student-apnea-log-tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.student-apnea-history-button {
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--stroke));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 .student-apnea-log-days {
@@ -2284,6 +2462,7 @@ input[type="range"]:focus {
 }
 
 .admin-lower-grid {
+  order: 3;
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.55fr);
   gap: 10px;
@@ -2691,6 +2870,13 @@ input[type="range"]:focus {
     justify-content: flex-start;
   }
 
+  .student-audio-log-head,
+  .student-audio-log-main {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .student-weekly-stat {
     min-height: 62px;
     padding: 9px 10px;
@@ -2698,7 +2884,7 @@ input[type="range"]:focus {
 
   .student-main-actions > button,
   .student-main-actions > .link-button,
-  .student-more-menu > summary,
+  .student-more-trigger,
   .student-secondary-actions > button,
   .student-secondary-actions > .link-button {
     width: 100%;
@@ -4665,4 +4851,105 @@ input[type="range"]:focus {
     padding: 4px 7px;
     font-size: 10px;
   }
+}
+
+@media (max-width: 700px) {
+  .practice-app .practice-section-manual-card,
+  [data-theme="dark"] .practice-app .practice-section-manual-card {
+    justify-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .practice-app .manual-config-grid,
+  [data-theme="dark"] .practice-app .manual-config-grid {
+    flex: 0 0 auto;
+  }
+}
+
+.auth-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.auth-card {
+  width: min(520px, 100%);
+  margin: 32px auto 0;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.auth-form input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: var(--text);
+  background: var(--panel-strong);
+  font: inherit;
+}
+
+.auth-form input:focus {
+  outline: 2px solid rgba(73, 218, 207, 0.3);
+  border-color: rgba(73, 218, 207, 0.65);
+}
+
+.legacy-login {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.auth-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.auth-divider span {
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-divider em {
+  font-style: normal;
+}
+
+.legacy-login-toggle {
+  justify-self: stretch;
+}
+
+.legacy-login-form {
+  margin-top: 0;
+}
+
+.legacy-login-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.legacy-login-actions button {
+  flex: 1 1 180px;
 }

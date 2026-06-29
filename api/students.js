@@ -1,4 +1,5 @@
 import { readAppSettings, readStudents, writeStudents } from "../lib/r2.js";
+import { findStudentBySession, touchStudentSession } from "../lib/student-auth.js";
 
 const BEGINNER_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -12,6 +13,11 @@ const clampNumber = (value, min, max, fallback = 0) => {
 const safeTimestamp = (value) => {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeDateKey = (value) => {
+  const key = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : "";
 };
 
 const getAdvancedUnlockTarget = (item, workflow) => {
@@ -42,6 +48,7 @@ const normalizeSessionPayload = (payload) => {
   const completedAtIso = Number.isNaN(completedAt.getTime())
     ? new Date().toISOString()
     : completedAt.toISOString();
+  const date = normalizeDateKey(payload?.date) || completedAtIso.slice(0, 10);
   const startedAtDate = payload?.startedAt ? new Date(payload.startedAt) : null;
   const startedAt =
     startedAtDate && !Number.isNaN(startedAtDate.getTime())
@@ -86,6 +93,7 @@ const normalizeSessionPayload = (payload) => {
     partial,
     manualStop,
     startedAt,
+    date,
     durationSeconds,
     completedAt: completedAtIso,
     colorVision
@@ -96,9 +104,62 @@ const normalizeUsageMap = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(String(key)))
+      .filter(([key]) => normalizeDateKey(key))
       .map(([key, count]) => [key, clampNumber(count, 0, 9999, 0)])
   );
+};
+
+const normalizeApneaByDay = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entry]) => {
+        const dateKey = normalizeDateKey(key);
+        if (!dateKey) return null;
+        const source = entry && typeof entry === "object" && !Array.isArray(entry)
+          ? entry
+          : { times: Array.isArray(entry) ? entry : [] };
+        const times = Array.isArray(source.times)
+          ? source.times
+              .map((seconds) => clampNumber(seconds, 0, 36000, 0))
+              .filter((seconds) => seconds > 0)
+              .slice(-40)
+          : [];
+        const sessions = clampNumber(source.sessions, 0, 9999, times.length ? 1 : 0);
+        const best = Math.max(clampNumber(source.best, 0, 36000, 0), ...times, 0);
+        return [
+          dateKey,
+          {
+            sessions,
+            times,
+            best,
+            lastAt: String(source.lastAt || source.completedAt || "")
+          }
+        ];
+      })
+      .filter(Boolean)
+  );
+};
+
+const addApneaDayEntry = (apneaByDay, dateKey, apneaByRound, completedAt) => {
+  const safeDateKey = normalizeDateKey(dateKey);
+  const times = Array.isArray(apneaByRound)
+    ? apneaByRound
+        .map((seconds) => clampNumber(seconds, 0, 36000, 0))
+        .filter((seconds) => seconds > 0)
+    : [];
+  const next = normalizeApneaByDay(apneaByDay);
+  if (!safeDateKey || times.length === 0) return next;
+
+  const previous = next[safeDateKey] || { sessions: 0, times: [], best: 0, lastAt: "" };
+  const mergedTimes = [...(previous.times || []), ...times].slice(-40);
+  next[safeDateKey] = {
+    sessions: clampNumber(previous.sessions, 0, 9999, 0) + 1,
+    times: mergedTimes,
+    best: Math.max(clampNumber(previous.best, 0, 36000, 0), ...times),
+    lastAt: String(completedAt || previous.lastAt || "")
+  };
+  return next;
 };
 
 const buildPublicSessionSummary = (session = {}) => ({
@@ -113,9 +174,70 @@ const buildPublicSessionSummary = (session = {}) => ({
     : [],
   completedAt: String(session.completedAt || ""),
   startedAt: String(session.startedAt || ""),
+  date: normalizeDateKey(session.date),
   durationSeconds: clampNumber(session.durationSeconds, 0, 86400, 0),
   partial: Boolean(session.partial),
   manualStop: Boolean(session.manualStop)
+});
+
+const normalizeBeginnerAudioSession = (session = {}) => {
+  const statusRaw = String(session.status || "progress").trim().toLowerCase();
+  const status = statusRaw === "complete" || statusRaw === "partial" || statusRaw === "started"
+    ? statusRaw
+    : "progress";
+  const durationSeconds = clampNumber(session.durationSeconds, 0, 86400, 0);
+  const listenedSeconds = clampNumber(
+    session.listenedSeconds ?? session.maxPositionSeconds,
+    0,
+    86400,
+    0
+  );
+  const percent = clampNumber(
+    session.percent,
+    0,
+    100,
+    durationSeconds > 0 ? Math.round((listenedSeconds / durationSeconds) * 100) : 0
+  );
+  const reportedAtDate = session.reportedAt ? new Date(session.reportedAt) : new Date();
+  const reportedAt = Number.isNaN(reportedAtDate.getTime())
+    ? new Date().toISOString()
+    : reportedAtDate.toISOString();
+  const startedAtDate = session.startedAt ? new Date(session.startedAt) : new Date(reportedAt);
+  const startedAt = Number.isNaN(startedAtDate.getTime())
+    ? reportedAt
+    : startedAtDate.toISOString();
+  const completed = Boolean(session.completed || status === "complete" || percent >= 96);
+
+  return {
+    id: String(session.id || `${startedAt}-${Math.random().toString(36).slice(2, 8)}`).slice(0, 100),
+    audioId: String(session.audioId || "beginner-1").slice(0, 80),
+    audioLabel: String(session.audioLabel || "").slice(0, 120),
+    status: completed ? "complete" : status,
+    startedAt,
+    updatedAt: reportedAt,
+    completedAt: completed ? reportedAt : "",
+    durationSeconds,
+    listenedSeconds,
+    maxPositionSeconds: listenedSeconds,
+    percent,
+    completed
+  };
+};
+
+const buildSafeBeginnerAudioUsage = (usage = {}) => ({
+  totalStarts: clampNumber(usage.totalStarts, 0, 1e9, 0),
+  completedPlays: clampNumber(usage.completedPlays, 0, 1e9, 0),
+  partialPlays: clampNumber(usage.partialPlays, 0, 1e9, 0),
+  totalListenSeconds: clampNumber(usage.totalListenSeconds, 0, 1e12, 0),
+  lastStartedAt: String(usage.lastStartedAt || ""),
+  lastProgressAt: String(usage.lastProgressAt || ""),
+  lastCompletedAt: String(usage.lastCompletedAt || ""),
+  sessionsByDay: normalizeUsageMap(usage.sessionsByDay),
+  completedByDay: normalizeUsageMap(usage.completedByDay),
+  recentSessions: Array.isArray(usage.recentSessions)
+    ? usage.recentSessions.slice(0, 30).map(normalizeBeginnerAudioSession)
+    : [],
+  lastSession: usage.lastSession ? normalizeBeginnerAudioSession(usage.lastSession) : null
 });
 
 const buildSafeUsageSummary = (usage = {}) => ({
@@ -134,11 +256,115 @@ const buildSafeUsageSummary = (usage = {}) => ({
   apneaRoundCounts: Array.isArray(usage.apneaRoundCounts)
     ? usage.apneaRoundCounts.slice(0, 10).map((count) => clampNumber(count, 0, 1e9, 0))
     : [],
+  apneaByDay: normalizeApneaByDay(usage.apneaByDay),
   recentSessions: Array.isArray(usage.recentSessions)
     ? usage.recentSessions.slice(0, 60).map(buildPublicSessionSummary)
     : [],
-  lastSession: usage.lastSession ? buildPublicSessionSummary(usage.lastSession) : null
+  lastSession: usage.lastSession ? buildPublicSessionSummary(usage.lastSession) : null,
+  beginnerAudio: buildSafeBeginnerAudioUsage(usage.beginnerAudio || {})
 });
+
+const hasApprovedAdvancedAudio = (student, workflow = {}) => {
+  const rawUploadedAt = Math.max(
+    safeTimestamp(workflow.rawUploadedAt),
+    safeTimestamp(workflow.submittedAt)
+  );
+  const editedAt = safeTimestamp(workflow.editedAt);
+
+  const hasWorkflowAdvancedKey = Boolean(workflow.editorAudioKey);
+  const isLegacyAudioKey = Boolean(student?.audioKey && !hasWorkflowAdvancedKey && !rawUploadedAt);
+  if (isLegacyAudioKey) return true;
+  if (!hasWorkflowAdvancedKey) return false;
+
+  const status = workflow.status || "";
+  if (status !== "approved") return false;
+
+  if (rawUploadedAt && (!editedAt || rawUploadedAt > editedAt)) {
+    return false;
+  }
+
+  return true;
+};
+
+const buildMobileAudio = (student) => {
+  const workflow = student?.audioWorkflow || {};
+  const advancedReady = hasApprovedAdvancedAudio(student, workflow);
+  const advancedUpdatedAt = Math.max(
+    safeTimestamp(workflow.approvedAt),
+    safeTimestamp(workflow.editedAt),
+    safeTimestamp(student?.updatedAt)
+  );
+  const beginner = [];
+
+  if (workflow.beginnerAudioKey || (!workflow.editorAudioKey && student?.audioKey && advancedReady)) {
+    beginner.push({
+      id: "beginner-1",
+      kind: "beginner",
+      ready: true,
+      label: "Principiante 1",
+      fileName: workflow.beginnerFileName || workflow.editorFileName || "audio-principiante-1.mp3",
+      updatedAt: workflow.beginnerEditedAt || workflow.editedAt || student?.updatedAt || ""
+    });
+  }
+
+  if (workflow.beginnerAltAudioKey) {
+    beginner.push({
+      id: "beginner-2",
+      kind: "beginner-alt",
+      ready: true,
+      label: "Principiante 2",
+      fileName: workflow.beginnerAltFileName || "audio-principiante-2.mp3",
+      updatedAt: workflow.beginnerAltEditedAt || student?.updatedAt || ""
+    });
+  }
+
+  return {
+    advanced: {
+      ready: advancedReady,
+      kind: "edited",
+      status: advancedReady ? "approved" : (workflow.status || "not_ready"),
+      fileName: advancedReady ? (workflow.editorFileName || "audio-final.mp3") : "",
+      updatedAt: advancedReady && advancedUpdatedAt ? new Date(advancedUpdatedAt).toISOString() : ""
+    },
+    beginner
+  };
+};
+
+const buildStudentFeatures = (student, appSettings, advancedAutoUnlocked = false) => {
+  const workflow = student?.audioWorkflow || {};
+  const advancedReady = hasApprovedAdvancedAudio(student, workflow);
+  return {
+    colorVisionEnabled: Boolean(student?.features?.colorVisionEnabled),
+    magicUnlockScore: clampNumber(student?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore),
+    beginnerReprogrammingEnabled: Boolean(
+      student?.features?.beginnerReprogrammingEnabled ||
+        workflow.beginnerAudioKey ||
+        workflow.beginnerAltAudioKey ||
+        student?.audioKey
+    ),
+    advancedReprogrammingEnabled: Boolean(
+      advancedReady && (student?.features?.advancedReprogrammingEnabled || advancedAutoUnlocked)
+    )
+  };
+};
+
+const buildAuthenticatedStudent = (student, appSettings) => {
+  const workflow = student.audioWorkflow || {};
+  const advancedUnlockTarget = getAdvancedUnlockTarget(student, workflow);
+  const advancedAutoUnlocked = Boolean(
+    hasApprovedAdvancedAudio(student, workflow) && advancedUnlockTarget && Date.now() >= advancedUnlockTarget
+  );
+  return {
+    name: student.name,
+    slug: student.slug,
+    email: student.email || "",
+    createdAt: student.createdAt || "",
+    updatedAt: student.updatedAt || "",
+    features: buildStudentFeatures(student, appSettings, advancedAutoUnlocked),
+    mobileAudio: buildMobileAudio(student),
+    usage: buildSafeUsageSummary(student.usage || {})
+  };
+};
 
 export default async function handler(req, res) {
   try {
@@ -146,18 +372,31 @@ export default async function handler(req, res) {
       const { slug, token, session, action, rawAudioKey, fileName, source } = req.body || {};
       const safeSlug = String(slug || "").trim();
       const safeToken = String(token || "").trim();
-      if (!safeSlug || !safeToken) {
-        return res.status(400).json({ error: "Datos incompletos" });
-      }
 
       const students = await readStudents();
-      const index = students.findIndex((item) => item.slug === safeSlug);
-      if (index < 0) {
-        return res.status(404).json({ error: "Estudiante no encontrado" });
-      }
-      const student = students[index];
-      if (String(student.token || "") !== safeToken) {
-        return res.status(403).json({ error: "Token inválido" });
+      let index = -1;
+      let student = null;
+      let sessionAuth = null;
+
+      if (safeSlug && safeToken) {
+        index = students.findIndex((item) => item.slug === safeSlug);
+        if (index < 0) {
+          return res.status(404).json({ error: "Estudiante no encontrado" });
+        }
+        student = students[index];
+        if (String(student.token || "") !== safeToken) {
+          return res.status(403).json({ error: "Token inválido" });
+        }
+      } else {
+        sessionAuth = findStudentBySession(students, req);
+        if (!sessionAuth) {
+          return res.status(401).json({ error: "Sesión requerida" });
+        }
+        if (safeSlug && safeSlug !== sessionAuth.student.slug) {
+          return res.status(403).json({ error: "No autorizado" });
+        }
+        index = sessionAuth.index;
+        student = touchStudentSession(sessionAuth.student, sessionAuth.tokenHash);
       }
 
       if (action === "submitRawAudio") {
@@ -218,6 +457,110 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      if (action === "beginner-audio-playback") {
+        const parsedAudioSession = normalizeBeginnerAudioSession(req.body?.audioSession || {});
+        const nowIso = new Date().toISOString();
+        const prevUsage = student.usage || {};
+        const prevBeginner = buildSafeBeginnerAudioUsage(prevUsage.beginnerAudio || {});
+        const recent = Array.isArray(prevBeginner.recentSessions) ? prevBeginner.recentSessions : [];
+        const existingIndex = recent.findIndex((item) => item.id === parsedAudioSession.id);
+        const existing = existingIndex >= 0 ? recent[existingIndex] : null;
+        const wasCompleted = Boolean(existing?.completed || existing?.status === "complete");
+        const wasPartial = Boolean(existing?.status === "partial");
+        const completed = Boolean(wasCompleted || parsedAudioSession.completed);
+        const listenedSeconds = Math.max(
+          clampNumber(existing?.listenedSeconds, 0, 86400, 0),
+          parsedAudioSession.listenedSeconds
+        );
+        const durationSeconds = Math.max(
+          clampNumber(existing?.durationSeconds, 0, 86400, 0),
+          parsedAudioSession.durationSeconds
+        );
+        const percent = clampNumber(
+          Math.max(clampNumber(existing?.percent, 0, 100, 0), parsedAudioSession.percent),
+          0,
+          100,
+          0
+        );
+        const nextSession = {
+          ...parsedAudioSession,
+          status: completed
+            ? "complete"
+            : parsedAudioSession.status === "partial" || wasPartial
+              ? "partial"
+              : parsedAudioSession.status,
+          startedAt: existing?.startedAt || parsedAudioSession.startedAt,
+          durationSeconds,
+          listenedSeconds,
+          maxPositionSeconds: listenedSeconds,
+          percent,
+          completed,
+          completedAt: completed ? (existing?.completedAt || parsedAudioSession.completedAt || parsedAudioSession.updatedAt) : ""
+        };
+        const dayKey = nextSession.startedAt.slice(0, 10);
+        const nextSessionsByDay = {
+          ...prevBeginner.sessionsByDay
+        };
+        const isNewSession = existingIndex < 0;
+        if (isNewSession && /^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+          nextSessionsByDay[dayKey] = clampNumber(nextSessionsByDay[dayKey], 0, 9999, 0) + 1;
+        }
+        const nextCompletedByDay = {
+          ...prevBeginner.completedByDay
+        };
+        if (!wasCompleted && completed && /^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+          nextCompletedByDay[dayKey] = clampNumber(nextCompletedByDay[dayKey], 0, 9999, 0) + 1;
+        }
+
+        const shouldCountAsPractice = completed || listenedSeconds >= 60;
+        const prevPracticeByDay = prevUsage.practiceActivityByDay || {};
+        const nextPracticeByDay = shouldCountAsPractice && /^\d{4}-\d{2}-\d{2}$/.test(dayKey)
+          ? {
+              ...prevPracticeByDay,
+              [dayKey]: Math.max(clampNumber(prevPracticeByDay[dayKey], 0, 9999, 0), 1)
+            }
+          : prevPracticeByDay;
+
+        const withoutExisting = recent.filter((item) => item.id !== nextSession.id);
+        const nextRecent = [nextSession, ...withoutExisting]
+          .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+          .slice(0, 30);
+        const nextBeginner = {
+          ...prevBeginner,
+          totalStarts: prevBeginner.totalStarts + (isNewSession ? 1 : 0),
+          completedPlays: prevBeginner.completedPlays + (!wasCompleted && completed ? 1 : 0),
+          partialPlays:
+            prevBeginner.partialPlays +
+            (!wasPartial && !completed && nextSession.status === "partial" ? 1 : 0),
+          totalListenSeconds:
+            prevBeginner.totalListenSeconds +
+            Math.max(0, listenedSeconds - clampNumber(existing?.listenedSeconds, 0, 86400, 0)),
+          lastStartedAt: isNewSession ? nextSession.startedAt : prevBeginner.lastStartedAt,
+          lastProgressAt: nextSession.updatedAt,
+          lastCompletedAt: completed ? nextSession.completedAt : prevBeginner.lastCompletedAt,
+          sessionsByDay: nextSessionsByDay,
+          completedByDay: nextCompletedByDay,
+          recentSessions: nextRecent,
+          lastSession: nextSession
+        };
+
+        const nextStudents = students.slice();
+        nextStudents[index] = {
+          ...student,
+          usage: {
+            ...prevUsage,
+            beginnerAudio: nextBeginner,
+            firstActivityAt: shouldCountAsPractice ? prevUsage.firstActivityAt || nextSession.startedAt : prevUsage.firstActivityAt || "",
+            lastActivityAt: shouldCountAsPractice ? nextSession.updatedAt : prevUsage.lastActivityAt || "",
+            practiceActivityByDay: nextPracticeByDay
+          },
+          lastAudioAccessAt: shouldCountAsPractice ? nextSession.updatedAt : student.lastAudioAccessAt || "",
+          updatedAt: nowIso
+        };
+        await writeStudents(nextStudents);
+        return res.status(200).json({ ok: true, beginnerAudio: nextBeginner });
+      }
+
       if (!session) {
         return res.status(400).json({ error: "Datos incompletos" });
       }
@@ -226,7 +569,7 @@ export default async function handler(req, res) {
       const prevUsage = student.usage || {};
       const prevRecent = Array.isArray(prevUsage.recentSessions) ? prevUsage.recentSessions : [];
       const prevByDay = prevUsage.sessionsByDay || {};
-      const dayKey = parsed.completedAt.slice(0, 10);
+      const dayKey = parsed.date || parsed.completedAt.slice(0, 10);
       const nextByDay = {
         ...prevByDay,
         [dayKey]: clampNumber(prevByDay[dayKey], 0, 9999, 0) + 1
@@ -264,6 +607,7 @@ export default async function handler(req, res) {
         apneaByRound: parsed.apneaByRound,
         completedAt: parsed.completedAt,
         startedAt: parsed.startedAt,
+        date: dayKey,
         durationSeconds: parsed.durationSeconds,
         partial: parsed.partial,
         manualStop: parsed.manualStop,
@@ -285,6 +629,7 @@ export default async function handler(req, res) {
         practiceActivityByDay: nextPracticeByDay,
         apneaRoundSums: nextSums,
         apneaRoundCounts: nextCounts,
+        apneaByDay: addApneaDayEntry(prevUsage.apneaByDay, dayKey, parsed.apneaByRound, parsed.completedAt),
         flowStats: {
           onboarding:
             clampNumber(prevUsage?.flowStats?.onboarding, 0, 1e9, 0) +
@@ -366,13 +711,18 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: "Token inválido" });
       }
       return res.status(200).json({
-        student: {
-          name: student.name,
-          slug: student.slug,
-          createdAt: student.createdAt || "",
-          updatedAt: student.updatedAt || "",
-          usage: buildSafeUsageSummary(student.usage || {})
-        }
+        student: buildAuthenticatedStudent(student, appSettings)
+      });
+    }
+
+    const sessionAuth = findStudentBySession(students, req);
+    if (sessionAuth) {
+      const nextStudents = students.slice();
+      const nextStudent = touchStudentSession(sessionAuth.student, sessionAuth.tokenHash);
+      nextStudents[sessionAuth.index] = nextStudent;
+      await writeStudents(nextStudents);
+      return res.status(200).json({
+        student: buildAuthenticatedStudent(nextStudent, appSettings)
       });
     }
 
@@ -399,19 +749,18 @@ export default async function handler(req, res) {
           rawUploadedAt: workflow.rawUploadedAt || workflow.submittedAt || "",
           rawFileName: workflow.rawFileName || "",
           rawSource: workflow.rawSource || "",
+          beginnerFileName: workflow.beginnerFileName || "",
+          beginnerAltFileName: workflow.beginnerAltFileName || "",
           editorFileName: workflow.editorFileName || "",
           editedAt: workflow.editedAt || "",
           approvedAt: workflow.approvedAt || "",
           advancedUnlockAt: workflow.advancedUnlockAt || (advancedUnlockTarget ? new Date(advancedUnlockTarget).toISOString() : ""),
           hasRawAudio: Boolean(workflow.rawAudioKey),
+          hasBeginnerAudio: Boolean(workflow.beginnerAudioKey),
+          hasBeginnerAltAudio: Boolean(workflow.beginnerAltAudioKey),
           hasEditedAudio: Boolean(workflow.editorAudioKey)
         },
-        features: {
-          colorVisionEnabled: Boolean(item?.features?.colorVisionEnabled),
-          magicUnlockScore: clampNumber(item?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore),
-          beginnerReprogrammingEnabled: Boolean(item?.features?.beginnerReprogrammingEnabled || item.audioKey),
-          advancedReprogrammingEnabled: Boolean(item?.features?.advancedReprogrammingEnabled || advancedAutoUnlocked)
-        }
+        features: buildStudentFeatures(item, appSettings, advancedAutoUnlocked)
       };
     });
     return res.status(200).json({
@@ -425,3 +774,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "No se pudo cargar estudiantes" });
   }
 }
+
+export { buildAuthenticatedStudent, buildMobileAudio, buildStudentFeatures, hasApprovedAdvancedAudio };

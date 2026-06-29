@@ -9,6 +9,7 @@ const DEFAULT_CONFIG = {
   cycles: 3,
   breathStyle: "activation",
   audioVolume: 0.8,
+  breathCueVolume: 1,
   bosqueVolume: 0.5,
   ambientSound: "bosque",
   septasyncTrack: "none",
@@ -188,6 +189,21 @@ const getWorkflowRequestLabel = (workflow = {}) => {
 const isSpecialWorkflow = (workflow = {}) =>
   workflow?.requestType === "special-binaural" || workflow?.requestSource === "special";
 
+const isAutomaticAudioWorkflow = (workflow = {}) =>
+  workflow?.requestType === "formulario-auto-audio" || workflow?.requestSource === "formulario-cortex";
+
+const hasWorkflowAudioAsset = (workflow = {}) =>
+  Boolean(
+    workflow?.rawAudioKey ||
+      workflow?.beginnerAudioKey ||
+      workflow?.beginnerAltAudioKey ||
+      workflow?.editorAudioKey ||
+      workflow?.hasRawAudio ||
+      workflow?.hasBeginnerAudio ||
+      workflow?.hasBeginnerAltAudio ||
+      workflow?.hasEditedAudio
+  );
+
 const safeTimestamp = (value) => {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -303,11 +319,49 @@ const normalizeApneaTimes = (session) => {
     .slice(0, 10);
 };
 
+const normalizeDailyApneaEntry = (entry) => {
+  const source = entry && typeof entry === "object" && !Array.isArray(entry)
+    ? entry
+    : { times: Array.isArray(entry) ? entry : [] };
+  const times = Array.isArray(source.times)
+    ? source.times
+        .map((value) => Math.max(0, Math.round(Number(value) || 0)))
+        .filter((value) => value > 0)
+    : [];
+  const sourceBest = Number(source.best);
+  const best = Math.max(Number.isFinite(sourceBest) ? Math.round(sourceBest) : 0, ...times, 0);
+  return {
+    sessions: Math.max(0, Math.round(Number(source.sessions || (times.length ? 1 : 0)))),
+    times,
+    best,
+    lastAt: String(source.lastAt || "")
+  };
+};
+
 const buildApneaDailyLog = (usage = {}, limit = 5) => {
+  const dailySummary = usage.apneaByDay && typeof usage.apneaByDay === "object" && !Array.isArray(usage.apneaByDay)
+    ? usage.apneaByDay
+    : {};
   const recent = Array.isArray(usage.recentSessions) ? usage.recentSessions : [];
   const sessions = usage.lastSession ? [usage.lastSession, ...recent] : recent;
   const byDay = new Map();
+  const summarizedDays = new Set();
   const seen = new Set();
+
+  Object.entries(dailySummary).forEach(([dateKey, entry]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return;
+    const normalized = normalizeDailyApneaEntry(entry);
+    if (!normalized.times.length) return;
+    byDay.set(dateKey, {
+      dateKey,
+      label: formatDateShortLabel(dateKey),
+      sessions: normalized.sessions,
+      times: normalized.times,
+      best: normalized.best,
+      lastAt: normalized.lastAt
+    });
+    summarizedDays.add(dateKey);
+  });
 
   sessions.forEach((session) => {
     const sessionKey = `${session.completedAt || ""}|${session.startedAt || ""}|${JSON.stringify(session.apneaByRound || session.rounds || [])}`;
@@ -320,6 +374,7 @@ const buildApneaDailyLog = (usage = {}, limit = 5) => {
       ? explicitDate
       : localDateKey(session.completedAt || session.timestamp || session.startedAt || "");
     if (!dayKey) return;
+    if (summarizedDays.has(dayKey)) return;
     const day = byDay.get(dayKey) || {
       dateKey: dayKey,
       label: formatDateShortLabel(dayKey),
@@ -338,7 +393,7 @@ const buildApneaDailyLog = (usage = {}, limit = 5) => {
       best: Math.max(...day.times)
     }))
     .sort((a, b) => compareDateKey(b.dateKey, a.dateKey))
-    .slice(0, limit);
+    .slice(0, limit && Number.isFinite(limit) ? limit : undefined);
 };
 
 const buildWeeklyPracticeStats = (studentItem, nowInput = new Date()) => {
@@ -411,6 +466,86 @@ const clampPercent = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;
   return Math.max(0, Math.min(100, Math.round(num)));
+};
+
+const formatRelativeTime = (value) => {
+  const parsed = Date.parse(value || "");
+  if (!Number.isFinite(parsed)) return "Sin fecha";
+  const diffMs = Date.now() - parsed;
+  const absMs = Math.abs(diffMs);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (absMs < minute) return "recién";
+  if (absMs < hour) {
+    const count = Math.max(1, Math.round(absMs / minute));
+    return `hace ${count} min`;
+  }
+  if (absMs < day) {
+    const count = Math.max(1, Math.round(absMs / hour));
+    return `hace ${count} h`;
+  }
+  const count = Math.max(1, Math.round(absMs / day));
+  return count === 1 ? "ayer" : `hace ${count} dias`;
+};
+
+const buildBeginnerAudioInfo = (usage = {}) => {
+  const source = usage?.beginnerAudio && typeof usage.beginnerAudio === "object"
+    ? usage.beginnerAudio
+    : {};
+  const recent = Array.isArray(source.recentSessions) ? source.recentSessions : [];
+  const last = source.lastSession || recent[0] || null;
+
+  if (!last) {
+    return {
+      hasData: false,
+      level: "empty",
+      statusLabel: "Sin registro",
+      lastAgo: "Sin registro",
+      listenedSeconds: 0,
+      durationSeconds: 0,
+      percent: 0,
+      totalStarts: Number(source.totalStarts || 0),
+      completedPlays: Number(source.completedPlays || 0),
+      partialPlays: Number(source.partialPlays || 0)
+    };
+  }
+
+  const durationSeconds = Math.max(0, Math.round(Number(last.durationSeconds || 0)));
+  const listenedSeconds = Math.max(
+    0,
+    Math.round(Number(last.listenedSeconds || last.maxPositionSeconds || 0))
+  );
+  const percent = clampPercent(
+    Number(last.percent || 0) ||
+      (durationSeconds > 0 ? (listenedSeconds / durationSeconds) * 100 : 0)
+  );
+  const completed = Boolean(last.completed || last.status === "complete");
+  const statusLabel = completed
+    ? "Completo"
+    : last.status === "started" || last.status === "progress"
+      ? "En progreso"
+      : "Cortado";
+  const level = completed
+    ? "ok"
+    : percent >= 80
+      ? "warning"
+      : "critical";
+  const lastAt = last.completedAt || last.updatedAt || last.startedAt || source.lastProgressAt || "";
+
+  return {
+    hasData: true,
+    level,
+    statusLabel,
+    lastAgo: formatRelativeTime(lastAt),
+    listenedSeconds,
+    durationSeconds,
+    percent,
+    totalStarts: Number(source.totalStarts || recent.length || 0),
+    completedPlays: Number(source.completedPlays || 0),
+    partialPlays: Number(source.partialPlays || 0)
+  };
 };
 
 const dailyDateKey = (input = new Date()) => {
@@ -580,6 +715,9 @@ const buildImpulseResponse = (audioContext, seconds = 1.4, decay = 2.2) => {
 };
 
 export default function App() {
+  const currentPath = window.location.pathname;
+  const isLoginRoute = currentPath.startsWith("/login");
+  const isSetPasswordRoute = currentPath.startsWith("/set-password");
   const [theme, setTheme] = useState(
     localStorage.getItem("rmcortex_theme") || "dark"
   );
@@ -588,6 +726,20 @@ export default function App() {
   const [loadError, setLoadError] = useState("");
   const [slug] = useState(getSlugFromLocation());
   const [token] = useState(getTokenFromLocation());
+  const [authStudent, setAuthStudent] = useState(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginMessage, setLoginMessage] = useState("");
+  const [loginStatus, setLoginStatus] = useState("idle");
+  const [legacyLoginOpen, setLegacyLoginOpen] = useState(false);
+  const [legacyLoginLink, setLegacyLoginLink] = useState("");
+  const [legacyLoginMessage, setLegacyLoginMessage] = useState("");
+  const [setupPassword, setSetupPassword] = useState("");
+  const [setupPasswordConfirm, setSetupPasswordConfirm] = useState("");
+  const [setupMessage, setSetupMessage] = useState("");
+  const [setupStatus, setSetupStatus] = useState("idle");
+  const hasRouteStudentSession = Boolean(authStudent?.slug && slug && authStudent.slug === slug);
+  const hasStudentAccess = Boolean(token || hasRouteStudentSession);
   const [searchTerm, setSearchTerm] = useState("");
   const [adminPassword, setAdminPassword] = useState(() =>
     readRememberedValue("rmcortex_admin_pw")
@@ -607,7 +759,10 @@ export default function App() {
   const [adminManagerMessage, setAdminManagerMessage] = useState("");
   const [adminBridgeMessage, setAdminBridgeMessage] = useState("");
   const [adminBridgeLoading, setAdminBridgeLoading] = useState(false);
+  const [adminApneaHistorySlug, setAdminApneaHistorySlug] = useState("");
+  const [adminActionSlug, setAdminActionSlug] = useState("");
   const [replaceSlug, setReplaceSlug] = useState("");
+  const [openStudentMenuSlug, setOpenStudentMenuSlug] = useState("");
   const [editorPassword, setEditorPassword] = useState(() =>
     readRememberedValue("rmcortex_editor_pw")
   );
@@ -677,7 +832,9 @@ export default function App() {
     const isSystemRoute =
       path.startsWith("/upload") ||
       path.startsWith("/editor") ||
-      path.startsWith("/admin");
+      path.startsWith("/admin") ||
+      path.startsWith("/login") ||
+      path.startsWith("/set-password");
     if (!isSystemRoute) setTheme("dark");
   }, []);
 
@@ -715,7 +872,7 @@ export default function App() {
 
   const submitColorVisionSession = useCallback(
     async (payload, flowStage = "practice") => {
-      if (!slug || !token) return;
+      if (!slug || !hasStudentAccess) return;
       const hits = Number(payload?.hits || 0);
       const misses = Number(payload?.misses || 0);
       const total = Math.max(0, hits + misses);
@@ -745,10 +902,12 @@ export default function App() {
         // no-op
       }
     },
-    [slug, token]
+    [slug, token, hasStudentAccess]
   );
 
   const audioRef = useRef(null);
+  const beginnerAudioRef = useRef(null);
+  const beginnerAudioRefs = useRef({});
   const breathAudioRef = useRef(null);
   const breathAudioAltRef = useRef(null);
   const bosqueAudioRef = useRef(null);
@@ -782,8 +941,10 @@ export default function App() {
   const currentBreathNumberRef = useRef(currentBreathNumber);
   const sessionMetricsRecordedRef = useRef(false);
   const sessionStartRef = useRef(null);
+  const beginnerPlaybackRef = useRef(null);
   const lastTapRef = useRef(0);
   const lastDoubleTapActionRef = useRef(0);
+  const studentMenuActionLockRef = useRef(0);
   const lastApneaMsRef = useRef(0);
   const roundApneaByCycleRef = useRef([]);
   const handlePhaseAdvanceRef = useRef(() => {});
@@ -1049,7 +1210,25 @@ export default function App() {
 
   useEffect(() => {
     const loadStudents = async () => {
+      if (isLoginRoute || isSetPasswordRoute) {
+        setLoading(false);
+        return;
+      }
       try {
+        if (slug && !token) {
+          try {
+            const sessionData = await fetchJsonWithTimeout("/api/auth/me", 2200);
+            if (sessionData?.student?.slug) {
+              setAuthStudent(sessionData.student);
+              setStudents([sessionData.student]);
+              setChannelingEnabled(Boolean(sessionData?.settings?.channelingEnabled));
+              return;
+            }
+          } catch (_sessionError) {
+            window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+            return;
+          }
+        }
         const data = await fetchJsonWithTimeout("/api/students", 1800);
         setStudents(Array.isArray(data.students) ? data.students : []);
         setChannelingEnabled(Boolean(data?.settings?.channelingEnabled));
@@ -1066,7 +1245,7 @@ export default function App() {
     };
 
     loadStudents();
-  }, []);
+  }, [isLoginRoute, isSetPasswordRoute, slug, token]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -1094,6 +1273,7 @@ export default function App() {
     if (!slug) return null;
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
+  const hasStudentSession = Boolean(hasRouteStudentSession && student?.slug);
 
   const uploadSlug = getRouteSlug("upload");
   const uploadStudent = useMemo(
@@ -1104,19 +1284,67 @@ export default function App() {
   const advancedAccessInfo = useMemo(() => getAdvancedAccessInfo(student), [student]);
   const hasApprovedAudio = advancedAccessInfo.hasApprovedAudio;
   const advancedUnlocked = advancedAccessInfo.unlocked;
+  const hasBeginnerPracticeAudio = Boolean(
+    audioWorkflow.beginnerAudioKey ||
+      audioWorkflow.hasBeginnerAudio ||
+      audioWorkflow.beginnerAltAudioKey ||
+      audioWorkflow.hasBeginnerAltAudio ||
+      (hasApprovedAudio && !audioWorkflow.editorAudioKey)
+  );
   const daysUntilAdvanced = advancedUnlocked
     ? 0
     : advancedAccessInfo.daysUntil || AUDIO_WORKFLOW_DAYS_TO_ADVANCED;
-  const beginnerAudioUrl = useMemo(
-    () =>
-      hasApprovedAudio && slug && token
-        ? `/api/audio-file?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}&kind=beginner`
-        : "",
-    [hasApprovedAudio, slug, token]
-  );
+  const beginnerAudioOptions = useMemo(() => {
+    if (!hasBeginnerPracticeAudio || !slug || !hasStudentAccess) return [];
+    const encodedSlug = encodeURIComponent(slug);
+    const encodedToken = encodeURIComponent(token);
+    const audioUrl = (kind) =>
+      token
+        ? `/api/audio-file?slug=${encodedSlug}&token=${encodedToken}&kind=${kind}`
+        : `/api/audio-file?kind=${kind}`;
+    const hasPrimary = Boolean(
+      audioWorkflow.beginnerAudioKey ||
+        audioWorkflow.hasBeginnerAudio ||
+        (hasApprovedAudio && !audioWorkflow.editorAudioKey && !audioWorkflow.hasEditedAudio)
+    );
+    const hasAlt = Boolean(audioWorkflow.beginnerAltAudioKey || audioWorkflow.hasBeginnerAltAudio);
+    const options = [];
+    if (hasPrimary) {
+      options.push({
+        id: "beginner-1",
+        label: "Audio básico 1",
+        fileName: audioWorkflow.beginnerFileName || "",
+        src: audioUrl("beginner")
+      });
+    }
+    if (hasAlt) {
+      options.push({
+        id: "beginner-2",
+        label: "Audio básico 2",
+        fileName: audioWorkflow.beginnerAltFileName || "",
+        src: audioUrl("beginner-alt")
+      });
+    }
+    return options;
+  }, [
+    audioWorkflow.beginnerAltAudioKey,
+    audioWorkflow.beginnerAltFileName,
+    audioWorkflow.beginnerAudioKey,
+    audioWorkflow.beginnerFileName,
+    audioWorkflow.editorAudioKey,
+    audioWorkflow.hasBeginnerAltAudio,
+    audioWorkflow.hasBeginnerAudio,
+    audioWorkflow.hasEditedAudio,
+    hasApprovedAudio,
+    hasBeginnerPracticeAudio,
+    hasStudentAccess,
+    slug,
+    token
+  ]);
+  const beginnerAudioUrl = beginnerAudioOptions[0]?.src || "";
 
   useEffect(() => {
-    if (!student?.slug || !token) {
+    if (!student?.slug || !hasStudentAccess) {
       setStudentUsageSummary(null);
       return undefined;
     }
@@ -1124,7 +1352,9 @@ export default function App() {
     const loadStudentUsage = async () => {
       try {
         const data = await fetchJsonWithTimeout(
-          `/api/students?slug=${encodeURIComponent(student.slug)}&token=${encodeURIComponent(token)}`,
+          token
+            ? `/api/students?slug=${encodeURIComponent(student.slug)}&token=${encodeURIComponent(token)}`
+            : "/api/auth/me",
           2200
         );
         if (!cancelled) setStudentUsageSummary(data?.student?.usage || null);
@@ -1136,7 +1366,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [student?.slug, token]);
+  }, [student?.slug, token, hasStudentAccess]);
 
   const recordedPreviewUrl = useMemo(
     () => (studentRecordedBlob ? URL.createObjectURL(studentRecordedBlob) : ""),
@@ -1191,7 +1421,7 @@ export default function App() {
         if (item.id === "principiante") {
           return {
             ...item,
-            enabled: hasApprovedAudio
+            enabled: hasBeginnerPracticeAudio
           };
         }
         if (item.id === "reprogramacion") {
@@ -1214,7 +1444,7 @@ export default function App() {
         }
         return item;
       }),
-    [student, channelingEnabled, hasApprovedAudio, advancedUnlocked]
+    [student, channelingEnabled, hasBeginnerPracticeAudio, advancedUnlocked]
   );
 
   const selectedAmbientUrl = useMemo(() => {
@@ -1273,8 +1503,10 @@ export default function App() {
         const count = roundCounts[idx] || 0;
         return count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
       });
-      const apneaDailyLog = buildApneaDailyLog(usage, 5);
-      const apneaBestSeconds = apneaDailyLog.reduce((best, day) => Math.max(best, day.best || 0), 0);
+      const apneaHistory = buildApneaDailyLog(usage, 0);
+      const apneaDailyLog = apneaHistory.slice(0, 5);
+      const apneaBestSeconds = apneaHistory.reduce((best, day) => Math.max(best, day.best || 0), 0);
+      const beginnerAudioInfo = buildBeginnerAudioInfo(usage);
       const flowState = {
         onboarding: Number(flowStats.onboarding || 0) > 0,
         prePractice: Number(flowStats.prePractice || 0) > 0,
@@ -1302,7 +1534,9 @@ export default function App() {
         flowState,
         roundAvg,
         apneaDailyLog,
+        apneaHistory,
         apneaBestSeconds,
+        beginnerAudioInfo,
         weeklyPractice,
         lastActivityAt,
         lastSessionAt
@@ -1381,7 +1615,10 @@ export default function App() {
             : prev.septasyncVolume,
           bosqueVolume: Number.isFinite(parsed.bosqueVolume)
             ? parsed.bosqueVolume
-            : prev.bosqueVolume
+            : prev.bosqueVolume,
+          breathCueVolume: Number.isFinite(parsed.breathCueVolume)
+            ? parsed.breathCueVolume
+            : prev.breathCueVolume
         }));
       } catch (error) {
         // ignore malformed
@@ -1412,6 +1649,14 @@ export default function App() {
     }
     audioRef.current.volume = Math.min(1, Math.max(0, config.audioVolume));
   }, [config.audioVolume]);
+
+  useEffect(() => {
+    const nextVolume = Math.min(1, Math.max(0, config.breathCueVolume ?? 1));
+    [breathAudioRef.current, breathAudioAltRef.current].forEach((audioEl) => {
+      if (!audioEl) return;
+      audioEl.volume = nextVolume;
+    });
+  }, [config.breathCueVolume]);
 
   useEffect(() => {
     if (convolverRef.current && impulseSoftRef.current && impulseCameraRef.current) {
@@ -1984,7 +2229,7 @@ export default function App() {
   }, [ensureAuxGainGraph, ensureReverbGraph]);
 
   const recordPracticeActivity = useCallback(() => {
-    if (!student?.slug || !token) return;
+    if (!student?.slug || !hasStudentAccess) return;
     fetch("/api/students", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2000,7 +2245,152 @@ export default function App() {
     }).catch((error) => {
       console.warn("practice activity warning:", error?.message || error);
     });
-  }, [student?.slug, token]);
+  }, [student?.slug, token, hasStudentAccess]);
+
+  const sendBeginnerAudioPlayback = useCallback(
+    (status = "progress", options = {}) => {
+      if (!student?.slug || !hasStudentAccess || !beginnerPlaybackRef.current) return;
+      const state = beginnerPlaybackRef.current;
+      const audioId = options.audioId || state.audioId || "beginner-1";
+      const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+      const durationSeconds = Math.max(
+        0,
+        Math.round(Number.isFinite(audioEl?.duration) ? audioEl.duration : state.durationSeconds || 0)
+      );
+      const currentSeconds = Math.max(
+        0,
+        Number.isFinite(audioEl?.currentTime) ? audioEl.currentTime : state.maxPositionSeconds || 0
+      );
+      state.maxPositionSeconds = Math.max(
+        Number(state.maxPositionSeconds || 0),
+        currentSeconds,
+        Number(options.maxPositionSeconds || 0)
+      );
+      state.durationSeconds = Math.max(durationSeconds, Number(state.durationSeconds || 0));
+      const listenedSeconds = Math.max(0, Math.round(state.maxPositionSeconds || 0));
+      const percent = clampPercent(
+        state.durationSeconds > 0 ? (listenedSeconds / state.durationSeconds) * 100 : 0
+      );
+      const completed = status === "complete" || options.completed || percent >= 96;
+      const reportedAt = new Date().toISOString();
+      const payload = {
+        slug: student.slug,
+        token,
+        action: "beginner-audio-playback",
+        audioSession: {
+          id: state.sessionId,
+          audioId,
+          audioLabel: state.audioLabel || "",
+          status: completed ? "complete" : status,
+          startedAt: state.startedAt,
+          reportedAt,
+          durationSeconds: state.durationSeconds,
+          listenedSeconds,
+          maxPositionSeconds: listenedSeconds,
+          percent,
+          completed
+        }
+      };
+
+      if (completed) {
+        state.completed = true;
+      }
+      state.lastReportAt = Date.now();
+
+      const body = JSON.stringify(payload);
+      if (options.beacon && navigator.sendBeacon) {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon("/api/students", blob);
+        return;
+      }
+
+      fetch("/api/students", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body
+      }).catch((error) => {
+        console.warn("beginner audio tracking warning:", error?.message || error);
+      });
+    },
+    [student?.slug, token, hasStudentAccess]
+  );
+
+  const pauseOtherBeginnerAudios = (activeAudioId) => {
+    Object.entries(beginnerAudioRefs.current || {}).forEach(([audioId, audioEl]) => {
+      if (audioId !== activeAudioId && audioEl && !audioEl.paused) {
+        audioEl.pause();
+      }
+    });
+  };
+
+  const handleBeginnerAudioPlay = (audioId = "beginner-1", audioLabel = "Audio básico") => {
+    if (!student?.slug || !hasStudentAccess) return;
+    pauseOtherBeginnerAudios(audioId);
+    const current = beginnerPlaybackRef.current;
+    if (!current || current.completed || current.audioId !== audioId) {
+      beginnerPlaybackRef.current = {
+        sessionId: `${student.slug}-${audioId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        audioId,
+        audioLabel,
+        startedAt: new Date().toISOString(),
+        maxPositionSeconds: 0,
+        durationSeconds: 0,
+        lastReportAt: 0,
+        completed: false
+      };
+      sendBeginnerAudioPlayback("started", { audioId });
+      return;
+    }
+    sendBeginnerAudioPlayback("progress", { audioId });
+  };
+
+  const handleBeginnerAudioTimeUpdate = (audioId = "beginner-1") => {
+    const state = beginnerPlaybackRef.current;
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    if (!state || state.completed || state.audioId !== audioId || !audioEl) return;
+    state.maxPositionSeconds = Math.max(
+      Number(state.maxPositionSeconds || 0),
+      Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0
+    );
+    state.durationSeconds = Math.max(
+      Number(state.durationSeconds || 0),
+      Number.isFinite(audioEl.duration) ? audioEl.duration : 0
+    );
+    const now = Date.now();
+    if (state.maxPositionSeconds >= 30 && now - Number(state.lastReportAt || 0) > 30000) {
+      sendBeginnerAudioPlayback("progress", { audioId });
+    }
+  };
+
+  const handleBeginnerAudioPause = (audioId = "beginner-1") => {
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    const state = beginnerPlaybackRef.current;
+    if (!state || state.completed || state.audioId !== audioId || audioEl?.ended) return;
+    if (Number(state.maxPositionSeconds || 0) < 5) return;
+    sendBeginnerAudioPlayback("partial", { audioId });
+  };
+
+  const handleBeginnerAudioEnded = (audioId = "beginner-1") => {
+    sendBeginnerAudioPlayback("complete", { audioId, completed: true });
+  };
+
+  useEffect(() => {
+    const flushBeginnerPlayback = () => {
+      const state = beginnerPlaybackRef.current;
+      if (!state || state.completed || Number(state.maxPositionSeconds || 0) < 5) return;
+      sendBeginnerAudioPlayback("partial", { beacon: true });
+    };
+
+    window.addEventListener("pagehide", flushBeginnerPlayback);
+    return () => {
+      window.removeEventListener("pagehide", flushBeginnerPlayback);
+    };
+  }, [sendBeginnerAudioPlayback]);
+
+  useEffect(() => {
+    beginnerPlaybackRef.current = null;
+  }, [beginnerAudioUrl, beginnerAudioOptions.length, slug]);
 
   const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
     phaseTransitionLockRef.current = false;
@@ -2270,7 +2660,7 @@ export default function App() {
     durationSeconds = 0,
     breathsDoneTotal = 0
   }) => {
-    if (!student?.slug || !token) return;
+    if (!student?.slug || !hasStudentAccess) return;
     try {
       await fetch("/api/students", {
         method: "POST",
@@ -2288,6 +2678,7 @@ export default function App() {
             partial,
             manualStop,
             startedAt,
+            date: localDateKey(new Date()),
             durationSeconds,
             completedAt: new Date().toISOString()
           }
@@ -2468,6 +2859,7 @@ export default function App() {
     const now = Date.now();
     if (now - lastBreathTriggerRef.current < 320) return;
     lastBreathTriggerRef.current = now;
+    const breathCueVolume = Math.min(1, Math.max(0, config.breathCueVolume ?? 1));
 
     if (breathStopTimerRef.current) {
       clearTimeout(breathStopTimerRef.current);
@@ -2517,7 +2909,7 @@ export default function App() {
       const gain = ctx.createGain();
       source.buffer = buffer;
       source.playbackRate.value = 1;
-      gain.gain.value = 1;
+      gain.gain.value = breathCueVolume;
       source.connect(gain);
       gain.connect(ctx.destination);
       source.onended = () => {
@@ -2547,6 +2939,7 @@ export default function App() {
       markRealAudioPlayback(target);
       target.loop = false;
       target.playbackRate = 1;
+      target.volume = breathCueVolume;
       try {
         target.currentTime = 0;
       } catch (_error) {
@@ -2576,6 +2969,7 @@ export default function App() {
           oneShot.preload = "auto";
           oneShot.loop = false;
           oneShot.playbackRate = 1;
+          oneShot.volume = breathCueVolume;
           oneShot.play().catch(() => {});
         } catch (_error) {
           // ignore
@@ -3025,7 +3419,9 @@ export default function App() {
     const isSystemRoute =
       path.startsWith("/upload") ||
       path.startsWith("/editor") ||
-      path.startsWith("/admin");
+      path.startsWith("/admin") ||
+      path.startsWith("/login") ||
+      path.startsWith("/set-password");
     const isPastStudentStart = !isSystemRoute && practiceScreen !== "menu";
 
     return (
@@ -3037,6 +3433,8 @@ export default function App() {
                 ? "Carga de audio"
                 : path.startsWith("/editor")
                   ? "Editor de audio"
+                  : path.startsWith("/login") || path.startsWith("/set-password")
+                    ? "Acceso de alumno"
                   : practiceScreen === "daily-goals"
                     ? "Metas Diarias"
                     : practiceScreen === "color-vision"
@@ -3090,13 +3488,48 @@ export default function App() {
   const buildWorkflowAudioUrl = (item, kind, passwordValue = adminPassword) =>
     `/api/audio-file?slug=${encodeURIComponent(item.slug)}&kind=${encodeURIComponent(kind)}&password=${encodeURIComponent(passwordValue || "")}`;
 
+  const showAdminFeedback = (message) => {
+    try {
+      if (typeof window.alert === "function") {
+        window.alert(message);
+        return;
+      }
+    } catch (_error) {
+      // Algunos iframes bloquean alert/confirm/prompt; usamos el mensaje del panel.
+    }
+    setAdminMessage(message);
+  };
+
+  const confirmAdminAction = (message) => {
+    try {
+      if (typeof window.confirm === "function") {
+        return window.confirm(message);
+      }
+    } catch (_error) {
+      return true;
+    }
+    return true;
+  };
+
+  const showCopyFallback = (message, value) => {
+    try {
+      if (typeof window.prompt === "function") {
+        window.prompt(message, value);
+        return;
+      }
+    } catch (_error) {
+      // El panel puede estar embebido y bloquear prompts nativos.
+    }
+    setAdminMessage(`${message} ${value}`);
+  };
+
   const copyUploadLink = async (studentSlug, studentToken) => {
     const link = buildUploadLink(studentSlug, studentToken);
     try {
       await navigator.clipboard.writeText(link);
-      alert("Link de carga copiado.");
+      showAdminFeedback("Link de carga copiado.");
     } catch (error) {
-      window.prompt("Copia el link de carga:", link);
+      showCopyFallback("Copia el link de carga:", link);
     }
   };
 
@@ -3104,9 +3537,9 @@ export default function App() {
     const link = buildStudentLink(studentSlug, studentToken, includeToken);
     try {
       await navigator.clipboard.writeText(link);
-      alert("Link copiado.");
+      showAdminFeedback("Link copiado.");
     } catch (error) {
-      window.prompt("Copia el link:", link);
+      showCopyFallback("Copia el link:", link);
     }
   };
 
@@ -3114,10 +3547,30 @@ export default function App() {
     if (!studentToken) return;
     try {
       await navigator.clipboard.writeText(studentToken);
-      alert("Token copiado.");
+      showAdminFeedback("Token copiado.");
     } catch (error) {
-      window.prompt("Copia el token:", studentToken);
+      showCopyFallback("Copia el token:", studentToken);
     }
+  };
+
+  const runStudentMenuAction = async (action) => {
+    const now = Date.now();
+    if (now - studentMenuActionLockRef.current < 700) return;
+    studentMenuActionLockRef.current = now;
+    try {
+      await action();
+    } finally {
+      setOpenStudentMenuSlug("");
+      window.setTimeout(() => {
+        studentMenuActionLockRef.current = 0;
+      }, 700);
+    }
+  };
+
+  const handleStudentMenuAction = (event, action) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runStudentMenuAction(action);
   };
 
   const executeDoubleTapAction = () => {
@@ -3159,7 +3612,7 @@ export default function App() {
   }, [whiteMagicStorageKey]);
 
   const persistQuickDailyPayload = useCallback(async () => {
-    if (!slug || !token) return;
+    if (!slug || !hasStudentAccess) return;
     const payload = quickDailyPayloadRef.current;
     if (!payload) return;
     try {
@@ -3171,7 +3624,7 @@ export default function App() {
     } catch (_error) {
       // silent, se reintenta con próximos cambios
     }
-  }, [slug, token]);
+  }, [slug, token, hasStudentAccess]);
 
   const scheduleQuickDailySave = useCallback(() => {
     if (quickDailySaveTimerRef.current) {
@@ -3184,11 +3637,13 @@ export default function App() {
   }, [persistQuickDailyPayload]);
 
   const loadQuickDailyChecklist = useCallback(async () => {
-    if (!slug || !token || !student) return;
+    if (!slug || !hasStudentAccess || !student) return;
     setQuickCheckState((prev) => ({ ...prev, loading: true, error: "" }));
     try {
       const response = await fetch(
-        `/api/daily/data?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`
+        token
+          ? `/api/daily/data?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`
+          : `/api/daily/data?slug=${encodeURIComponent(slug)}`
       );
       if (!response.ok) throw new Error("No se pudo cargar check diario.");
       const data = await response.json().catch(() => ({}));
@@ -3284,7 +3739,7 @@ export default function App() {
         error: "No se pudo cargar el check diario."
       }));
     }
-  }, [slug, token, student]);
+  }, [slug, token, student, hasStudentAccess]);
 
   const setQuickItemStatus = useCallback((itemId, status) => {
     if (!DAILY_QUICK_STATUS.includes(status)) return;
@@ -3306,11 +3761,14 @@ export default function App() {
   const quickChecklistDoneToday = isQuickChecklistCompleted(quickCheckState.items);
 
   useEffect(() => {
-    if (practiceScreen !== "practice-check" || !slug || !token || !student) return;
+    if (practiceScreen !== "practice-check" || !slug || !hasStudentAccess || !student) return;
     loadQuickDailyChecklist();
-  }, [practiceScreen, slug, token, student, loadQuickDailyChecklist]);
+  }, [practiceScreen, slug, hasStudentAccess, student, loadQuickDailyChecklist]);
 
   const handleBackToMenu = () => {
+    if (practiceScreen === "principiante") {
+      handleBeginnerAudioPause();
+    }
     countdownAbortRef.current = true;
     setStartCountdown(0);
     if (isRunningRef.current) {
@@ -3381,6 +3839,29 @@ export default function App() {
       ensureAdminsRegistry(adminPassword);
     }
   }, [isAdminRoute, adminPassword]);
+
+  useEffect(() => {
+    if (!openStudentMenuSlug) return undefined;
+
+    const closeOnOutsidePointer = (event) => {
+      if (event.target instanceof Element && event.target.closest(".student-more-menu")) {
+        return;
+      }
+      setOpenStudentMenuSlug("");
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setOpenStudentMenuSlug("");
+      }
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openStudentMenuSlug]);
 
   useEffect(() => {
     if (!isEditorRoute) return;
@@ -3471,9 +3952,12 @@ export default function App() {
 
   const handleRemoveAdmin = async (name) => {
     if (!adminPassword) return;
-    const confirmationText = window.prompt(`Escribe exactamente: ELIMINAR ${name}`);
+    const confirmationText =
+      typeof window.prompt === "function"
+        ? window.prompt(`Escribe exactamente: ELIMINAR ${name}`)
+        : "";
     if (!confirmationText) return;
-    const confirmedTwice = window.confirm("¿Seguro? Esta acción elimina acceso de administrador.");
+    const confirmedTwice = confirmAdminAction("¿Seguro? Esta acción elimina acceso de administrador.");
     if (!confirmedTwice) return;
     try {
       const response = await fetch("/api/admin/admins", {
@@ -3567,7 +4051,7 @@ export default function App() {
       setAdminBridgeMessage("Ingresa password de admin.");
       return;
     }
-    const confirmImport = window.confirm(
+    const confirmImport = confirmAdminAction(
       "Esto sincroniza estudiantes desde Seguimiento/Academia a Cortex. ¿Continuar?"
     );
     if (!confirmImport) return;
@@ -3670,9 +4154,10 @@ export default function App() {
     const workflowRows = editorStudents.filter((item) => {
       const status = item.audioWorkflow?.status || "";
       return (
-        ["requested", "submitted", "edited"].includes(status) ||
+        ["requested", "submitted", "edited", "approved"].includes(status) ||
         item.audioWorkflow?.rawAudioKey ||
         item.audioWorkflow?.beginnerAudioKey ||
+        item.audioWorkflow?.beginnerAltAudioKey ||
         item.audioWorkflow?.editorAudioKey
       );
     });
@@ -3695,7 +4180,7 @@ export default function App() {
       body: JSON.stringify({ password: passwordValue, ...body })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || "No se pudo actualizar");
+    if (!response.ok) throw new Error(payload?.detail || payload?.error || "No se pudo actualizar");
     return payload;
   };
 
@@ -3730,15 +4215,16 @@ export default function App() {
   const handleUnlockAdvanced = async (slugToUpdate) => {
     if (!adminPassword || !slugToUpdate) return;
     try {
-      const confirmed = window.confirm(
-        "¿Seguro que quieres habilitar Reprogramacion Mental Advanced para este estudiante?"
-      );
-      if (!confirmed) return;
+      if (adminActionSlug === slugToUpdate) return;
+      setAdminActionSlug(slugToUpdate);
+      setAdminMessage("");
       await updateStudentWorkflow({ slug: slugToUpdate, action: "unlock-advanced" });
       await ensureAdminList(adminPassword);
       setAdminMessage("Advanced habilitado manualmente para este estudiante.");
     } catch (error) {
-      setAdminMessage(error?.message || "No se pudo habilitar Advanced.");
+      setAdminMessage(error?.message || error?.detail || "No se pudo habilitar Advanced.");
+    } finally {
+      setAdminActionSlug("");
     }
   };
 
@@ -3748,25 +4234,47 @@ export default function App() {
     setEditorMessage("");
     try {
       const isBeginner = uploadKind === "beginner";
+      const isBeginnerAlt = uploadKind === "beginner-alt";
+      const isLegacyRaw = uploadKind === "legacy-raw";
       const uploadedAudioKey = await uploadFileWithSignature(file, {
-        scope: isBeginner ? "editor-beginner" : "editor-final",
+        scope: isLegacyRaw
+          ? "editor-raw"
+          : isBeginner
+          ? "editor-beginner"
+          : isBeginnerAlt
+            ? "editor-beginner-alt"
+            : "editor-final",
         password: editorPassword,
         slug: slugToUpdate
       });
       await updateStudentWorkflow(
         {
           slug: slugToUpdate,
-          action: isBeginner ? "attach-beginner-audio" : "attach-edited-audio",
-          ...(isBeginner
+          action: isLegacyRaw
+            ? "attach-raw-audio"
+            : isBeginner
+            ? "attach-beginner-audio"
+            : isBeginnerAlt
+              ? "attach-beginner-alt-audio"
+              : "attach-edited-audio",
+          ...(isLegacyRaw
+            ? { rawAudioKey: uploadedAudioKey, rawFileName: file.name }
+            : isBeginner
             ? { beginnerAudioKey: uploadedAudioKey, beginnerFileName: file.name }
+            : isBeginnerAlt
+              ? { beginnerAltAudioKey: uploadedAudioKey, beginnerAltFileName: file.name }
             : { editorAudioKey: uploadedAudioKey, editorFileName: file.name })
         },
         editorPassword
       );
       await ensureEditorList(editorPassword);
       setEditorMessage(
-        isBeginner
+        isLegacyRaw
+          ? "Audio legacy subido, mejorado y asignado como crudo Advanced. Queda esperando OK del administrador."
+          : isBeginner
           ? "Audio editado 30 min subido para Principiante. Queda esperando OK del administrador."
+          : isBeginnerAlt
+            ? "Segundo audio básico subido para Principiante. Queda disponible junto al primero."
           : "Audio crudo Advanced subido. Queda esperando OK del administrador."
       );
     } catch (error) {
@@ -4013,7 +4521,7 @@ export default function App() {
 
   const handleAdminDelete = async (slugToDelete) => {
     if (!adminPassword) return;
-    const confirmed = window.confirm("¿Eliminar este estudiante?");
+    const confirmed = confirmAdminAction("¿Eliminar este estudiante?");
     if (!confirmed) return;
     const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
     try {
@@ -4126,7 +4634,7 @@ export default function App() {
     if (!adminPassword || !slugToUpdate) return;
     const isInactive = nextStatus === "inactive";
     if (isInactive) {
-      const confirmed = window.confirm(
+      const confirmed = confirmAdminAction(
         "¿Marcar este estudiante como inactivo? Pasará a la lista Inactivos y no molestará en las alertas."
       );
       if (!confirmed) return;
@@ -4174,6 +4682,17 @@ export default function App() {
     return activeRows;
   }, [adminAnalytics, adminView, searchTerm]);
 
+  const adminApneaHistoryStudent = useMemo(
+    () => adminAnalytics.rows.find((item) => item.slug === adminApneaHistorySlug) || null,
+    [adminAnalytics.rows, adminApneaHistorySlug]
+  );
+
+  const adminApneaHistoryDays = adminApneaHistoryStudent?.apneaHistory || [];
+  const adminApneaHistoryBest = adminApneaHistoryDays.reduce(
+    (best, day) => Math.max(best, day.best || 0),
+    0
+  );
+
   const localProgressSessions = useMemo(() => (
     (progress.apneaHistory || [])
       .slice()
@@ -4193,12 +4712,24 @@ export default function App() {
       : [];
     const sessionsByDay = { ...(studentUsageSummary?.sessionsByDay || {}) };
     const practiceActivityByDay = { ...(studentUsageSummary?.practiceActivityByDay || {}) };
+    const apneaByDay = { ...(studentUsageSummary?.apneaByDay || {}) };
 
     localProgressSessions.forEach((session) => {
       const key = session.date || localDateKey(session.completedAt || "");
       if (!key) return;
       sessionsByDay[key] = Math.max(Number(sessionsByDay[key] || 0), 1);
       practiceActivityByDay[key] = Math.max(Number(practiceActivityByDay[key] || 0), 1);
+      const times = normalizeApneaTimes(session);
+      if (times.length) {
+        const previous = normalizeDailyApneaEntry(apneaByDay[key]);
+        const mergedTimes = [...previous.times, ...times];
+        apneaByDay[key] = {
+          sessions: Math.max(previous.sessions, 0) + 1,
+          times: mergedTimes,
+          best: Math.max(previous.best || 0, ...times),
+          lastAt: session.completedAt || previous.lastAt || ""
+        };
+      }
     });
 
     return {
@@ -4212,6 +4743,7 @@ export default function App() {
       ),
       sessionsByDay,
       practiceActivityByDay,
+      apneaByDay,
       lastActivityAt:
         studentUsageSummary?.lastActivityAt ||
         localProgressSessions[0]?.completedAt ||
@@ -4232,14 +4764,19 @@ export default function App() {
     [student, studentUsageForPanel]
   );
 
-  const studentApneaDailyLog = useMemo(
-    () => buildApneaDailyLog(studentUsageForPanel, 4),
+  const studentApneaHistoryLog = useMemo(
+    () => buildApneaDailyLog(studentUsageForPanel, 0),
     [studentUsageForPanel]
   );
 
+  const studentApneaDailyLog = useMemo(
+    () => studentApneaHistoryLog.slice(0, 4),
+    [studentApneaHistoryLog]
+  );
+
   const studentBestApneaSeconds = useMemo(
-    () => studentApneaDailyLog.reduce((best, day) => Math.max(best, day.best || 0), 0),
-    [studentApneaDailyLog]
+    () => studentApneaHistoryLog.reduce((best, day) => Math.max(best, day.best || 0), 0),
+    [studentApneaHistoryLog]
   );
 
   const latestStudentApneaTimes = studentApneaDailyLog[0]?.times || [];
@@ -4266,6 +4803,133 @@ export default function App() {
     return "green";
   }, [magicUnlockScoreConfig]);
 
+  const handleStudentLogin = async (event) => {
+    event.preventDefault();
+    setLoginStatus("loading");
+    setLoginMessage("");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "No se pudo iniciar sesión");
+      const nextParam = new URLSearchParams(window.location.search).get("next");
+      const fallback = data?.student?.slug ? `/s/${encodeURIComponent(data.student.slug)}` : "/";
+      const nextUrl = nextParam && nextParam.startsWith("/") ? nextParam : fallback;
+      window.location.href = nextUrl;
+    } catch (error) {
+      setLoginStatus("error");
+      setLoginMessage(error?.message || "No se pudo iniciar sesión.");
+    }
+  };
+
+  const handleLegacyTokenLogin = (event) => {
+    event.preventDefault();
+    setLegacyLoginMessage("");
+    let nextSlug = "";
+    let nextToken = "";
+    const pastedLink = legacyLoginLink.trim();
+
+    if (!pastedLink) {
+      setLegacyLoginMessage("Pegá el link anterior completo.");
+      return;
+    }
+
+    try {
+      const parsed = new URL(pastedLink, window.location.origin);
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      if (pathParts[0] === "s" && pathParts[1]) {
+        nextSlug = decodeURIComponent(pathParts[1]);
+      }
+      nextSlug = parsed.searchParams.get("s") || nextSlug;
+      nextToken = parsed.searchParams.get("t") || parsed.searchParams.get("token") || "";
+    } catch (_error) {
+      setLegacyLoginMessage("Pegá un link válido.");
+      return;
+    }
+
+    if (!nextSlug || !nextToken) {
+      setLegacyLoginMessage("El link debe incluir el alumno y el token.");
+      return;
+    }
+
+    window.location.href = `/s/${encodeURIComponent(nextSlug)}?t=${encodeURIComponent(nextToken)}`;
+  };
+
+  const renderLegacyLogin = () => (
+    <div className="legacy-login">
+      <div className="auth-divider">
+        <span />
+        <em>Usuarios anteriores</em>
+        <span />
+      </div>
+      {!legacyLoginOpen ? (
+        <button
+          type="button"
+          className="secondary legacy-login-toggle"
+          onClick={() => setLegacyLoginOpen(true)}
+        >
+          Ingresar con link anterior
+        </button>
+      ) : (
+        <form className="auth-form legacy-login-form" onSubmit={handleLegacyTokenLogin}>
+          <label>
+            Link anterior
+            <input
+              type="text"
+              inputMode="url"
+              autoComplete="off"
+              placeholder="https://rm.academiacortex.com.ar/s/tu-slug?t=token"
+              value={legacyLoginLink}
+              onChange={(event) => setLegacyLoginLink(event.target.value)}
+            />
+          </label>
+          {legacyLoginMessage && <p className="status error">{legacyLoginMessage}</p>}
+          <div className="legacy-login-actions">
+            <button type="submit">Ingresar con link</button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setLegacyLoginOpen(false);
+                setLegacyLoginMessage("");
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+
+  const handlePasswordSetup = async (event) => {
+    event.preventDefault();
+    setSetupStatus("loading");
+    setSetupMessage("");
+    try {
+      const setupToken = new URLSearchParams(window.location.search).get("token") || "";
+      if (!setupToken) throw new Error("Link inválido.");
+      if (setupPassword !== setupPasswordConfirm) {
+        throw new Error("Las contraseñas no coinciden.");
+      }
+      const response = await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: setupToken, password: setupPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "No se pudo guardar la contraseña");
+      const target = data?.student?.slug ? `/s/${encodeURIComponent(data.student.slug)}` : "/login";
+      window.location.href = target;
+    } catch (error) {
+      setSetupStatus("error");
+      setSetupMessage(error?.message || "No se pudo guardar la contraseña.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="app">
@@ -4280,6 +4944,87 @@ export default function App() {
       <div className="app">
         {renderHeader()}
         <p className="status error">{loadError}</p>
+      </div>
+    );
+  }
+
+  if (isLoginRoute) {
+    return (
+      <div className="app auth-app">
+        {renderHeader()}
+        <section className="card auth-card">
+          <p className="eyebrow">Acceso seguro</p>
+          <h2>Ingresar a la app</h2>
+          <p className="muted">Usá el email y contraseña asociados a tu alumno.</p>
+          <form className="auth-form" onSubmit={handleStudentLogin}>
+            <label>
+              Email
+              <input
+                type="email"
+                autoComplete="email"
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Contraseña
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                required
+              />
+            </label>
+            {loginMessage && <p className="status error">{loginMessage}</p>}
+            <button type="submit" disabled={loginStatus === "loading"}>
+              {loginStatus === "loading" ? "Ingresando..." : "Ingresar"}
+            </button>
+          </form>
+          {renderLegacyLogin()}
+        </section>
+      </div>
+    );
+  }
+
+  if (isSetPasswordRoute) {
+    return (
+      <div className="app auth-app">
+        {renderHeader()}
+        <section className="card auth-card">
+          <p className="eyebrow">Activación de cuenta</p>
+          <h2>Crear contraseña</h2>
+          <p className="muted">Elegí una contraseña de al menos 8 caracteres para usar la app.</p>
+          <form className="auth-form" onSubmit={handlePasswordSetup}>
+            <label>
+              Nueva contraseña
+              <input
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                value={setupPassword}
+                onChange={(event) => setSetupPassword(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Repetir contraseña
+              <input
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                value={setupPasswordConfirm}
+                onChange={(event) => setSetupPasswordConfirm(event.target.value)}
+                required
+              />
+            </label>
+            {setupMessage && <p className="status error">{setupMessage}</p>}
+            <button type="submit" disabled={setupStatus === "loading"}>
+              {setupStatus === "loading" ? "Guardando..." : "Guardar y entrar"}
+            </button>
+          </form>
+        </section>
       </div>
     );
   }
@@ -4426,7 +5171,10 @@ export default function App() {
                         <div className="muted">Original alumno: {item.audioWorkflow.rawFileName}</div>
                       )}
                       {item.audioWorkflow?.beginnerFileName && (
-                        <div className="muted">Editado 30 min: {item.audioWorkflow.beginnerFileName}</div>
+                        <div className="muted">Principiante 1: {item.audioWorkflow.beginnerFileName}</div>
+                      )}
+                      {item.audioWorkflow?.beginnerAltFileName && (
+                        <div className="muted">Principiante 2: {item.audioWorkflow.beginnerAltFileName}</div>
                       )}
                       {item.audioWorkflow?.editorFileName && (
                         <div className="muted">Crudo Advanced: {item.audioWorkflow.editorFileName}</div>
@@ -4444,7 +5192,16 @@ export default function App() {
                         </a>
                       )}
                       <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
-                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir editado 30 min"}
+                        {editorUploadSlug === item.slug ? "Procesando..." : "Subir original legacy y mejorar"}
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          disabled={editorUploadSlug === item.slug}
+                          onChange={(event) => handleEditorFinalUpload(item.slug, event.target.files?.[0], "legacy-raw")}
+                        />
+                      </label>
+                      <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir Principiante 1"}
                         <input
                           type="file"
                           accept="audio/*"
@@ -4459,7 +5216,26 @@ export default function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Escuchar editado 30 min
+                          Escuchar Principiante 1
+                        </a>
+                      )}
+                      <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
+                        {editorUploadSlug === item.slug ? "Subiendo..." : "Subir Principiante 2"}
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          disabled={editorUploadSlug === item.slug}
+                          onChange={(event) => handleEditorFinalUpload(item.slug, event.target.files?.[0], "beginner-alt")}
+                        />
+                      </label>
+                      {item.audioWorkflow?.beginnerAltAudioKey && (
+                        <a
+                          className="ghost link-button"
+                          href={buildWorkflowAudioUrl(item, "beginner-alt", editorPassword)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Escuchar Principiante 2
                         </a>
                       )}
                       <label className={`secondary file-button ${editorUploadSlug === item.slug ? "is-loading" : ""}`}>
@@ -4668,21 +5444,34 @@ export default function App() {
                 const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
                 const requestLabel = getWorkflowRequestLabel(item.audioWorkflow);
                 const specialWorkflow = isSpecialWorkflow(item.audioWorkflow);
+                const automaticWorkflow = isAutomaticAudioWorkflow(item.audioWorkflow);
                 const advancedInfo = getAdvancedAccessInfo(item);
-                const hasBeginnerAudio = Boolean(item.audioWorkflow?.beginnerAudioKey);
-                const hasAdvancedAudio = Boolean(item.audioWorkflow?.editorAudioKey);
+                const hasBeginnerAudio = Boolean(item.audioWorkflow?.beginnerAudioKey || item.audioWorkflow?.hasBeginnerAudio);
+                const hasSecondBeginnerAudio = Boolean(
+                  item.audioWorkflow?.beginnerAltAudioKey || item.audioWorkflow?.hasBeginnerAltAudio
+                );
+                const hasAdvancedAudio = Boolean(item.audioWorkflow?.editorAudioKey || item.audioWorkflow?.hasEditedAudio);
                 const readyToApproveWorkflow = workflowStatus === "edited" && hasBeginnerAudio && hasAdvancedAudio;
+                const canForceAdvancedOnly = hasAdvancedAudio && !advancedInfo.unlocked;
+                const canRequestStudentAudio =
+                  !automaticWorkflow &&
+                  !hasWorkflowAudioAsset(item.audioWorkflow) &&
+                  !["requested", "submitted", "edited", "approved"].includes(workflowStatus);
+                const isActivatingAdvanced = adminActionSlug === item.slug;
                 const initial = (item.name || item.slug || "E").trim().slice(0, 1).toUpperCase();
                 const createdLabel = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "-";
                 const studentStatus = getStudentStatus(item);
                 const isInactive = studentStatus === "inactive";
+                const isStudentMenuOpen = openStudentMenuSlug === item.slug;
                 const ageLabel = Number.isFinite(item.ageDays)
                   ? `${item.ageDays} dias`
                   : AGE_BUCKET_LABELS[item.ageBucket] || "Sin fecha";
                 const weekly = item.weeklyPractice || buildWeeklyPracticeStats(item);
                 const missedCopy = weekly.missedLabels?.length ? weekly.missedLabels.join(", ") : "ninguna";
                 const apneaDailyLog = item.apneaDailyLog || [];
+                const apneaHistory = item.apneaHistory || apneaDailyLog;
                 const apneaBestSeconds = item.apneaBestSeconds || 0;
+                const beginnerInfo = item.beginnerAudioInfo || buildBeginnerAudioInfo(item.usage || {});
                 const alertCopy = specialWorkflow && workflowStatus !== "approved"
                   ? "Pedido especial"
                   : weekly.consecutiveMisses >= 2
@@ -4700,7 +5489,7 @@ export default function App() {
                       ? "Sin practica"
                       : "Actividad normal";
                 return (
-                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""} ${specialWorkflow ? "is-special" : ""} ${isInactive ? "is-inactive" : ""}`}>
+                  <article key={item.slug} className={`admin-student-card ${item.alertLevel ? `has-${item.alertLevel}` : ""} ${specialWorkflow ? "is-special" : ""} ${isInactive ? "is-inactive" : ""} ${isStudentMenuOpen ? "is-menu-open" : ""}`}>
                     <div className="student-identity">
                       <span className="student-avatar-ring">{initial}</span>
                       <div>
@@ -4741,13 +5530,15 @@ export default function App() {
                       >
                         Copiar link con token
                       </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => handleRequestStudentAudio(item.slug)}
-                      >
-                        Solicitar audio
-                      </button>
+                      {canRequestStudentAudio && (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => handleRequestStudentAudio(item.slug)}
+                        >
+                          Solicitar audio
+                        </button>
+                      )}
                       <a
                         className="ghost link-button"
                         href={buildStudentLink(item.slug, item.token, true)}
@@ -4756,54 +5547,95 @@ export default function App() {
                       >
                         Abrir link
                       </a>
-                      <details className="student-more-menu">
-                        <summary aria-label="Más acciones">•••</summary>
-                        <div className="student-more-panel">
-                          <button type="button" onClick={() => copyLink(item.slug, item.token, false)}>
-                            Copiar link
-                          </button>
-                          <button type="button" onClick={() => copyToken(item.token)}>
-                            Copiar token
-                          </button>
-                          <button type="button" onClick={() => copyUploadLink(item.slug, item.token)}>
-                            Copiar link carga
-                          </button>
-                          <button type="button" onClick={() => handleReplaceClick(item.slug)}>
-                            Reemplazar audio
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled)}
-                          >
-                            {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
-                          </button>
-                          <button
-                            type="button"
-                            className={isInactive ? "" : "danger-action"}
-                            onClick={() => handleToggleStudentStatus(item.slug, isInactive ? "active" : "inactive")}
-                          >
-                            {isInactive ? "Marcar activo" : "Marcar inactivo"}
-                          </button>
-                          {item.audioWorkflow?.rawAudioKey && (
-                            <a href={buildWorkflowAudioUrl(item, "raw")} target="_blank" rel="noreferrer">
-                              Original alumno
-                            </a>
-                          )}
-                          {item.audioWorkflow?.editorAudioKey && (
-                            <a href={buildWorkflowAudioUrl(item, "edited")} target="_blank" rel="noreferrer">
-                              Crudo Advanced
-                            </a>
-                          )}
-                          {item.audioWorkflow?.beginnerAudioKey && (
-                            <a href={buildWorkflowAudioUrl(item, "beginner")} target="_blank" rel="noreferrer">
-                              Editado 30 min
-                            </a>
-                          )}
-                          <button className="danger-action" type="button" onClick={() => handleAdminDelete(item.slug)}>
-                            Eliminar
-                          </button>
-                        </div>
-                      </details>
+                      <div className={`student-more-menu ${isStudentMenuOpen ? "is-open" : ""}`}>
+                        <button
+                          type="button"
+                          className="student-more-trigger"
+                          aria-label="Más acciones"
+                          aria-expanded={isStudentMenuOpen}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenStudentMenuSlug(isStudentMenuOpen ? "" : item.slug);
+                          }}
+                        >
+                          •••
+                        </button>
+                        {isStudentMenuOpen && (
+                          <div className="student-more-panel" onClick={(event) => event.stopPropagation()}>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => copyLink(item.slug, item.token, false))}
+                              onClick={(event) => handleStudentMenuAction(event, () => copyLink(item.slug, item.token, false))}
+                            >
+                              Copiar link
+                            </button>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => copyToken(item.token))}
+                              onClick={(event) => handleStudentMenuAction(event, () => copyToken(item.token))}
+                            >
+                              Copiar token
+                            </button>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => copyUploadLink(item.slug, item.token))}
+                              onClick={(event) => handleStudentMenuAction(event, () => copyUploadLink(item.slug, item.token))}
+                            >
+                              Copiar link carga
+                            </button>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => handleReplaceClick(item.slug))}
+                              onClick={(event) => handleStudentMenuAction(event, () => handleReplaceClick(item.slug))}
+                            >
+                              Reemplazar audio
+                            </button>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled))}
+                              onClick={(event) => handleStudentMenuAction(event, () => handleToggleColorPractice(item.slug, !item.features?.colorVisionEnabled))}
+                            >
+                              {item.features?.colorVisionEnabled ? "Color ON" : "Color OFF"}
+                            </button>
+                            <button
+                              type="button"
+                              className={isInactive ? "" : "danger-action"}
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => handleToggleStudentStatus(item.slug, isInactive ? "active" : "inactive"))}
+                              onClick={(event) => handleStudentMenuAction(event, () => handleToggleStudentStatus(item.slug, isInactive ? "active" : "inactive"))}
+                            >
+                              {isInactive ? "Marcar activo" : "Marcar inactivo"}
+                            </button>
+                            {item.audioWorkflow?.rawAudioKey && (
+                              <a href={buildWorkflowAudioUrl(item, "raw")} target="_blank" rel="noreferrer" onClick={() => setOpenStudentMenuSlug("")}>
+                                Original alumno
+                              </a>
+                            )}
+                            {item.audioWorkflow?.editorAudioKey && (
+                              <a href={buildWorkflowAudioUrl(item, "edited")} target="_blank" rel="noreferrer" onClick={() => setOpenStudentMenuSlug("")}>
+                                Crudo Advanced
+                              </a>
+                            )}
+                            {item.audioWorkflow?.beginnerAudioKey && (
+                              <a href={buildWorkflowAudioUrl(item, "beginner")} target="_blank" rel="noreferrer" onClick={() => setOpenStudentMenuSlug("")}>
+                                Principiante 1
+                              </a>
+                            )}
+                            {item.audioWorkflow?.beginnerAltAudioKey && (
+                              <a href={buildWorkflowAudioUrl(item, "beginner-alt")} target="_blank" rel="noreferrer" onClick={() => setOpenStudentMenuSlug("")}>
+                                Principiante 2
+                              </a>
+                            )}
+                            <button
+                              className="danger-action"
+                              type="button"
+                              onPointerDown={(event) => handleStudentMenuAction(event, () => handleAdminDelete(item.slug))}
+                              onClick={(event) => handleStudentMenuAction(event, () => handleAdminDelete(item.slug))}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="student-status-line">
@@ -4839,10 +5671,52 @@ export default function App() {
                         </div>
                       </div>
 
+                      <div
+                        className={`student-audio-log ${beginnerInfo.level}`}
+                        aria-label={`Seguimiento audio principiante de ${item.name}`}
+                        style={{ "--audio-progress": `${beginnerInfo.percent || 0}%` }}
+                      >
+                        <div className="student-audio-log-head">
+                          <span>Audio principiante</span>
+                          <strong>{beginnerInfo.statusLabel}</strong>
+                        </div>
+                        {beginnerInfo.hasData ? (
+                          <>
+                            <div className="student-audio-log-main">
+                              <strong>{beginnerInfo.lastAgo}</strong>
+                              <span>
+                                {formatDurationClock(beginnerInfo.listenedSeconds)}
+                                {beginnerInfo.durationSeconds
+                                  ? ` / ${formatDurationClock(beginnerInfo.durationSeconds)}`
+                                  : ""}
+                                {` · ${beginnerInfo.percent}%`}
+                              </span>
+                            </div>
+                            <div className="student-audio-progress" aria-hidden="true" />
+                            <small>
+                              {beginnerInfo.completedPlays}/{beginnerInfo.totalStarts} completas · {beginnerInfo.partialPlays} cortadas
+                            </small>
+                          </>
+                        ) : (
+                          <p className="muted">Todavía no reprodujo Reprogramación Mental Principiante.</p>
+                        )}
+                      </div>
+
                       <div className="student-apnea-log" aria-label={`Registro de apneas de ${item.name}`}>
                         <div className="student-apnea-log-head">
                           <span>Apneas por día</span>
-                          <strong>{apneaBestSeconds ? `${formatDurationClock(apneaBestSeconds)} mejor` : "Sin datos"}</strong>
+                          <div className="student-apnea-log-tools">
+                            <strong>{apneaBestSeconds ? `${formatDurationClock(apneaBestSeconds)} mejor` : "Sin datos"}</strong>
+                            {apneaHistory.length > 0 && (
+                              <button
+                                type="button"
+                                className="student-apnea-history-button"
+                                onClick={() => setAdminApneaHistorySlug(item.slug)}
+                              >
+                                Historial
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="student-apnea-log-days">
                           {apneaDailyLog.length > 0 ? (
@@ -4871,7 +5745,10 @@ export default function App() {
                             Aprobar audio
                           </button>
                         )}
-                        {workflowStatus === "edited" && !readyToApproveWorkflow && (
+                        {workflowStatus === "edited" && automaticWorkflow && !hasAdvancedAudio && (
+                          <span className="workflow-pill approved">Audio automático generado</span>
+                        )}
+                        {workflowStatus === "edited" && !automaticWorkflow && !readyToApproveWorkflow && (
                           <span className="workflow-pill pending">
                             {!hasBeginnerAudio && !hasAdvancedAudio
                               ? "Faltan editado 30 min y crudo Advanced"
@@ -4880,12 +5757,28 @@ export default function App() {
                                 : "Falta crudo Advanced"}
                           </span>
                         )}
-                        {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && (
-                          <button type="button" className="primary" onClick={() => handleUnlockAdvanced(item.slug)}>
-                            Activar Advanced
+                        {canForceAdvancedOnly && (
+                          <button
+                            type="button"
+                            className="primary"
+                            disabled={isActivatingAdvanced}
+                            onClick={() => handleUnlockAdvanced(item.slug)}
+                          >
+                            {isActivatingAdvanced ? "Activando..." : "Activar solo Advanced"}
+                          </button>
+                        )}
+                        {advancedInfo.hasApprovedAudio && !advancedInfo.unlocked && !canForceAdvancedOnly && (
+                          <button
+                            type="button"
+                            className="primary"
+                            disabled={isActivatingAdvanced}
+                            onClick={() => handleUnlockAdvanced(item.slug)}
+                          >
+                            {isActivatingAdvanced ? "Activando..." : "Activar Advanced"}
                           </button>
                         )}
                         {advancedInfo.unlocked && <span className="workflow-pill approved">Advanced ON</span>}
+                        {hasSecondBeginnerAudio && <span className="workflow-pill approved">Principiante 2 ON</span>}
                       </div>
                     </div>
                   </article>
@@ -5094,6 +5987,70 @@ export default function App() {
                 </details>
               </section>
             </section>
+            {adminApneaHistoryStudent && (
+              <div
+                className="apnea-history-overlay"
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Historial completo de apneas de ${adminApneaHistoryStudent.name}`}
+                onClick={() => setAdminApneaHistorySlug("")}
+              >
+                <section
+                  className="apnea-history-sheet admin-apnea-history-sheet"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="apnea-history-head">
+                    <div>
+                      <p className="eyebrow">Historial completo</p>
+                      <h3>{adminApneaHistoryStudent.name}</h3>
+                    </div>
+                    <button
+                      type="button"
+                      className="apnea-history-close"
+                      aria-label="Cerrar historial de apnea"
+                      onClick={() => setAdminApneaHistorySlug("")}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="apnea-history-summary">
+                    <div>
+                      <span>Días</span>
+                      <strong>{adminApneaHistoryDays.length}</strong>
+                    </div>
+                    <div>
+                      <span>Mejor</span>
+                      <strong>{adminApneaHistoryBest ? formatDurationClock(adminApneaHistoryBest) : "0:00"}</strong>
+                    </div>
+                    <div>
+                      <span>Sesiones</span>
+                      <strong>
+                        {adminApneaHistoryDays.reduce((sum, day) => sum + Number(day.sessions || 0), 0)}
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="apnea-history-days admin-apnea-history-days">
+                    {adminApneaHistoryDays.length > 0 ? (
+                      adminApneaHistoryDays.map((day) => (
+                        <article key={`${adminApneaHistoryStudent.slug}-${day.dateKey}`} className="apnea-history-day">
+                          <div>
+                            <strong>{day.label}</strong>
+                            <span>{day.sessions || 1} sesión{Number(day.sessions || 1) === 1 ? "" : "es"}</span>
+                          </div>
+                          <div>
+                            {day.times.map((seconds, index) => (
+                              <em key={`${day.dateKey}-${seconds}-${index}`}>{formatDurationClock(seconds)}</em>
+                            ))}
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="muted">Sin tiempos de apnea registrados todavía.</p>
+                    )}
+                  </div>
+                </section>
+              </div>
+            )}
           </main>
         )}
       </div>
@@ -5102,20 +6059,40 @@ export default function App() {
 
   if (!slug) {
     return (
-      <div className="app">
+      <div className="app auth-app">
         {renderHeader()}
-        <div className="card">
-          <h2>Link único requerido</h2>
-          <p>Abre la app con un link como:</p>
-          <div className="code">https://tu-dominio.vercel.app/s/tu-slug</div>
-          <p>También puedes usar <span className="code">?s=tu-slug</span>.</p>
-          <p className="muted">Si eres administrador, entra al panel para crear estudiantes y links.</p>
-          <div className="audio-tools">
-            <a className="secondary link-button" href="/admin">
-              Ir al panel admin
-            </a>
-          </div>
-        </div>
+        <section className="card auth-card">
+          <p className="eyebrow">Acceso seguro</p>
+          <h2>Ingresar a la app</h2>
+          <p className="muted">Usá el email y contraseña asociados a tu alumno.</p>
+          <form className="auth-form" onSubmit={handleStudentLogin}>
+            <label>
+              Email
+              <input
+                type="email"
+                autoComplete="email"
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Contraseña
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                required
+              />
+            </label>
+            {loginMessage && <p className="status error">{loginMessage}</p>}
+            <button type="submit" disabled={loginStatus === "loading"}>
+              {loginStatus === "loading" ? "Ingresando..." : "Ingresar"}
+            </button>
+          </form>
+          {renderLegacyLogin()}
+        </section>
       </div>
     );
   }
@@ -5220,8 +6197,8 @@ export default function App() {
                 </div>
               </div>
               <div className="apnea-history-days">
-                {studentApneaDailyLog.length > 0 ? (
-                  studentApneaDailyLog.map((day) => (
+                {studentApneaHistoryLog.length > 0 ? (
+                  studentApneaHistoryLog.map((day) => (
                     <article key={day.dateKey} className="apnea-history-day">
                       <div>
                         <strong>{day.label}</strong>
@@ -5261,8 +6238,35 @@ export default function App() {
             Durante los primeros 30 días escuchas tu audio completo editado. Es una práctica simple:
             reproducir, cerrar ojos y dejar que corra.
           </p>
-          {beginnerAudioUrl ? (
-            <audio className="beginner-player" controls preload="metadata" src={beginnerAudioUrl} />
+          {beginnerAudioOptions.length > 0 ? (
+            <div className="beginner-audio-list">
+              {beginnerAudioOptions.map((audioItem, index) => (
+                <div className="beginner-audio-option" key={audioItem.id}>
+                  <div className="beginner-audio-option-head">
+                    <span>{audioItem.label}</span>
+                    <small>{audioItem.fileName || `Opción ${index + 1}`}</small>
+                  </div>
+                  <audio
+                    ref={(node) => {
+                      if (node) {
+                        beginnerAudioRefs.current[audioItem.id] = node;
+                        if (index === 0) beginnerAudioRef.current = node;
+                      } else {
+                        delete beginnerAudioRefs.current[audioItem.id];
+                      }
+                    }}
+                    className="beginner-player"
+                    controls
+                    preload="metadata"
+                    src={audioItem.src}
+                    onPlay={() => handleBeginnerAudioPlay(audioItem.id, audioItem.label)}
+                    onTimeUpdate={() => handleBeginnerAudioTimeUpdate(audioItem.id)}
+                    onPause={() => handleBeginnerAudioPause(audioItem.id)}
+                    onEnded={() => handleBeginnerAudioEnded(audioItem.id)}
+                  />
+                </div>
+              ))}
+            </div>
           ) : (
             <p className="status error">El audio todavía no está aprobado.</p>
           )}
@@ -6009,6 +7013,22 @@ export default function App() {
                     setConfig((prev) => ({
                       ...prev,
                       cycles: Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label className="span-full">
+                Volumen inhala / exhala
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={config.breathCueVolume}
+                  onChange={(event) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      breathCueVolume: Number(event.target.value)
                     }))
                   }
                 />

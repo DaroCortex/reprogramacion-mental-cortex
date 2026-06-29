@@ -1,5 +1,6 @@
 import { readStudents } from "../../lib/r2.js";
 import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
+import { redactStudentAuth } from "../../lib/student-auth.js";
 
 export default async function handler(req, res) {
   try {
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
     }));
     return res.status(200).json({
       role: isAdmin ? "admin" : "editor",
-      students: isAdmin ? students : safeEditorStudents
+      students: isAdmin ? students.map(redactStudentAuth) : safeEditorStudents
     });
   } catch (error) {
     return res.status(500).json({ error: "No se pudo cargar estudiantes" });
