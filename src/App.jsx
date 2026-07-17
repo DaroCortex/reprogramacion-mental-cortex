@@ -4028,7 +4028,8 @@ export default function App() {
   };
 
   const isAdminRoute = window.location.pathname.startsWith("/admin");
-  const isAdmin2Route = window.location.pathname.startsWith("/admin2");
+  const isAdminClassicRoute = window.location.pathname.startsWith("/admin-classic");
+  const isModernAdminRoute = isAdminRoute && !isAdminClassicRoute;
   const isEditorRoute = window.location.pathname.startsWith("/editor");
   const isUploadRoute = window.location.pathname.startsWith("/upload");
 
@@ -5496,7 +5497,7 @@ export default function App() {
       </section>
     );
 
-    if (isAdmin2Route) {
+    if (isModernAdminRoute) {
       return (
         <Admin2Dashboard
           status={adminStatus}

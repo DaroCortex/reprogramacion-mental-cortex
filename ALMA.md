@@ -242,3 +242,46 @@ Se incluyeron los cambios productivos preexistentes que coincidian con el deploy
 
 ### Risks / Follow-Up
 El push directo a main puede iniciar un deployment automatico de Vercel con el mismo contenido ya promovido por CLI.
+
+## 2026-07-17 11:41:04 -03 - Promovida la vista operativa al path /admin
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Usar el nuevo seguimiento compacto como panel administrativo principal
+
+### Touched
+- src/App.jsx
+- src/Admin2Dashboard.jsx
+
+### Details
+/admin y /admin2 renderizan el panel operativo nuevo; el panel anterior queda disponible en /admin-classic como respaldo inmediato. El enlace interno de Admin clasico apunta ahora a esa ruta.
+
+### Verification
+- npm run build OK
+- git diff --check OK
+
+### Risks / Follow-Up
+Cambio solo de enrutado y rotulos; no modifica endpoints, datos ni autenticacion.
+
+## 2026-07-17 11:45:03 -03 - Publicado el nuevo panel principal en /admin
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Completar la promocion del seguimiento operativo luego de validar la beta /admin2
+
+### Touched
+- Vercel deployment dpl_THN52zkQzBcSt1ceAzxMZXXFMLd6
+- https://rm.academiacortex.com.ar/admin
+- https://rm.academiacortex.com.ar/admin-classic
+
+### Details
+El dominio principal sirve el panel compacto en /admin. /admin2 queda como alias compatible y /admin-classic conserva la vista anterior para rollback operativo.
+
+### Verification
+- Deployment READY
+- Validacion autenticada: /admin .admin2-shell=1, titulo Seguimiento y 30 filas
+- Validacion autenticada: /admin-classic .admin-app=1 y .admin-dashboard=1
+- HTTP 200 en /admin, /admin2 y /admin-classic
+
+### Risks / Follow-Up
+Sin cambios de backend ni datos. El rollback funcional inmediato es /admin-classic.

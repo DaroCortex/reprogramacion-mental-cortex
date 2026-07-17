@@ -404,8 +404,8 @@ export default function Admin2Dashboard({
           ))}
         </nav>
         <div className="admin2-sidebar-footer">
-          <a href="/admin"><Settings size={18} /> Admin clásico</a>
-          <span>Vista beta /admin2</span>
+          <a href="/admin-classic"><Settings size={18} /> Admin clásico</a>
+          <span>Panel operativo</span>
         </div>
       </aside>
 
