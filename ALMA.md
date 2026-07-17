@@ -224,3 +224,21 @@ Deployment productivo promovido y aliasado al dominio principal. La nueva vista 
 
 ### Risks / Follow-Up
 La beta no se enlazo desde el panel clasico. Para revertir, promover dpl_6RLeS99ope9tqDkyXRE5SnrxQhj1 o continuar usando /admin.
+
+## 2026-07-17 11:31:43 -03 - Sincronizada la fuente productiva actual con GitHub
+
+- Kind: `docs`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Evitar que cambios productivos acumulados y la nueva vista /admin2 queden solo en el deployment o en el workspace local
+
+### Touched
+- Git commit 8ca591a; origin/main; repositorio DaroCortex/reprogramacion-mental-cortex
+
+### Details
+Se incluyeron los cambios productivos preexistentes que coincidian con el deployment, contratos de acceso y audio, assets publicos, ALMA.md y la nueva beta /admin2. No se revirtieron cambios de otros agentes.
+
+### Verification
+- origin/main estaba en 6cabe37 antes del sync; git diff --cached --check OK; npm run build OK; push 6cabe37..8ca591a completado
+
+### Risks / Follow-Up
+El push directo a main puede iniciar un deployment automatico de Vercel con el mismo contenido ya promovido por CLI.
