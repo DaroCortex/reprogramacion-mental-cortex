@@ -285,3 +285,39 @@ El dominio principal sirve el panel compacto en /admin. /admin2 queda como alias
 
 ### Risks / Follow-Up
 Sin cambios de backend ni datos. El rollback funcional inmediato es /admin-classic.
+
+## 2026-07-17 14:50:43 -03 - Integrado Solutgen Support Hub en Reprogramacion Mental
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Agregar el widget de reporte solicitado en rm.academiacortex.com.ar
+
+### Touched
+- src/App.jsx; src/SolutgenSupportWidget.jsx
+
+### Details
+El widget se habilita para estudiantes autenticados y para sesiones de admin/editor. Envia rol, usuario y contexto de pantalla sin incluir tokens de acceso. El script externo se carga una sola vez y mantiene el contexto actualizado.
+
+### Verification
+- npm run build OK con Vite 5.4.21; git diff --check OK
+
+### Risks / Follow-Up
+Requiere VITE_SUPPORT_INGEST_KEY en Vercel y un nuevo build productivo para quedar visible.
+
+## 2026-07-17 15:07:26 -03 - Publicado widget Solutgen Support Hub en RM
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Completar la instalacion solicitada en rm.academiacortex.com.ar
+
+### Touched
+- Vercel deployment dpl_XcFjNzjFivnHFFZwgvmGMazL5o5H; VITE_SUPPORT_INGEST_KEY; https://rm.academiacortex.com.ar
+
+### Details
+Se configuro la variable sensible de produccion y se promovio un build Vite READY. El panel autenticado carga una sola instancia del widget.
+
+### Verification
+- Smoke Chrome en /admin: 1 script y 1 boton Reportar problema; ticket REPROGRAMACION-MEN-260717-2A9ED0 recibido en Support Hub con app_id reprogramacion-mental, rol admin y estado new; sin errores support en consola
+
+### Risks / Follow-Up
+El valor de ingesta es publico en el bundle por el contrato del widget, pero no se registro en codigo, ALMA ni logs. Rollback por promocion del deployment anterior en Vercel.

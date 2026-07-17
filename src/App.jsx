@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 import Admin2Dashboard from "./Admin2Dashboard";
+import { useSolutgenSupportWidget } from "./SolutgenSupportWidget";
 
 const DEFAULT_CONFIG = {
   breathsPerCycle: 30,
@@ -4032,6 +4033,35 @@ export default function App() {
   const isModernAdminRoute = isAdminRoute && !isAdminClassicRoute;
   const isEditorRoute = window.location.pathname.startsWith("/editor");
   const isUploadRoute = window.location.pathname.startsWith("/upload");
+
+  const supportUser = useMemo(() => {
+    if (isAdminRoute && adminStatus === "ready") {
+      return { id: "rm-admin", name: "Administración", role: "admin" };
+    }
+    if (isEditorRoute && editorStatus === "ready") {
+      return { id: "rm-editor", name: "Edición de audio", role: "editor" };
+    }
+    if (student?.slug && hasStudentAccess) {
+      return {
+        id: student.slug,
+        name: student.name || student.slug,
+        email: student.email || "",
+        role: "student"
+      };
+    }
+    return null;
+  }, [adminStatus, editorStatus, hasStudentAccess, isAdminRoute, isEditorRoute, student]);
+  const supportContext = useMemo(() => ({
+    module: currentPath,
+    surface: isAdminRoute ? "admin" : isEditorRoute ? "editor" : "student",
+    studentId: student?.slug || ""
+  }), [currentPath, isAdminRoute, isEditorRoute, student?.slug]);
+
+  useSolutgenSupportWidget({
+    enabled: Boolean(supportUser),
+    user: supportUser,
+    context: supportContext
+  });
 
   useEffect(() => {
     if (!isAdminRoute) return;
