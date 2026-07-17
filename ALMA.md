@@ -321,3 +321,21 @@ Se configuro la variable sensible de produccion y se promovio un build Vite READ
 
 ### Risks / Follow-Up
 El valor de ingesta es publico en el bundle por el contrato del widget, pero no se registro en codigo, ALMA ni logs. Rollback por promocion del deployment anterior en Vercel.
+
+## 2026-07-17 15:10:09 -03 - Sincronizada fuente del widget y validado redeploy automatico
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Dejar GitHub alineado con el widget ya publicado sin perder trazabilidad del deployment iniciado por el push
+
+### Touched
+- Git commit 27b6adc; origin/main; Vercel deployment dpl_C7ZhJ6bA2JyTpwQ2tLFdRE9SMRgo; https://rm.academiacortex.com.ar
+
+### Details
+El push de la fuente versionada inicio el deployment automatico de Vercel con el mismo contenido funcional y la variable de produccion ya configurada.
+
+### Verification
+- Deployment READY; alias productivo HTTP 200; bundle index-CWlcHPQ7.js contiene widget.js y app_id reprogramacion-mental; support health OK; HEAD y origin/main coincidian en 27b6adc antes de esta entrada documental
+
+### Risks / Follow-Up
+Sin cambio funcional respecto del deployment CLI anterior. Esta entrada se sincroniza con un commit marcado para omitir CI y evitar otro redeploy innecesario.
