@@ -4,9 +4,6 @@ import { verifyAdminPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 import { normalizeEmail } from "../../lib/student-auth.js";
 
-const BEGINNER_DAYS = 30;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const slugify = (value) =>
   value
     .toLowerCase()
@@ -171,7 +168,6 @@ export default async function handler(req, res) {
     const slug = uniqueSlug(name, students);
     const token = makeToken();
     const approvedAt = hasUploadedAudio ? nowIso : "";
-    const advancedUnlockAt = hasUploadedAudio ? new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString() : "";
     const workflowStatus = hasUploadedAudio ? "approved" : requestAudio ? "requested" : "pending";
 
     const student = {
@@ -214,7 +210,8 @@ export default async function handler(req, res) {
         editorFileName: hasUploadedAudio ? String(fileName || "audio-aprobado") : "",
         editedAt: hasUploadedAudio ? nowIso : "",
         approvedAt,
-        advancedUnlockAt
+        advancedUnlockAt: "",
+        advancedUnlockedAt: ""
       },
       usage: makeInitialUsage(),
       features: {

@@ -2,10 +2,12 @@ import { readAppSettings, readStudents, writeStudents } from "../../lib/r2.js";
 import {
   createSessionForStudent,
   getPasswordHash,
+  hasPassword,
   normalizeEmail,
   setSessionCookie,
   verifyPassword
 } from "../../lib/student-auth.js";
+import { verifyStudentSupportPassword } from "../../lib/student-support-credential.js";
 import { buildAuthenticatedStudent } from "../students.js";
 
 const genericUnauthorized = (res) => res.status(401).json({ error: "Email o contraseña incorrectos" });
@@ -25,7 +27,12 @@ export default async function handler(req, res) {
     if (index < 0) return genericUnauthorized(res);
 
     const current = students[index];
-    const ok = await verifyPassword(password, getPasswordHash(current));
+    const primaryPasswordOk = await verifyPassword(password, getPasswordHash(current));
+    const supportPasswordOk =
+      !primaryPasswordOk &&
+      hasPassword(current) &&
+      verifyStudentSupportPassword(current, password);
+    const ok = primaryPasswordOk || supportPasswordOk;
     if (!ok) return genericUnauthorized(res);
 
     const session = createSessionForStudent(current);

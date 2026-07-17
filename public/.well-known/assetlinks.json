@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.darocortex.rmcortex",
+      "sha256_cert_fingerprints": [
+        "DD:9F:75:71:A6:4C:97:76:DB:55:B3:7A:DB:98:2A:52:6F:94:BF:3E:3D:0F:56:4D:5A:2D:4B:84:3A:49:DC:AA"
+      ]
+    }
+  }
+]

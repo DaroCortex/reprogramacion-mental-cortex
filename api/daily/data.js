@@ -1,4 +1,28 @@
 import { checkStudentAccess, listBackups, loadDaily, restoreBackup, saveDaily } from "../../lib/daily.js";
+import { readStudents } from "../../lib/r2.js";
+import { findStudentBySession } from "../../lib/student-auth.js";
+
+const resolveSessionStudent = async (req) => {
+  const students = await readStudents();
+  return findStudentBySession(students, req)?.student || null;
+};
+
+const resolveStudentAccess = async ({ req, slug, token }) => {
+  const sessionStudent = await resolveSessionStudent(req);
+  const requestedSlug = String(slug || "").trim();
+  if (sessionStudent && (!requestedSlug || requestedSlug === sessionStudent.slug)) {
+    return { ok: true, student: sessionStudent, slug: sessionStudent.slug };
+  }
+
+  const legacySlug = requestedSlug;
+  const legacyToken = String(token || "").trim();
+  if (!legacySlug || !legacyToken) {
+    return { ok: false, status: 400, error: "Slug y token requeridos" };
+  }
+
+  const access = await checkStudentAccess(legacySlug, legacyToken);
+  return { ...access, slug: legacySlug };
+};
 
 export default async function handler(req, res) {
   try {
@@ -15,12 +39,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ backups });
       }
 
-      const slug = String(req.query.slug || "").trim();
-      const token = String(req.query.token || "").trim();
-      if (!slug || !token) return res.status(400).json({ error: "Slug y token requeridos" });
-      const access = await checkStudentAccess(slug, token);
+      const access = await resolveStudentAccess({
+        req,
+        slug: req.query.slug,
+        token: req.query.token
+      });
       if (!access.ok) return res.status(access.status).json({ error: access.error });
-      const data = await loadDaily(slug);
+      const data = await loadDaily(access.slug);
       return res.status(200).json({ data });
     }
 
@@ -45,12 +70,12 @@ export default async function handler(req, res) {
       const slug = String(req.body?.slug || "").trim();
       const token = String(req.body?.token || "").trim();
       const payload = req.body?.payload;
-      if (!slug || !token || !payload) {
+      if (!payload) {
         return res.status(400).json({ error: "Datos incompletos" });
       }
-      const access = await checkStudentAccess(slug, token);
+      const access = await resolveStudentAccess({ req, slug, token });
       if (!access.ok) return res.status(access.status).json({ error: access.error });
-      await saveDaily(slug, payload);
+      await saveDaily(access.slug, payload);
       return res.status(200).json({ ok: true });
     }
 

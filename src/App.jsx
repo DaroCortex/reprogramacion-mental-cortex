@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
+import Admin2Dashboard from "./Admin2Dashboard";
 
 const DEFAULT_CONFIG = {
   breathsPerCycle: 30,
@@ -140,9 +141,7 @@ const REVERB_MODE_OPTIONS = [
   { id: "soft", label: "Suave" },
   { id: "camera", label: "Camara" }
 ];
-const AUDIO_WORKFLOW_DAYS_TO_ADVANCED = 30;
-const AUDIO_WORKFLOW_MS_TO_ADVANCED =
-  AUDIO_WORKFLOW_DAYS_TO_ADVANCED * 24 * 60 * 60 * 1000;
+const BEGINNER_COMPLETION_DAYS_REQUIRED = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WORKFLOW_STATUS_LABELS = {
   pending: "Pendiente",
@@ -226,33 +225,147 @@ const getAgeBucket = (ageDays) => {
   return "age-90plus";
 };
 
+const getBeginnerAudioProgress = (studentItem = {}) => {
+  const source =
+    studentItem?.beginnerAudioProgress ||
+    studentItem?.usage?.beginnerAudioUsage ||
+    studentItem?.usage?.beginnerAudio ||
+    {};
+  const rawCompletedByDay =
+    source.completedByDay && typeof source.completedByDay === "object" && !Array.isArray(source.completedByDay)
+      ? source.completedByDay
+      : {};
+  const completedByDay = Object.fromEntries(
+    Object.entries(rawCompletedByDay)
+      .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(String(key)))
+      .map(([key, value]) => [
+        key,
+        typeof value === "object" && value !== null
+          ? {
+              completedAt: String(value.completedAt || value.eventAt || ""),
+              count: Number(value.count || 1),
+              kind: String(value.kind || "beginner")
+            }
+          : {
+              completedAt: "",
+              count: Number(value || 1),
+              kind: "beginner"
+            }
+      ])
+  );
+  const normalizedEvents = Array.isArray(source.events)
+    ? source.events.slice(0, 80)
+    : Array.isArray(source.recentSessions)
+      ? source.recentSessions.slice(0, 80).map((session) => ({
+          eventType: session.completed || session.status === "complete" ? "completed" : session.status || "event",
+          eventAt: session.completedAt || session.updatedAt || session.startedAt || "",
+          dayKey: String(session.startedAt || session.updatedAt || "").slice(0, 10),
+          kind: session.audioId === "beginner-2" ? "beginner-alt" : "beginner",
+          durationSeconds: Number(session.durationSeconds || 0),
+          currentTimeSeconds: Number(session.maxPositionSeconds || session.listenedSeconds || 0),
+          playedSeconds: Number(session.listenedSeconds || session.maxPositionSeconds || 0),
+          completionPercent: Number(session.percent || 0) / 100,
+          completed: Boolean(session.completed || session.status === "complete"),
+          interrupted: session.status === "partial",
+          seeked: false,
+          source: "legacy"
+        }))
+      : [];
+  const completedDays = Object.keys(completedByDay).length;
+  return {
+    completedByDay,
+    completedDays,
+    requiredDays: Number(source.requiredDays || BEGINNER_COMPLETION_DAYS_REQUIRED),
+    remainingDays: Math.max(0, BEGINNER_COMPLETION_DAYS_REQUIRED - completedDays),
+    lastEventAt: String(source.lastEventAt || normalizedEvents[0]?.eventAt || ""),
+    lastCompletedAt: String(source.lastCompletedAt || ""),
+    events: normalizedEvents
+  };
+};
+
+const ADVANCED_GRANDFATHER_CUTOFF_ISO = "2026-06-29T20:16:00.000Z";
+
+const safeDateTime = (value) => {
+  const time = new Date(value || "").getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
+const hasModernAdvancedAudio = (workflow = {}) => Boolean(
+  workflow.rawAudioKey ||
+    workflow.hasRawAudio ||
+    workflow.rawUploadedAt ||
+    workflow.submittedAt ||
+    workflow.editorAudioKey ||
+    workflow.hasEditedAudio
+);
+
+const isGrandfatheredLegacyAdvancedStudent = (studentItem, workflow = studentItem?.audioWorkflow || {}) => {
+  if (!studentItem?.audioReady && !studentItem?.audioKey) return false;
+  if (hasModernAdvancedAudio(workflow)) return false;
+  const createdAt = safeDateTime(studentItem?.createdAt);
+  const cutoff = safeDateTime(ADVANCED_GRANDFATHER_CUTOFF_ISO);
+  return Boolean(createdAt && cutoff && createdAt < cutoff);
+};
+
 const getAdvancedAccessInfo = (studentItem) => {
   const workflow = studentItem?.audioWorkflow || {};
-  const hasApprovedAudio = Boolean(
+  const progress = getBeginnerAudioProgress(studentItem);
+  const beginnerReady = Boolean(
     studentItem?.audioReady ||
       studentItem?.audioKey ||
+      workflow.beginnerAudioKey ||
+      workflow.hasBeginnerAudio ||
       workflow.status === "approved" ||
       studentItem?.features?.beginnerReprogrammingEnabled
   );
-  const explicitUnlockAt = safeTimestamp(workflow.advancedUnlockAt);
-  const approvedAt = safeTimestamp(workflow.approvedAt);
-  const firstSessionAt = safeTimestamp(studentItem?.usage?.firstSessionAt);
-  const createdAt = safeTimestamp(studentItem?.createdAt);
-  const targetMs =
-    explicitUnlockAt ||
-    (approvedAt ? approvedAt + AUDIO_WORKFLOW_MS_TO_ADVANCED : 0) ||
-    (firstSessionAt ? firstSessionAt + AUDIO_WORKFLOW_MS_TO_ADVANCED : 0) ||
-    (hasApprovedAudio && createdAt ? createdAt + AUDIO_WORKFLOW_MS_TO_ADVANCED : 0);
-  const unlocked = Boolean(
-    hasApprovedAudio &&
-      (studentItem?.features?.advancedReprogrammingEnabled ||
-        (targetMs && Date.now() >= targetMs))
+  const submittedPersonalAudio = Boolean(
+    studentItem?.audioKey ||
+      workflow.rawAudioKey ||
+      workflow.hasRawAudio ||
+      workflow.rawUploadedAt ||
+      workflow.submittedAt ||
+      workflow.editorAudioKey ||
+      workflow.hasEditedAudio ||
+      workflow.status === "submitted"
   );
-  const daysUntil = unlocked || !targetMs
-    ? 0
-    : Math.max(1, Math.ceil((targetMs - Date.now()) / DAY_MS));
+  const advancedAudioReady = Boolean(
+    studentItem?.audioKey ||
+      ((workflow.editorAudioKey || workflow.hasEditedAudio) && workflow.status === "approved")
+  );
+  const legacyGrandfathered = isGrandfatheredLegacyAdvancedStudent(studentItem, workflow);
+  const completedRequiredDays = progress.completedDays >= BEGINNER_COMPLETION_DAYS_REQUIRED;
+  const manualEnabled = Boolean(
+    (studentItem?.features?.advancedReprogrammingEnabled && (advancedAudioReady || legacyGrandfathered)) ||
+      legacyGrandfathered
+  );
+  const unlocked = Boolean(
+    manualEnabled ||
+      legacyGrandfathered ||
+      (beginnerReady && completedRequiredDays && submittedPersonalAudio && advancedAudioReady)
+  );
+  let blockedReason = "";
+  if (!unlocked) {
+    if (!beginnerReady) blockedReason = "missing-beginner-audio";
+    else if (!completedRequiredDays) blockedReason = "beginner-days";
+    else if (!submittedPersonalAudio) blockedReason = "missing-personal-audio";
+    else if (!advancedAudioReady) blockedReason = "advanced-audio-pending";
+  }
 
-  return { hasApprovedAudio, unlocked, targetMs, daysUntil };
+  return {
+    hasApprovedAudio: beginnerReady,
+    beginnerReady,
+    advancedAudioReady: advancedAudioReady || legacyGrandfathered,
+    submittedPersonalAudio,
+    completedRequiredDays,
+    legacyGrandfathered,
+    completedDays: progress.completedDays,
+    requiredDays: BEGINNER_COMPLETION_DAYS_REQUIRED,
+    remainingDays: progress.remainingDays,
+    unlocked,
+    blockedReason,
+    daysUntil: progress.remainingDays,
+    progress
+  };
 };
 
 const toIsoDate = (value) => {
@@ -494,7 +607,21 @@ const buildBeginnerAudioInfo = (usage = {}) => {
   const source = usage?.beginnerAudio && typeof usage.beginnerAudio === "object"
     ? usage.beginnerAudio
     : {};
-  const recent = Array.isArray(source.recentSessions) ? source.recentSessions : [];
+  const progress = getBeginnerAudioProgress({ usage });
+  const eventSessions = progress.events.map((event) => ({
+    status: event.completed ? "complete" : event.interrupted ? "partial" : event.eventType || "progress",
+    startedAt: event.eventAt || "",
+    updatedAt: event.eventAt || "",
+    completedAt: event.completed ? event.eventAt || "" : "",
+    durationSeconds: event.durationSeconds || 0,
+    listenedSeconds: event.playedSeconds || event.currentTimeSeconds || 0,
+    maxPositionSeconds: event.currentTimeSeconds || event.playedSeconds || 0,
+    percent: Math.round(Number(event.completionPercent || 0) * 100),
+    completed: Boolean(event.completed)
+  }));
+  const recent = Array.isArray(source.recentSessions) && source.recentSessions.length
+    ? source.recentSessions
+    : eventSessions;
   const last = source.lastSession || recent[0] || null;
 
   if (!last) {
@@ -506,9 +633,9 @@ const buildBeginnerAudioInfo = (usage = {}) => {
       listenedSeconds: 0,
       durationSeconds: 0,
       percent: 0,
-      totalStarts: Number(source.totalStarts || 0),
-      completedPlays: Number(source.completedPlays || 0),
-      partialPlays: Number(source.partialPlays || 0)
+      totalStarts: Number(source.totalStarts || recent.length || 0),
+      completedPlays: Number(source.completedPlays || progress.completedDays || 0),
+      partialPlays: Number(source.partialPlays || progress.events.filter((event) => event.interrupted).length || 0)
     };
   }
 
@@ -543,8 +670,8 @@ const buildBeginnerAudioInfo = (usage = {}) => {
     durationSeconds,
     percent,
     totalStarts: Number(source.totalStarts || recent.length || 0),
-    completedPlays: Number(source.completedPlays || 0),
-    partialPlays: Number(source.partialPlays || 0)
+    completedPlays: Number(source.completedPlays || progress.completedDays || 0),
+    partialPlays: Number(source.partialPlays || progress.events.filter((event) => event.interrupted).length || 0)
   };
 };
 
@@ -1284,6 +1411,9 @@ export default function App() {
   const advancedAccessInfo = useMemo(() => getAdvancedAccessInfo(student), [student]);
   const hasApprovedAudio = advancedAccessInfo.hasApprovedAudio;
   const advancedUnlocked = advancedAccessInfo.unlocked;
+  const beginnerAudioProgress = advancedAccessInfo.progress;
+  const beginnerCompletedDays = beginnerAudioProgress.completedDays;
+  const beginnerRequiredDays = beginnerAudioProgress.requiredDays;
   const hasBeginnerPracticeAudio = Boolean(
     audioWorkflow.beginnerAudioKey ||
       audioWorkflow.hasBeginnerAudio ||
@@ -1293,7 +1423,7 @@ export default function App() {
   );
   const daysUntilAdvanced = advancedUnlocked
     ? 0
-    : advancedAccessInfo.daysUntil || AUDIO_WORKFLOW_DAYS_TO_ADVANCED;
+    : advancedAccessInfo.remainingDays || BEGINNER_COMPLETION_DAYS_REQUIRED;
   const beginnerAudioOptions = useMemo(() => {
     if (!hasBeginnerPracticeAudio || !slug || !hasStudentAccess) return [];
     const encodedSlug = encodeURIComponent(slug);
@@ -1506,6 +1636,7 @@ export default function App() {
       const apneaHistory = buildApneaDailyLog(usage, 0);
       const apneaDailyLog = apneaHistory.slice(0, 5);
       const apneaBestSeconds = apneaHistory.reduce((best, day) => Math.max(best, day.best || 0), 0);
+      const beginnerAudioProgress = getBeginnerAudioProgress(item);
       const beginnerAudioInfo = buildBeginnerAudioInfo(usage);
       const flowState = {
         onboarding: Number(flowStats.onboarding || 0) > 0,
@@ -1536,6 +1667,7 @@ export default function App() {
         apneaDailyLog,
         apneaHistory,
         apneaBestSeconds,
+        beginnerAudioProgress,
         beginnerAudioInfo,
         weeklyPractice,
         lastActivityAt,
@@ -2273,22 +2405,30 @@ export default function App() {
       );
       const completed = status === "complete" || options.completed || percent >= 96;
       const reportedAt = new Date().toISOString();
+      const eventType = completed
+        ? "completed"
+        : status === "partial"
+          ? "paused"
+          : status === "started"
+            ? "started"
+            : "resumed";
       const payload = {
         slug: student.slug,
         token,
-        action: "beginner-audio-playback",
-        audioSession: {
-          id: state.sessionId,
-          audioId,
-          audioLabel: state.audioLabel || "",
-          status: completed ? "complete" : status,
-          startedAt: state.startedAt,
-          reportedAt,
+        action: "beginner-audio-event",
+        event: {
+          eventType,
+          eventAt: reportedAt,
+          dayKey: localDateKey(new Date()),
+          kind: audioId === "beginner-2" ? "beginner-alt" : "beginner",
+          label: state.audioLabel || "",
           durationSeconds: state.durationSeconds,
-          listenedSeconds,
-          maxPositionSeconds: listenedSeconds,
-          percent,
-          completed
+          currentTimeSeconds: currentSeconds,
+          playedSeconds: listenedSeconds,
+          completionPercent: state.durationSeconds > 0 ? listenedSeconds / state.durationSeconds : 0,
+          completed,
+          seeked: Boolean(state.seeked),
+          source: "web"
         }
       };
 
@@ -2309,9 +2449,29 @@ export default function App() {
         keepalive: true,
         headers: { "Content-Type": "application/json" },
         body
-      }).catch((error) => {
-        console.warn("beginner audio tracking warning:", error?.message || error);
-      });
+      })
+        .then((response) => (response.ok ? response.json().catch(() => ({})) : {}))
+        .then((data) => {
+          if (!data?.beginnerAudioProgress) return;
+          setStudents((prev) =>
+            prev.map((item) => {
+              if (item.slug !== student.slug) return item;
+              return {
+                ...item,
+                beginnerAudioProgress: data.beginnerAudioProgress,
+                advancedBlockedReason: data.advancedBlockedReason || item.advancedBlockedReason || "",
+                usage: {
+                  ...(item.usage || {}),
+                  beginnerAudioUsage: data.beginnerAudioProgress
+                },
+                features: data.features || item.features
+              };
+            })
+          );
+        })
+        .catch((error) => {
+          console.warn("beginner audio tracking warning:", error?.message || error);
+        });
     },
     [student?.slug, token, hasStudentAccess]
   );
@@ -2337,7 +2497,8 @@ export default function App() {
         maxPositionSeconds: 0,
         durationSeconds: 0,
         lastReportAt: 0,
-        completed: false
+        completed: false,
+        seeked: false
       };
       sendBeginnerAudioPlayback("started", { audioId });
       return;
@@ -2373,6 +2534,12 @@ export default function App() {
 
   const handleBeginnerAudioEnded = (audioId = "beginner-1") => {
     sendBeginnerAudioPlayback("complete", { audioId, completed: true });
+  };
+
+  const handleBeginnerAudioSeeking = (audioId = "beginner-1") => {
+    const state = beginnerPlaybackRef.current;
+    if (!state || state.audioId !== audioId) return;
+    state.seeked = true;
   };
 
   useEffect(() => {
@@ -3765,9 +3932,38 @@ export default function App() {
     loadQuickDailyChecklist();
   }, [practiceScreen, slug, hasStudentAccess, student, loadQuickDailyChecklist]);
 
+  const advancedBlockedLabel = () => {
+    if (advancedAccessInfo.blockedReason === "missing-personal-audio") return "Falta grabar audio";
+    if (advancedAccessInfo.blockedReason === "advanced-audio-pending") return "Audio en preparación";
+    if (advancedAccessInfo.blockedReason === "beginner-days") {
+      return `Faltan ${daysUntilAdvanced} días completos`;
+    }
+    return "Pendiente";
+  };
+
+  const handleAdvancedBlockedClick = () => {
+    if (advancedAccessInfo.blockedReason === "missing-personal-audio") {
+      window.alert(
+        "Ya completaste los 7 días de Principiante. Para activar Advanced falta grabar tu audio personalizado en https://formulario.academiacortex.com.ar/"
+      );
+      return;
+    }
+    if (advancedAccessInfo.blockedReason === "advanced-audio-pending") {
+      window.alert("Tu audio personalizado ya fue enviado. Advanced se habilita cuando el audio Advanced queda preparado.");
+      return;
+    }
+    if (advancedAccessInfo.blockedReason === "beginner-days") {
+      window.alert(
+        `Advanced se habilita al completar ${beginnerRequiredDays} días de audio Principiante de inicio a fin. Llevás ${beginnerCompletedDays}/${beginnerRequiredDays}.`
+      );
+      return;
+    }
+    window.alert("Advanced todavía no está disponible para este alumno.");
+  };
+
   const handleBackToMenu = () => {
     if (practiceScreen === "principiante") {
-      handleBeginnerAudioPause();
+      handleBeginnerAudioPause(beginnerPlaybackRef.current?.audioId || "beginner-1");
     }
     countdownAbortRef.current = true;
     setStartCountdown(0);
@@ -3791,7 +3987,10 @@ export default function App() {
       return;
     }
     if (practiceId === "reprogramacion") {
-      if (!advancedUnlocked) return;
+      if (!advancedUnlocked) {
+        handleAdvancedBlockedClick();
+        return;
+      }
       setPracticeScreen("practice-check");
       return;
     }
@@ -3829,6 +4028,7 @@ export default function App() {
   };
 
   const isAdminRoute = window.location.pathname.startsWith("/admin");
+  const isAdmin2Route = window.location.pathname.startsWith("/admin2");
   const isEditorRoute = window.location.pathname.startsWith("/editor");
   const isUploadRoute = window.location.pathname.startsWith("/upload");
 
@@ -5296,6 +5496,42 @@ export default function App() {
       </section>
     );
 
+    if (isAdmin2Route) {
+      return (
+        <Admin2Dashboard
+          status={adminStatus}
+          loginCard={adminLoginCard}
+          analytics={adminAnalytics}
+          message={adminMessage}
+          theme={theme}
+          onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+          onRefresh={() => ensureAdminList(adminPassword)}
+          onCopyLink={(item) => copyLink(item.slug, item.token, true)}
+          onRequestAudio={(item) => handleRequestStudentAudio(item.slug)}
+          onReplaceAudio={(item) => handleReplaceClick(item.slug)}
+          onToggleStudentStatus={(item) => handleToggleStudentStatus(
+            item.slug,
+            item.status === "inactive" ? "active" : "inactive"
+          )}
+          onToggleColor={(item) => handleToggleColorPractice(
+            item.slug,
+            !item.features?.colorVisionEnabled
+          )}
+          canRequestAudio={(item) => {
+            const workflowStatus = item.audioWorkflow?.status || (item.audioReady ? "approved" : "pending");
+            return (
+              !isAutomaticAudioWorkflow(item.audioWorkflow) &&
+              !hasWorkflowAudioAsset(item.audioWorkflow) &&
+              !["requested", "submitted", "edited", "approved"].includes(workflowStatus)
+            );
+          }}
+          studentUrl={(item) => buildStudentLink(item.slug, item.token, true)}
+          formatDuration={formatDurationClock}
+          getAdvancedInfo={getAdvancedAccessInfo}
+        />
+      );
+    }
+
     return (
       <div className="app admin-app">
         {renderHeader()}
@@ -5471,6 +5707,7 @@ export default function App() {
                 const apneaDailyLog = item.apneaDailyLog || [];
                 const apneaHistory = item.apneaHistory || apneaDailyLog;
                 const apneaBestSeconds = item.apneaBestSeconds || 0;
+                const beginnerAudioProgress = item.beginnerAudioProgress || getBeginnerAudioProgress(item);
                 const beginnerInfo = item.beginnerAudioInfo || buildBeginnerAudioInfo(item.usage || {});
                 const alertCopy = specialWorkflow && workflowStatus !== "approved"
                   ? "Pedido especial"
@@ -5642,6 +5879,7 @@ export default function App() {
                       <span>Estado: {STUDENT_STATUS_LABELS[studentStatus] || "Activo"}</span>
                       <span>Antigüedad: {ageLabel}</span>
                       <span>Avanzado: {advancedInfo.unlocked ? "habilitado" : "bloqueado"}</span>
+                      <span>Principiante: {beginnerAudioProgress.completedDays}/{beginnerAudioProgress.requiredDays}</span>
                       <span>Colores: {item.features?.colorVisionEnabled ? "habilitada" : "bloqueada"}</span>
                       <span>Flujo O/Pre/Pra: {item.onboardingSessions || 0}/{item.prePracticeSessions || 0}/{item.practiceSessions || 0}</span>
                     </div>
@@ -5678,12 +5916,12 @@ export default function App() {
                       >
                         <div className="student-audio-log-head">
                           <span>Audio principiante</span>
-                          <strong>{beginnerInfo.statusLabel}</strong>
+                          <strong>{beginnerAudioProgress.completedDays}/{beginnerAudioProgress.requiredDays} completos</strong>
                         </div>
                         {beginnerInfo.hasData ? (
                           <>
                             <div className="student-audio-log-main">
-                              <strong>{beginnerInfo.lastAgo}</strong>
+                              <strong>{beginnerInfo.statusLabel}</strong>
                               <span>
                                 {formatDurationClock(beginnerInfo.listenedSeconds)}
                                 {beginnerInfo.durationSeconds
@@ -5694,8 +5932,31 @@ export default function App() {
                             </div>
                             <div className="student-audio-progress" aria-hidden="true" />
                             <small>
-                              {beginnerInfo.completedPlays}/{beginnerInfo.totalStarts} completas · {beginnerInfo.partialPlays} cortadas
+                              Último: {beginnerInfo.lastAgo} · {beginnerInfo.completedPlays}/{beginnerInfo.totalStarts} completas · {beginnerInfo.partialPlays} cortadas
                             </small>
+                            {beginnerAudioProgress.events.length > 0 && (
+                              <div className="student-audio-events">
+                                {beginnerAudioProgress.events.slice(0, 4).map((event, index) => {
+                                  const eventDate = event.eventAt ? new Date(event.eventAt) : null;
+                                  const eventLabel = eventDate && !Number.isNaN(eventDate.getTime())
+                                    ? `${WEEKDAY_SHORT[eventDate.getDay()]} ${padDatePart(eventDate.getDate())}/${padDatePart(eventDate.getMonth() + 1)}`
+                                    : event.dayKey || "Sin fecha";
+                                  const statusLabel = event.completed
+                                    ? "Completo"
+                                    : event.interrupted
+                                      ? "Cortado"
+                                      : "En progreso";
+                                  return (
+                                    <em
+                                      key={`${item.slug}-beginner-event-${event.eventAt || index}`}
+                                      className={event.completed ? "completed" : event.interrupted ? "interrupted" : ""}
+                                    >
+                                      {eventLabel} · {statusLabel}
+                                    </em>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </>
                         ) : (
                           <p className="muted">Todavía no reprodujo Reprogramación Mental Principiante.</p>
@@ -6128,35 +6389,39 @@ export default function App() {
             </button>
           </div>
           <p className="muted">
-            Principiante se habilita cuando administración aprueba tu audio. Advanced se libera a los 30 días.
+            Principiante se habilita cuando administración aprueba tu audio. Advanced se libera al completar 7 días
+            escuchando Principiante de inicio a fin y tener listo tu audio personalizado.
           </p>
           <div className="practice-menu">
-            {practiceOptions.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`menu-button ${item.enabled ? "enabled" : "disabled"}`}
-                onClick={item.enabled ? () => openPracticeOption(item.id) : undefined}
-                disabled={!item.enabled}
-              >
-                {item.label}
-                {!item.enabled && (
-                  <span>
-                    {item.id === "principiante"
-                      ? "Pendiente de audio"
-                      : item.id === "reprogramacion"
-                        ? hasApprovedAudio
-                          ? `Disponible en ${daysUntilAdvanced} días`
-                          : "Pendiente de audio"
-                        : item.id === "colores"
-                          ? "Bloqueado"
-                          : item.id === "magia"
-                            ? "Bloqueado por dashboard"
-                            : "Proximamente"}
-                  </span>
-                )}
-              </button>
-            ))}
+            {practiceOptions.map((item) => {
+              const canClickLockedAdvanced = item.id === "reprogramacion";
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`menu-button ${item.enabled ? "enabled" : "disabled"}`}
+                  onClick={item.enabled || canClickLockedAdvanced ? () => openPracticeOption(item.id) : undefined}
+                  disabled={!item.enabled && !canClickLockedAdvanced}
+                >
+                  {item.label}
+                  {!item.enabled && (
+                    <span>
+                      {item.id === "principiante"
+                        ? "Pendiente de audio"
+                        : item.id === "reprogramacion"
+                          ? hasApprovedAudio
+                            ? advancedBlockedLabel()
+                            : "Pendiente de audio"
+                          : item.id === "colores"
+                            ? "Bloqueado"
+                            : item.id === "magia"
+                              ? "Bloqueado por dashboard"
+                              : "Proximamente"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
         {apneaHistoryOpen && (
@@ -6232,10 +6497,10 @@ export default function App() {
           </button>
         </div>
         <section className="card beginner-card">
-          <p className="eyebrow">Primer mes</p>
+          <p className="eyebrow">Primera etapa</p>
           <h2>Reprogramacion Mental Principiante</h2>
           <p className="muted">
-            Durante los primeros 30 días escuchas tu audio completo editado. Es una práctica simple:
+            Escuchás tu audio completo editado. Advanced se habilita al completar 7 días de reproducción de inicio a fin:
             reproducir, cerrar ojos y dejar que corra.
           </p>
           {beginnerAudioOptions.length > 0 ? (
@@ -6263,6 +6528,7 @@ export default function App() {
                     onTimeUpdate={() => handleBeginnerAudioTimeUpdate(audioItem.id)}
                     onPause={() => handleBeginnerAudioPause(audioItem.id)}
                     onEnded={() => handleBeginnerAudioEnded(audioItem.id)}
+                    onSeeking={() => handleBeginnerAudioSeeking(audioItem.id)}
                   />
                 </div>
               ))}
@@ -6271,9 +6537,18 @@ export default function App() {
             <p className="status error">El audio todavía no está aprobado.</p>
           )}
           <div className="summary">
-            {advancedUnlocked
-              ? "Advanced ya está disponible en el menú."
-              : `Advanced se libera en ${daysUntilAdvanced} días.`}
+            {advancedUnlocked ? (
+              "Advanced ya está disponible en el menú."
+            ) : advancedAccessInfo.blockedReason === "missing-personal-audio" ? (
+              <>
+                Completaste {beginnerCompletedDays}/{beginnerRequiredDays} días. Falta grabar tu audio personalizado en{" "}
+                <a href="https://formulario.academiacortex.com.ar/" target="_blank" rel="noreferrer">
+                  formulario.academiacortex.com.ar
+                </a>.
+              </>
+            ) : (
+              `Advanced se libera al completar ${beginnerCompletedDays}/${beginnerRequiredDays} días del audio Principiante.`
+            )}
           </div>
         </section>
       </div>

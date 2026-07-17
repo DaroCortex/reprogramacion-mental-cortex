@@ -3,9 +3,6 @@ import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 import { normalizeEmail } from "../../lib/student-auth.js";
 
-const BEGINNER_DAYS = 30;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const uniqueKeysReferencedByOthers = (students, slug, key) =>
   students.some((item) => {
     if (item.slug === slug) return false;
@@ -311,7 +308,8 @@ export default async function handler(req, res) {
           beginnerAltFileName: nextWorkflow.beginnerAltFileName || "",
           editorAudioKey: currentAdvancedKey,
           approvedAt: nowIso,
-          advancedUnlockAt: nextWorkflow.advancedUnlockAt || new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
+          advancedUnlockAt: "",
+          advancedUnlockedAt: ""
         };
         nextFeatures.beginnerReprogrammingEnabled = true;
         nextFeatures.advancedReprogrammingEnabled = false;
@@ -360,7 +358,8 @@ export default async function handler(req, res) {
             editorFileName: String(fileName || nextWorkflow.editorFileName || "audio-aprobado"),
             editedAt: nowIso,
             approvedAt: nowIso,
-            advancedUnlockAt: new Date(Date.now() + BEGINNER_DAYS * DAY_MS).toISOString()
+            advancedUnlockAt: "",
+            advancedUnlockedAt: ""
           };
           nextFeatures.beginnerReprogrammingEnabled = true;
           nextFeatures.advancedReprogrammingEnabled = false;

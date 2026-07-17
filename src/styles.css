@@ -2352,6 +2352,32 @@ input[type="range"]:focus {
   background: #ff625b;
 }
 
+.student-audio-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.student-audio-events em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--stroke) 42%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.student-audio-events em.completed {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--accent);
+}
+
+.student-audio-events em.interrupted {
+  background: rgba(255, 98, 91, 0.14);
+  color: #ff8b86;
+}
+
 .student-apnea-log-head {
   display: flex;
   align-items: center;
@@ -2430,6 +2456,11 @@ input[type="range"]:focus {
   font-style: normal;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.student-beginner-log .student-apnea-log-row em.completed {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent);
 }
 
 .student-weekly-stat.ok {

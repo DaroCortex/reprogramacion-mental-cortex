@@ -1,8 +1,10 @@
 import { readAppSettings, readStudents, writeStudents } from "../lib/r2.js";
+import {
+  applyBeginnerAudioEvent,
+  getAdvancedAccessInfo,
+  normalizeBeginnerAudioUsage
+} from "../lib/beginner-progress.js";
 import { findStudentBySession, touchStudentSession } from "../lib/student-auth.js";
-
-const BEGINNER_DAYS = 30;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 const clampNumber = (value, min, max, fallback = 0) => {
   const num = Number(value);
@@ -18,24 +20,6 @@ const safeTimestamp = (value) => {
 const normalizeDateKey = (value) => {
   const key = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : "";
-};
-
-const getAdvancedUnlockTarget = (item, workflow) => {
-  const explicit = safeTimestamp(workflow?.advancedUnlockAt);
-  if (explicit) return explicit;
-
-  const approvedAt = safeTimestamp(workflow?.approvedAt);
-  if (approvedAt) return approvedAt + BEGINNER_DAYS * DAY_MS;
-
-  const firstSessionAt = safeTimestamp(item?.usage?.firstSessionAt);
-  if (firstSessionAt) return firstSessionAt + BEGINNER_DAYS * DAY_MS;
-
-  const createdAt = safeTimestamp(item?.createdAt);
-  if (createdAt && (item?.audioKey || workflow?.status === "approved")) {
-    return createdAt + BEGINNER_DAYS * DAY_MS;
-  }
-
-  return 0;
 };
 
 const normalizeSessionPayload = (payload) => {
@@ -261,7 +245,8 @@ const buildSafeUsageSummary = (usage = {}) => ({
     ? usage.recentSessions.slice(0, 60).map(buildPublicSessionSummary)
     : [],
   lastSession: usage.lastSession ? buildPublicSessionSummary(usage.lastSession) : null,
-  beginnerAudio: buildSafeBeginnerAudioUsage(usage.beginnerAudio || {})
+  beginnerAudio: buildSafeBeginnerAudioUsage(usage.beginnerAudio || {}),
+  beginnerAudioUsage: normalizeBeginnerAudioUsage(usage)
 });
 
 const hasApprovedAdvancedAudio = (student, workflow = {}) => {
@@ -286,6 +271,9 @@ const hasApprovedAdvancedAudio = (student, workflow = {}) => {
   return true;
 };
 
+const hasLegacyBeginnerAudio = (student, workflow = {}) =>
+  Boolean(student?.audioKey && !workflow.beginnerAudioKey && !workflow.editorAudioKey);
+
 const buildMobileAudio = (student) => {
   const workflow = student?.audioWorkflow || {};
   const advancedReady = hasApprovedAdvancedAudio(student, workflow);
@@ -296,7 +284,7 @@ const buildMobileAudio = (student) => {
   );
   const beginner = [];
 
-  if (workflow.beginnerAudioKey || (!workflow.editorAudioKey && student?.audioKey && advancedReady)) {
+  if (workflow.beginnerAudioKey || hasLegacyBeginnerAudio(student, workflow)) {
     beginner.push({
       id: "beginner-1",
       kind: "beginner",
@@ -330,9 +318,9 @@ const buildMobileAudio = (student) => {
   };
 };
 
-const buildStudentFeatures = (student, appSettings, advancedAutoUnlocked = false) => {
+const buildStudentFeatures = (student, appSettings) => {
   const workflow = student?.audioWorkflow || {};
-  const advancedReady = hasApprovedAdvancedAudio(student, workflow);
+  const advancedInfo = getAdvancedAccessInfo(student);
   return {
     colorVisionEnabled: Boolean(student?.features?.colorVisionEnabled),
     magicUnlockScore: clampNumber(student?.features?.magicUnlockScore, 60, 98, appSettings.magicUnlockScore),
@@ -342,27 +330,60 @@ const buildStudentFeatures = (student, appSettings, advancedAutoUnlocked = false
         workflow.beginnerAltAudioKey ||
         student?.audioKey
     ),
-    advancedReprogrammingEnabled: Boolean(
-      advancedReady && (student?.features?.advancedReprogrammingEnabled || advancedAutoUnlocked)
-    )
+    advancedReprogrammingEnabled: advancedInfo.unlocked
+  };
+};
+
+const buildSafeAudioWorkflow = (student) => {
+  const workflow = student?.audioWorkflow || {};
+  const advancedInfo = getAdvancedAccessInfo(student);
+  return {
+    status: workflow.status || (student?.audioKey ? "approved" : "pending"),
+    requestType: workflow.requestType || "",
+    requestLabel: workflow.requestLabel || "",
+    requestSource: workflow.requestSource || "",
+    requestedAt: workflow.requestedAt || "",
+    rawUploadedAt: workflow.rawUploadedAt || workflow.submittedAt || "",
+    rawFileName: workflow.rawFileName || "",
+    rawSource: workflow.rawSource || "",
+    beginnerFileName: workflow.beginnerFileName || "",
+    beginnerAltFileName: workflow.beginnerAltFileName || "",
+    editorFileName: workflow.editorFileName || "",
+    editedAt: workflow.editedAt || "",
+    approvedAt: workflow.approvedAt || "",
+    advancedUnlockAt: advancedInfo.unlocked
+      ? (
+          workflow.advancedUnlockedAt ||
+          workflow.advancedUnlockAt ||
+          advancedInfo.progress.lastCompletedAt ||
+          (advancedInfo.legacyGrandfathered ? (student?.createdAt || student?.updatedAt || "") : "")
+        )
+      : "",
+    advancedBlockedReason: advancedInfo.blockedReason,
+    beginnerCompletedDays: advancedInfo.completedDays,
+    beginnerRequiredDays: advancedInfo.requiredDays,
+    beginnerRemainingDays: advancedInfo.remainingDays,
+    hasRawAudio: Boolean(workflow.rawAudioKey || workflow.submittedAt || workflow.rawUploadedAt),
+    hasBeginnerAudio: Boolean(workflow.beginnerAudioKey || hasLegacyBeginnerAudio(student, workflow)),
+    hasBeginnerAltAudio: Boolean(workflow.beginnerAltAudioKey),
+    hasEditedAudio: Boolean(workflow.editorAudioKey)
   };
 };
 
 const buildAuthenticatedStudent = (student, appSettings) => {
-  const workflow = student.audioWorkflow || {};
-  const advancedUnlockTarget = getAdvancedUnlockTarget(student, workflow);
-  const advancedAutoUnlocked = Boolean(
-    hasApprovedAdvancedAudio(student, workflow) && advancedUnlockTarget && Date.now() >= advancedUnlockTarget
-  );
+  const advancedInfo = getAdvancedAccessInfo(student);
   return {
     name: student.name,
     slug: student.slug,
     email: student.email || "",
     createdAt: student.createdAt || "",
     updatedAt: student.updatedAt || "",
-    features: buildStudentFeatures(student, appSettings, advancedAutoUnlocked),
+    features: buildStudentFeatures(student, appSettings),
+    audioWorkflow: buildSafeAudioWorkflow(student),
     mobileAudio: buildMobileAudio(student),
-    usage: buildSafeUsageSummary(student.usage || {})
+    usage: buildSafeUsageSummary(student.usage || {}),
+    advancedBlockedReason: advancedInfo.blockedReason,
+    beginnerAudioProgress: advancedInfo.progress
   };
 };
 
@@ -457,6 +478,26 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      if (action === "beginner-audio-event") {
+        const eventPayload = req.body?.event && typeof req.body.event === "object"
+          ? req.body.event
+          : req.body?.audioEvent && typeof req.body.audioEvent === "object"
+            ? req.body.audioEvent
+            : {};
+        const nowIso = new Date().toISOString();
+        const nextStudents = students.slice();
+        const nextStudent = applyBeginnerAudioEvent(student, eventPayload, nowIso);
+        nextStudents[index] = nextStudent;
+        await writeStudents(nextStudents);
+        const advancedInfo = getAdvancedAccessInfo(nextStudent);
+        return res.status(200).json({
+          ok: true,
+          beginnerAudioProgress: advancedInfo.progress,
+          advancedBlockedReason: advancedInfo.blockedReason,
+          features: buildStudentFeatures(nextStudent, await readAppSettings())
+        });
+      }
+
       if (action === "beginner-audio-playback") {
         const parsedAudioSession = normalizeBeginnerAudioSession(req.body?.audioSession || {});
         const nowIso = new Date().toISOString();
@@ -544,8 +585,14 @@ export default async function handler(req, res) {
           lastSession: nextSession
         };
 
-        const nextStudents = students.slice();
-        nextStudents[index] = {
+        const legacyEventType = completed
+          ? "completed"
+          : nextSession.status === "partial"
+            ? "paused"
+            : nextSession.status === "started"
+              ? "started"
+              : "resumed";
+        let nextStudent = {
           ...student,
           usage: {
             ...prevUsage,
@@ -557,8 +604,30 @@ export default async function handler(req, res) {
           lastAudioAccessAt: shouldCountAsPractice ? nextSession.updatedAt : student.lastAudioAccessAt || "",
           updatedAt: nowIso
         };
+        nextStudent = applyBeginnerAudioEvent(
+          nextStudent,
+          {
+            eventType: legacyEventType,
+            eventAt: nextSession.updatedAt,
+            dayKey,
+            kind: nextSession.audioId === "beginner-2" ? "beginner-alt" : "beginner",
+            durationSeconds,
+            currentTimeSeconds: nextSession.maxPositionSeconds,
+            playedSeconds: listenedSeconds,
+            completionPercent: durationSeconds > 0 ? listenedSeconds / durationSeconds : 0,
+            seeked: false,
+            source: "web"
+          },
+          nowIso
+        );
+        const nextStudents = students.slice();
+        nextStudents[index] = nextStudent;
         await writeStudents(nextStudents);
-        return res.status(200).json({ ok: true, beginnerAudio: nextBeginner });
+        return res.status(200).json({
+          ok: true,
+          beginnerAudio: nextBeginner,
+          beginnerAudioProgress: normalizeBeginnerAudioUsage(nextStudent.usage || {})
+        });
       }
 
       if (!session) {
@@ -727,12 +796,8 @@ export default async function handler(req, res) {
     }
 
     const safe = students.map((item) => {
-      const workflow = item.audioWorkflow || {};
-      const advancedUnlockTarget = getAdvancedUnlockTarget(item, workflow);
-      const hasApprovedAudio = Boolean(item.audioKey || workflow.status === "approved");
-      const advancedAutoUnlocked = Boolean(
-        hasApprovedAudio && advancedUnlockTarget && Date.now() >= advancedUnlockTarget
-      );
+      const advancedInfo = getAdvancedAccessInfo(item);
+      const hasApprovedAudio = advancedInfo.beginnerReady;
       return {
         name: item.name,
         slug: item.slug,
@@ -740,27 +805,11 @@ export default async function handler(req, res) {
         createdAt: item.createdAt || "",
         updatedAt: item.updatedAt || "",
         lastAudioAccessAt: item.lastAudioAccessAt || "",
-        audioWorkflow: {
-          status: workflow.status || (item.audioKey ? "approved" : "pending"),
-          requestType: workflow.requestType || "",
-          requestLabel: workflow.requestLabel || "",
-          requestSource: workflow.requestSource || "",
-          requestedAt: workflow.requestedAt || "",
-          rawUploadedAt: workflow.rawUploadedAt || workflow.submittedAt || "",
-          rawFileName: workflow.rawFileName || "",
-          rawSource: workflow.rawSource || "",
-          beginnerFileName: workflow.beginnerFileName || "",
-          beginnerAltFileName: workflow.beginnerAltFileName || "",
-          editorFileName: workflow.editorFileName || "",
-          editedAt: workflow.editedAt || "",
-          approvedAt: workflow.approvedAt || "",
-          advancedUnlockAt: workflow.advancedUnlockAt || (advancedUnlockTarget ? new Date(advancedUnlockTarget).toISOString() : ""),
-          hasRawAudio: Boolean(workflow.rawAudioKey),
-          hasBeginnerAudio: Boolean(workflow.beginnerAudioKey),
-          hasBeginnerAltAudio: Boolean(workflow.beginnerAltAudioKey),
-          hasEditedAudio: Boolean(workflow.editorAudioKey)
-        },
-        features: buildStudentFeatures(item, appSettings, advancedAutoUnlocked)
+        usage: buildSafeUsageSummary(item.usage || {}),
+        beginnerAudioProgress: advancedInfo.progress,
+        advancedBlockedReason: advancedInfo.blockedReason,
+        audioWorkflow: buildSafeAudioWorkflow(item),
+        features: buildStudentFeatures(item, appSettings)
       };
     });
     return res.status(200).json({

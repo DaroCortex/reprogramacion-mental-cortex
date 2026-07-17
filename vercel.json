@@ -4,6 +4,8 @@
     { "path": "/api/cron/dario-breathing", "schedule": "0 2 * * *" }
   ],
   "rewrites": [
+    { "source": "/.well-known/assetlinks.json", "destination": "/.well-known/assetlinks.json" },
+    { "source": "/privacidad", "destination": "/privacidad/index.html" },
     { "source": "/s/:slug", "destination": "/" },
     { "source": "/:path((?!api).*)", "destination": "/" }
   ]
