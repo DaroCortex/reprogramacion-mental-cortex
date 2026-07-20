@@ -429,3 +429,21 @@ Se migraron 101 alumnos y se excluyeron 7 audios publicos del sistema. Quedaron 
 
 ### Risks / Follow-Up
 Los 84 alumnos sin contraseña deben completar alta gradualmente. Los alumnos sin email conservan el link anterior hasta conciliar identidad.
+
+## 2026-07-20 11:09:20 -03 - Publicado y validado el acceso Advanced unificado
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Cerrar la migracion en produccion con el mismo contrato para web e iOS
+
+### Touched
+- Vercel deployments dpl_7FtsGQ5Ukhoe1caMYcw3tGvckmfs y dpl_79vbUnsj2r1KV2voApUgyzhDxxwK; https://rm.academiacortex.com.ar
+
+### Details
+El primer deployment habilito la migracion y el segundo dejo apply estrictamente idempotente. GitHub main quedo en 5ff743e antes de esta entrada documental.
+
+### Verification
+- Ambos deployments READY; /admin HTTP 200; apply repetido changed=0 sin backup; 101/101 alumnos migrados; Tomas con email, legacy_immediate, Advanced approved/ready y audio disponible; caso test-2 sin grabacion bloqueado con missing-personal-audio; HEAD y origin/main sincronizados
+
+### Risks / Follow-Up
+La conciliacion de email y alta de contrasena sigue siendo gradual para alumnos antiguos. El enlace con token permanece disponible como respaldo transitorio.
