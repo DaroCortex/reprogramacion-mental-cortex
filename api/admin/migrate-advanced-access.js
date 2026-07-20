@@ -102,6 +102,21 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, mode, report: before });
     }
 
+    const pendingStudents = students.filter(
+      (student) =>
+        !isSystemAudioAsset(student) &&
+        !normalizeAdvancedUnlockPolicy(student.advancedUnlockPolicy)
+    );
+    if (pendingStudents.length === 0) {
+      return res.status(200).json({
+        ok: true,
+        mode,
+        changed: 0,
+        backupKey: "",
+        report: before
+      });
+    }
+
     const nowIso = new Date().toISOString();
     const backupKey = `backups/students-before-advanced-policy-${nowIso.replace(/[:.]/g, "-")}.json`;
     await uploadObject(

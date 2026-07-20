@@ -375,3 +375,57 @@ La interfaz compara fecha de la ultima grabacion con la edicion aprobada y solo 
 
 ### Risks / Follow-Up
 Sin migracion adicional. El endpoint de audio sigue siendo la barrera autoritativa y devuelve 404 mientras el nuevo crudo no tenga una edicion aprobada.
+
+## 2026-07-20 11:07:09 -03 - Hecha estrictamente idempotente la migracion de Advanced
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Evitar backups R2 y escrituras redundantes al repetir apply despues de completar la migracion
+
+### Touched
+- api/admin/migrate-advanced-access.js
+
+### Details
+Si no quedan alumnos sin politica explicita, apply devuelve changed=0 y backupKey vacio sin modificar almacenamiento.
+
+### Verification
+- npm run test:advanced-policy OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+Sin efecto sobre la migracion ya aplicada ni sobre los audios.
+
+## 2026-07-20 11:07:09 -03 - Asociado el email verificado de Tomas Boueri en RM
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Permitir que cree usuario y contraseña sin duplicar el alumno ni perder su Advanced heredado
+
+### Touched
+- Registro productivo tomas-boueri en Cloudflare R2
+
+### Details
+Se completo el email desde la ficha de Academia Seguimiento. No se modificaron audio, progreso, token ni politica de desbloqueo.
+
+### Verification
+- API autenticada confirma email asociado, advancedUnlockPolicy=legacy_immediate, Advanced enabled/ready/approved y progreso Principiante 6/7
+
+### Risks / Follow-Up
+Aun debe crear su contraseña mediante el link de alta; el panel /admin ya copia ese link mientras auth.hasPassword sea false.
+
+## 2026-07-20 11:07:09 -03 - Migrados los accesos Advanced de alumnos productivos
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Aplicar la regla corregida para alumnos de formulario antiguo y nuevo sin perder accesos ya habilitados
+
+### Touched
+- Cloudflare R2 students.json; backup R2 previo; https://rm.academiacortex.com.ar/api/admin/migrate-advanced-access
+
+### Details
+Se migraron 101 alumnos y se excluyeron 7 audios publicos del sistema. Quedaron 62 con legacy_immediate y 39 con after_7_beginner_days; 27 requieren grabacion. El backup se creo antes de escribir. Tomas Boueri fue clasificado legacy_immediate.
+
+### Verification
+- Dry-run HTTP 200; apply HTTP 200 con changed=101 y backup creado; reporte posterior alreadyMigrated=101; Tomas: mobileAudio Advanced approved/ready, endpoint edited 302 y 6/7 dias sin bloqueo
+
+### Risks / Follow-Up
+Los 84 alumnos sin contraseña deben completar alta gradualmente. Los alumnos sin email conservan el link anterior hasta conciliar identidad.
