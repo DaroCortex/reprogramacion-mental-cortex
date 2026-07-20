@@ -116,9 +116,34 @@ export default async function handler(req, res) {
     const mergeExistingStudent = async (existingIndex, matchReason) => {
       const current = students[existingIndex];
       const nowIso = new Date().toISOString();
+      const currentWorkflow = current.audioWorkflow || {};
+      const hasExistingAudio = Boolean(
+        current.audioKey ||
+          currentWorkflow.rawAudioKey ||
+          currentWorkflow.beginnerAudioKey ||
+          currentWorkflow.beginnerAltAudioKey ||
+          currentWorkflow.editorAudioKey
+      );
+      const shouldRequestAudio = Boolean(
+        requestAudio &&
+          !hasExistingAudio &&
+          !["submitted", "edited", "approved"].includes(currentWorkflow.status)
+      );
       const nextStudent = {
         ...current,
         email: current.email || safeEmail,
+        ...(shouldRequestAudio
+          ? {
+              audioWorkflow: {
+                ...currentWorkflow,
+                status: "requested",
+                requestedAt: currentWorkflow.requestedAt || nowIso,
+                requestType: safeRequestType || currentWorkflow.requestType || "student-audio",
+                requestLabel: safeRequestLabel || currentWorkflow.requestLabel || "Audio de estudiante",
+                requestSource: safeRequestSource || currentWorkflow.requestSource || "admin"
+              }
+            }
+          : {}),
         source: safeSourceExternalId
           ? {
               ...(current.source || {}),
@@ -138,7 +163,8 @@ export default async function handler(req, res) {
         student: nextStudent,
         optimization: null,
         existing: true,
-        match: matchReason
+        match: matchReason,
+        audioRequested: shouldRequestAudio
       });
     };
 

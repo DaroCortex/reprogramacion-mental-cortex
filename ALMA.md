@@ -465,3 +465,39 @@ Formulario reutilizo la voz ya limpiada de cada alumno, subio solo edited y ejec
 
 ### Risks / Follow-Up
 Los objetos R2 edited fueron agregados de forma intencional. Una reversa completa requiere restaurar los registros RM y limpiar sus keys; no afecta alumnos legacy_immediate.
+
+## 2026-07-20 15:34:31 -03 - Agregada el alta manual de alumnos en el panel moderno
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Permitir crear leads desde /admin y enviarles el enlace de grabacion sin usar el panel clasico
+
+### Touched
+- src/Admin2Dashboard.jsx; src/App.jsx; src/admin2.css; api/admin/create-student.js
+
+### Details
+Se agrego un modal responsive con nombre, email y solicitud de audio activa por defecto. El backend reutiliza alumnos por email y marca audio solicitado cuando la ficha existente aun no tiene grabacion; la recarga posterior es silenciosa para conservar el enlace en pantalla.
+
+### Verification
+- npm run test:advanced-policy OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+Cambio aun no desplegado. No se creo ningun alumno real durante las pruebas; falta smoke autenticado en produccion despues de publicar.
+
+## 2026-07-20 15:36:56 -03 - Publicada el alta manual de alumnos en RM
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Habilitar el alta operativa solicitada en https://rm.academiacortex.com.ar/admin
+
+### Touched
+- Vercel deployment dpl_75pV6VvNBSKDTAEWuUQKr2kL9WGt; https://rm.academiacortex.com.ar/admin
+
+### Details
+El deployment productivo quedo READY y el dominio sirve el bundle que contiene el modal Nuevo alumno. No se crearon alumnos durante el smoke.
+
+### Verification
+- Vercel READY; alias rm.academiacortex.com.ar asignado; GET /admin HTTP 200; bundle productivo contiene Nuevo alumno; POST create-student sin credenciales devuelve 401
+
+### Risks / Follow-Up
+El flujo autenticado debe usarse con un alumno real cuando operaciones haga la primera alta; el backend deduplica por email.

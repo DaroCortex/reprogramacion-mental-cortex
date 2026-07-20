@@ -4178,19 +4178,23 @@ export default function App() {
     }
   }, [isEditorRoute, editorPassword]);
 
-  const ensureAdminList = async (password) => {
-    setAdminStatus("loading");
-    setAdminMessage("");
+  const ensureAdminList = async (password, { silent = false } = {}) => {
+    if (!silent) {
+      setAdminStatus("loading");
+      setAdminMessage("");
+    }
     try {
       const response = await fetch(`/api/admin/list?password=${encodeURIComponent(password)}`);
       if (!response.ok) throw new Error("No autorizado");
       const data = await response.json();
       setAdminStudents(Array.isArray(data.students) ? data.students : []);
-      setAdminStatus("ready");
+      if (!silent) setAdminStatus("ready");
       return true;
     } catch (error) {
-      setAdminStatus("auth-error");
-      setAdminMessage("Password incorrecto o sin acceso.");
+      if (!silent) {
+        setAdminStatus("auth-error");
+        setAdminMessage("Password incorrecto o sin acceso.");
+      }
       return false;
     }
   };
@@ -4787,6 +4791,50 @@ export default function App() {
       setAdminStatus("ready");
       setAdminMessage(error?.message || "No se pudo crear el estudiante.");
     }
+  };
+
+  const handleManualStudentCreate = async ({ name, email, requestAudio = true }) => {
+    const cleanName = String(name || "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (!adminPassword) throw new Error("Ingresá nuevamente como administrador.");
+    if (!cleanName) throw new Error("Completá el nombre del alumno.");
+    if (!cleanEmail || !cleanEmail.includes("@")) throw new Error("Completá un email válido.");
+
+    const response = await fetch("/api/admin/create-student", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        password: adminPassword,
+        name: cleanName,
+        email: cleanEmail,
+        requestAudio,
+        requestType: requestAudio ? "student-audio" : "",
+        requestLabel: requestAudio ? "Audio de estudiante" : "",
+        requestSource: "admin-manual"
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.student?.slug) {
+      throw new Error(payload?.detail || payload?.error || "No se pudo crear el alumno.");
+    }
+
+    const created = payload.student;
+    await ensureAdminList(adminPassword, { silent: true });
+    setAdminMessage(
+      payload.existing
+        ? "El email ya existía. Se abrió el alumno existente sin duplicarlo."
+        : "Alumno creado manualmente."
+    );
+    return {
+      student: created,
+      existing: payload.existing === true,
+      match: payload.match || "",
+      uploadLink:
+        requestAudio && (!payload.existing || payload.audioRequested)
+          ? buildUploadLink(created.slug, created.token)
+          : "",
+      accessLink: buildStudentLink(created.slug, created.token, true)
+    };
   };
 
   const handleAdminCreateSpecialRequest = async () => {
@@ -5614,6 +5662,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
           onRefresh={() => ensureAdminList(adminPassword)}
+          onCreateStudent={handleManualStudentCreate}
           onCopyLink={copyStudentAccess}
           onRequestAudio={(item) => handleRequestStudentAudio(item.slug)}
           onReplaceAudio={(item) => handleReplaceClick(item.slug)}

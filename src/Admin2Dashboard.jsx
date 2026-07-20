@@ -11,6 +11,7 @@ import {
   Filter,
   Headphones,
   LayoutDashboard,
+  Link2,
   Menu,
   Moon,
   RefreshCw,
@@ -18,6 +19,7 @@ import {
   Settings,
   Sun,
   UserRound,
+  UserPlus,
   UsersRound,
   X
 } from "lucide-react";
@@ -156,6 +158,119 @@ function MetricButton({ icon: Icon, label, value, detail, tone = "neutral", onCl
 
 function StatusBadge({ tone, children }) {
   return <span className={`admin2-status ${tone}`}>{children}</span>;
+}
+
+function NewStudentModal({ onClose, onCreate, onOpenStudent }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [requestAudio, setRequestAudio] = useState(true);
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape" && status !== "loading") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose, status]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setStatus("loading");
+    setError("");
+    setCopied(false);
+    try {
+      const created = await onCreate({ name, email, requestAudio });
+      setResult(created);
+      setStatus("success");
+    } catch (creationError) {
+      setError(creationError?.message || "No se pudo crear el alumno.");
+      setStatus("error");
+    }
+  };
+
+  const copyResultLink = async () => {
+    const link = result?.uploadLink || result?.accessLink;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch (_error) {
+      window.prompt("Copiá este enlace:", link);
+    }
+  };
+
+  return (
+    <div className="admin2-modal-layer">
+      <button type="button" className="admin2-modal-backdrop" aria-label="Cerrar alta manual" onClick={status === "loading" ? undefined : onClose} />
+      <section className="admin2-modal" role="dialog" aria-modal="true" aria-labelledby="admin2-new-student-title">
+        <header className="admin2-modal-header">
+          <div>
+            <span className="admin2-eyebrow">Alta manual</span>
+            <h2 id="admin2-new-student-title">Nuevo alumno</h2>
+          </div>
+          <button type="button" className="admin2-icon-button" aria-label="Cerrar alta manual" onClick={onClose} disabled={status === "loading"}>
+            <X size={20} />
+          </button>
+        </header>
+
+        {result ? (
+          <div className="admin2-create-result">
+            <CheckCircle2 size={34} />
+            <div>
+              <h3>{result.existing ? "Alumno encontrado" : "Alumno creado"}</h3>
+              <p>
+                {result.existing
+                  ? "El email ya estaba registrado. Se reutilizó la ficha existente y no se creó un duplicado."
+                  : "La ficha quedó lista en RM."}
+              </p>
+              <strong>{result.student.name}</strong>
+              <span>{result.student.email}</span>
+            </div>
+            <div className="admin2-modal-actions">
+              <button type="button" className="admin2-button primary" onClick={copyResultLink}>
+                <Link2 size={17} /> {copied ? "Enlace copiado" : result.uploadLink ? "Copiar enlace de audio" : "Copiar acceso"}
+              </button>
+              <button type="button" className="admin2-button secondary" onClick={() => onOpenStudent(result.student.slug)}>
+                Ver ficha
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form className="admin2-create-form" onSubmit={submit}>
+            <p>Creá la ficha y obtené el enlace que se le envía al alumno para grabar su audio.</p>
+            <label>
+              Nombre completo
+              <input autoFocus required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Alma Rosa Macias" />
+            </label>
+            <label>
+              Email
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="alumno@email.com" />
+            </label>
+            <label className="admin2-checkbox-row">
+              <input type="checkbox" checked={requestAudio} onChange={(event) => setRequestAudio(event.target.checked)} />
+              <span><strong>Solicitar audio ahora</strong><small>Genera el enlace de grabación al crear la ficha.</small></span>
+            </label>
+            {error && <p className="admin2-form-error" role="alert">{error}</p>}
+            <div className="admin2-modal-actions">
+              <button type="button" className="admin2-button secondary" onClick={onClose} disabled={status === "loading"}>Cancelar</button>
+              <button type="submit" className="admin2-button primary" disabled={status === "loading" || !name.trim() || !email.trim()}>
+                <UserPlus size={17} /> {status === "loading" ? "Creando..." : "Crear alumno"}
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+    </div>
+  );
 }
 
 function StudentDrawer({
@@ -322,6 +437,7 @@ export default function Admin2Dashboard({
   theme,
   onToggleTheme,
   onRefresh,
+  onCreateStudent,
   onCopyLink,
   onRequestAudio,
   onReplaceAudio,
@@ -341,6 +457,7 @@ export default function Admin2Dashboard({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [selectedSlug, setSelectedSlug] = useState("");
+  const [newStudentOpen, setNewStudentOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(30);
 
   const allRows = analytics?.rows || [];
@@ -445,6 +562,9 @@ export default function Admin2Dashboard({
             <h1>{NAV_ITEMS.find((item) => item.id === section)?.label || "Seguimiento"}</h1>
           </div>
           <div className="admin2-topbar-actions">
+            <button type="button" className="admin2-button primary admin2-new-student-button" onClick={() => setNewStudentOpen(true)}>
+              <UserPlus size={17} /> <span>Nuevo alumno</span>
+            </button>
             <button type="button" className="admin2-icon-button" title="Actualizar datos" aria-label="Actualizar datos" onClick={onRefresh}>
               <RefreshCw size={19} />
             </button>
@@ -635,6 +755,19 @@ export default function Admin2Dashboard({
         formatDuration={formatDuration}
         getAdvancedInfo={getAdvancedInfo}
       />
+      {newStudentOpen && (
+        <NewStudentModal
+          onClose={() => setNewStudentOpen(false)}
+          onCreate={onCreateStudent}
+          onOpenStudent={(studentSlug) => {
+            setNewStudentOpen(false);
+            setSection("students");
+            setRiskFilter("all");
+            setAudioFilter("all");
+            setSelectedSlug(studentSlug);
+          }}
+        />
+      )}
     </div>
   );
 }
