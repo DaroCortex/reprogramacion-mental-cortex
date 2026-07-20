@@ -3,6 +3,7 @@ import { readAppSettings, readStudents, writeStudents, uploadObject } from "../.
 import { verifyAdminPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 import { normalizeEmail } from "../../lib/student-auth.js";
+import { ADVANCED_UNLOCK_POLICIES } from "../../lib/beginner-progress.js";
 
 const slugify = (value) =>
   value
@@ -181,6 +182,7 @@ export default async function handler(req, res) {
       updatedAt: nowIso,
       lastAudioAccessAt: hasUploadedAudio ? nowIso : "",
       studentType: safeRequestType === "special-binaural" ? "special-binaural" : "academy",
+      advancedUnlockPolicy: ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS,
       ...(safeSourceExternalId
         ? {
             source: {

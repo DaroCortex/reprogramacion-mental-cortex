@@ -284,28 +284,37 @@ const getBeginnerAudioProgress = (studentItem = {}) => {
   };
 };
 
-const ADVANCED_GRANDFATHER_CUTOFF_ISO = "2026-06-29T20:16:00.000Z";
+const ADVANCED_UNLOCK_POLICIES = {
+  LEGACY_IMMEDIATE: "legacy_immediate",
+  AFTER_7_BEGINNER_DAYS: "after_7_beginner_days"
+};
 
-const safeDateTime = (value) => {
-  const time = new Date(value || "").getTime();
+const safeAudioTimestamp = (value) => {
+  const time = Date.parse(value || "");
   return Number.isFinite(time) ? time : 0;
 };
 
-const hasModernAdvancedAudio = (workflow = {}) => Boolean(
-  workflow.rawAudioKey ||
-    workflow.hasRawAudio ||
-    workflow.rawUploadedAt ||
-    workflow.submittedAt ||
-    workflow.editorAudioKey ||
-    workflow.hasEditedAudio
-);
+const hasCurrentApprovedAdvancedAudio = (studentItem, workflow = studentItem?.audioWorkflow || {}) => {
+  const rawUploadedAt = Math.max(
+    safeAudioTimestamp(workflow.rawUploadedAt),
+    safeAudioTimestamp(workflow.submittedAt)
+  );
+  const editedAt = safeAudioTimestamp(workflow.editedAt);
+  const hasWorkflowAdvanced = Boolean(workflow.editorAudioKey || workflow.hasEditedAudio);
+  const hasRawRecording = Boolean(
+    workflow.rawAudioKey ||
+      workflow.hasRawAudio ||
+      workflow.rawUploadedAt ||
+      workflow.submittedAt
+  );
+  const hasLegacyAdvanced = Boolean(
+    (studentItem?.audioKey || studentItem?.audioReady) && !hasWorkflowAdvanced && !hasRawRecording
+  );
 
-const isGrandfatheredLegacyAdvancedStudent = (studentItem, workflow = studentItem?.audioWorkflow || {}) => {
-  if (!studentItem?.audioReady && !studentItem?.audioKey) return false;
-  if (hasModernAdvancedAudio(workflow)) return false;
-  const createdAt = safeDateTime(studentItem?.createdAt);
-  const cutoff = safeDateTime(ADVANCED_GRANDFATHER_CUTOFF_ISO);
-  return Boolean(createdAt && cutoff && createdAt < cutoff);
+  if (hasLegacyAdvanced) return true;
+  if (!hasWorkflowAdvanced || workflow.status !== "approved") return false;
+  if (rawUploadedAt && (!editedAt || rawUploadedAt > editedAt)) return false;
+  return true;
 };
 
 const getAdvancedAccessInfo = (studentItem) => {
@@ -329,36 +338,52 @@ const getAdvancedAccessInfo = (studentItem) => {
       workflow.hasEditedAudio ||
       workflow.status === "submitted"
   );
-  const advancedAudioReady = Boolean(
-    studentItem?.audioKey ||
-      ((workflow.editorAudioKey || workflow.hasEditedAudio) && workflow.status === "approved")
+  const advancedAudioReady = hasCurrentApprovedAdvancedAudio(studentItem, workflow);
+  const explicitPolicy = String(
+    studentItem?.advancedUnlockPolicy || workflow?.advancedUnlockPolicy || ""
   );
-  const legacyGrandfathered = isGrandfatheredLegacyAdvancedStudent(studentItem, workflow);
+  const hadAdvancedEnabled = Boolean(
+    studentItem?.features?.advancedReprogrammingEnabled ||
+      workflow?.advancedUnlockedAt ||
+      workflow?.advancedUnlockAt
+  );
+  const unlockPolicy = Object.values(ADVANCED_UNLOCK_POLICIES).includes(explicitPolicy)
+    ? explicitPolicy
+    : hadAdvancedEnabled && advancedAudioReady
+      ? ADVANCED_UNLOCK_POLICIES.LEGACY_IMMEDIATE
+      : ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS;
+  const legacyImmediate = Boolean(
+    unlockPolicy === ADVANCED_UNLOCK_POLICIES.LEGACY_IMMEDIATE && advancedAudioReady
+  );
   const completedRequiredDays = progress.completedDays >= BEGINNER_COMPLETION_DAYS_REQUIRED;
-  const manualEnabled = Boolean(
-    (studentItem?.features?.advancedReprogrammingEnabled && (advancedAudioReady || legacyGrandfathered)) ||
-      legacyGrandfathered
-  );
   const unlocked = Boolean(
-    manualEnabled ||
-      legacyGrandfathered ||
-      (beginnerReady && completedRequiredDays && submittedPersonalAudio && advancedAudioReady)
+    legacyImmediate ||
+      (
+        unlockPolicy === ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS &&
+        beginnerReady &&
+        completedRequiredDays &&
+        submittedPersonalAudio &&
+        advancedAudioReady
+      )
   );
   let blockedReason = "";
   if (!unlocked) {
-    if (!beginnerReady) blockedReason = "missing-beginner-audio";
-    else if (!completedRequiredDays) blockedReason = "beginner-days";
+    if (unlockPolicy === ADVANCED_UNLOCK_POLICIES.LEGACY_IMMEDIATE) blockedReason = "advanced-audio-pending";
     else if (!submittedPersonalAudio) blockedReason = "missing-personal-audio";
+    else if (!beginnerReady) blockedReason = "missing-beginner-audio";
+    else if (!completedRequiredDays) blockedReason = "beginner-days";
     else if (!advancedAudioReady) blockedReason = "advanced-audio-pending";
   }
 
   return {
     hasApprovedAudio: beginnerReady,
     beginnerReady,
-    advancedAudioReady: advancedAudioReady || legacyGrandfathered,
+    advancedAudioReady,
     submittedPersonalAudio,
     completedRequiredDays,
-    legacyGrandfathered,
+    unlockPolicy,
+    legacyImmediate,
+    legacyGrandfathered: legacyImmediate,
     completedDays: progress.completedDays,
     requiredDays: BEGINNER_COMPLETION_DAYS_REQUIRED,
     remainingDays: progress.remainingDays,
@@ -3711,6 +3736,58 @@ export default function App() {
     }
   };
 
+  const copyStudentAccess = async (student) => {
+    if (!student?.email) {
+      await copyLink(student?.slug, student?.token, true);
+      showAdminFeedback("Falta cargar el email. Se copió el link anterior como acceso temporal.");
+      return;
+    }
+
+    try {
+      if (!student?.auth?.hasPassword) {
+        const response = await fetch("/api/admin/password-setup-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: adminPassword, slug: student.slug })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.setupUrl) {
+          throw new Error(data.error || "No se pudo crear el acceso");
+        }
+        const message = [
+          "Creá tu contraseña para ingresar a Reprogramación Mental:",
+          data.setupUrl,
+          "",
+          "Tu usuario es:",
+          student.email
+        ].join("\n");
+        await navigator.clipboard.writeText(message);
+        showAdminFeedback("Link para crear contraseña copiado.");
+        return;
+      }
+
+      const response = await fetch("/api/admin/student-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword, slug: student.slug })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.credentialPassword) {
+        throw new Error(data.error || "No se pudieron obtener las credenciales");
+      }
+      const message = [
+        "Aquí están tus credenciales:",
+        `Email: ${data.email || student.email}`,
+        `Contraseña: ${data.credentialPassword}`,
+        "Enlace para ingresar: https://rm.academiacortex.com.ar"
+      ].join("\n");
+      await navigator.clipboard.writeText(message);
+      showAdminFeedback("Credenciales copiadas.");
+    } catch (error) {
+      showAdminFeedback(error?.message || "No se pudo copiar el acceso.");
+    }
+  };
+
   const copyToken = async (studentToken) => {
     if (!studentToken) return;
     try {
@@ -5537,7 +5614,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
           onRefresh={() => ensureAdminList(adminPassword)}
-          onCopyLink={(item) => copyLink(item.slug, item.token, true)}
+          onCopyLink={copyStudentAccess}
           onRequestAudio={(item) => handleRequestStudentAudio(item.slug)}
           onReplaceAudio={(item) => handleReplaceClick(item.slug)}
           onToggleStudentStatus={(item) => handleToggleStudentStatus(

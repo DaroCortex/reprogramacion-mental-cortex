@@ -2,6 +2,7 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getBucket, getS3Client, readStudents, signGetUrl, writeStudents } from "../lib/r2.js";
 import { verifyAdminPassword, verifyEditorPassword } from "../lib/auth.js";
 import { findStudentBySession } from "../lib/student-auth.js";
+import { getAdvancedAccessInfo, hasApprovedAdvancedAudio } from "../lib/beginner-progress.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala", "oceano", "balance", "gamma", "trance"]);
 
@@ -11,33 +12,6 @@ const streamToBuffer = async (stream) => {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
-};
-
-const safeTimestamp = (value) => {
-  const parsed = Date.parse(value || "");
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const hasApprovedEditedAudio = (student, workflow = {}) => {
-  const rawUploadedAt = Math.max(
-    safeTimestamp(workflow.rawUploadedAt),
-    safeTimestamp(workflow.submittedAt)
-  );
-  const editedAt = safeTimestamp(workflow.editedAt);
-
-  const hasWorkflowAdvancedKey = Boolean(workflow.editorAudioKey);
-  const isLegacyAudioKey = Boolean(student?.audioKey && !hasWorkflowAdvancedKey && !rawUploadedAt);
-  if (isLegacyAudioKey) return true;
-  if (!hasWorkflowAdvancedKey) return false;
-
-  const status = workflow.status || "";
-  if (status !== "approved") return false;
-
-  if (rawUploadedAt && (!editedAt || rawUploadedAt > editedAt)) {
-    return false;
-  }
-
-  return true;
 };
 
 export default async function handler(req, res) {
@@ -58,6 +32,7 @@ export default async function handler(req, res) {
 
     const student = students.find((item) => item.slug === slug);
     const workflow = student?.audioWorkflow || {};
+    const advancedInfo = student ? getAdvancedAccessInfo(student) : null;
     let selectedKey = student?.audioKey || "";
     const isWorkflowPreview = kind === "raw" || kind === "edited";
     const isSessionOwner = Boolean(sessionAuth?.student?.slug && sessionAuth.student.slug === slug);
@@ -65,14 +40,14 @@ export default async function handler(req, res) {
     if (isWorkflowPreview) {
       selectedKey = kind === "raw"
         ? workflow.rawAudioKey || ""
-        : workflow.editorAudioKey || (hasApprovedEditedAudio(student, workflow) ? student?.audioKey || "" : "");
+        : workflow.editorAudioKey || (hasApprovedAdvancedAudio(student, workflow) ? student?.audioKey || "" : "");
       const isAdmin = await verifyAdminPassword(password);
       const isEditor = isAdmin || (await verifyEditorPassword(password));
       const isOwner = isSessionOwner || (token && token === String(student?.token || ""));
       if (!isEditor && !isOwner) {
         return res.status(403).json({ error: "No autorizado" });
       }
-      if (kind === "edited" && isOwner && !isEditor && !hasApprovedEditedAudio(student, workflow)) {
+      if (kind === "edited" && isOwner && !isEditor && !advancedInfo?.unlocked) {
         return res.status(404).json({ error: "Audio no encontrado" });
       }
     }

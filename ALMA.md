@@ -339,3 +339,39 @@ El push de la fuente versionada inicio el deployment automatico de Vercel con el
 
 ### Risks / Follow-Up
 Sin cambio funcional respecto del deployment CLI anterior. Esta entrada se sincroniza con un commit marcado para omitir CI y evitar otro redeploy innecesario.
+
+## 2026-07-20 10:58:24 -03 - Unificada la politica de acceso a Advanced y el flujo de credenciales
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Migrar alumnos antiguos y nuevos sin perder audios ni accesos ya habilitados, exigiendo 7 dias de Principiante solo a quienes corresponda
+
+### Touched
+- lib/beginner-progress.js; api/students.js; api/audio-file.js; api/admin/create-student.js; api/admin/update-student.js; api/admin/migrate-advanced-access.js; src/App.jsx; src/Admin2Dashboard.jsx; scripts/test-advanced-unlock-policy.mjs; package.json
+
+### Details
+Se agregaron las politicas legacy_immediate y after_7_beginner_days. La migracion excluye siete pistas publicas, informa cobertura de email y contrasena, crea backup R2 antes de aplicar y no modifica registros ya migrados. El panel copia link anterior solo sin email, link de alta si falta contrasena y credenciales de soporte validas cuando el acceso ya existe. El contrato mobileAudio solo publica Advanced como ready cuando el audio esta aprobado y la politica lo permite.
+
+### Verification
+- npm run test:advanced-policy OK; npm run build OK con Vite 5.4.21; git diff --check OK; dry-run local sobre snapshot productivo: 101 alumnos, 7 assets excluidos, Tomas Boueri clasificado legacy_immediate con audio Advanced listo
+
+### Risks / Follow-Up
+La migracion productiva y sus smoke checks se ejecutan despues del deployment. Los 78 alumnos sin email requieren conciliacion administrativa antes de crear contraseña; los links con token se conservan como compatibilidad.
+
+## 2026-07-20 10:59:38 -03 - Alineada la vigencia del audio Advanced entre frontend y backend
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Evitar que una grabacion nueva pendiente de procesamiento reactive en web un Advanced anterior que el backend e iOS ya consideran obsoleto
+
+### Touched
+- src/App.jsx
+
+### Details
+La interfaz compara fecha de la ultima grabacion con la edicion aprobada y solo considera vigente el audio final si no existe un crudo posterior.
+
+### Verification
+- npm run test:advanced-policy OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+Sin migracion adicional. El endpoint de audio sigue siendo la barrera autoritativa y devuelve 404 mientras el nuevo crudo no tenga una edicion aprobada.

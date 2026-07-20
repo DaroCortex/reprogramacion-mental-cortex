@@ -2,6 +2,10 @@ import { deleteObject, getObjectBuffer, readStudents, writeStudents, uploadObjec
 import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
 import { normalizeEmail } from "../../lib/student-auth.js";
+import {
+  ADVANCED_UNLOCK_POLICIES,
+  getAdvancedUnlockPolicy
+} from "../../lib/beginner-progress.js";
 
 const uniqueKeysReferencedByOthers = (students, slug, key) =>
   students.some((item) => {
@@ -182,6 +186,7 @@ export default async function handler(req, res) {
       };
       let nextWorkflow = { ...(item.audioWorkflow || {}) };
       let activeAudioKey = item.audioKey || "";
+      let nextAdvancedUnlockPolicy = getAdvancedUnlockPolicy(item, nextWorkflow);
       let nextStatus = item.status === "inactive" || item.inactive ? "inactive" : "active";
 
       if (action === "set-student-status") {
@@ -313,6 +318,7 @@ export default async function handler(req, res) {
         };
         nextFeatures.beginnerReprogrammingEnabled = true;
         nextFeatures.advancedReprogrammingEnabled = false;
+        nextAdvancedUnlockPolicy = ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS;
       }
 
       if (action === "unlock-advanced") {
@@ -330,6 +336,7 @@ export default async function handler(req, res) {
         };
         nextFeatures.beginnerReprogrammingEnabled = hasBeginnerKey;
         nextFeatures.advancedReprogrammingEnabled = true;
+        nextAdvancedUnlockPolicy = ADVANCED_UNLOCK_POLICIES.LEGACY_IMMEDIATE;
       }
 
       if (
@@ -363,6 +370,7 @@ export default async function handler(req, res) {
           };
           nextFeatures.beginnerReprogrammingEnabled = true;
           nextFeatures.advancedReprogrammingEnabled = false;
+          nextAdvancedUnlockPolicy = ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS;
         }
       }
 
@@ -372,6 +380,7 @@ export default async function handler(req, res) {
         ...(nextSource ? { source: nextSource } : {}),
         audioKey: activeAudioKey,
         audioWorkflow: nextWorkflow,
+        advancedUnlockPolicy: nextAdvancedUnlockPolicy,
         features: nextFeatures,
         status: nextStatus,
         inactive: nextStatus === "inactive",

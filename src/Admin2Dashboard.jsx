@@ -23,14 +23,6 @@ import {
 } from "lucide-react";
 import "./admin2.css";
 
-const WORKFLOW_STATUS_LABELS = {
-  pending: "Pendiente",
-  requested: "Solicitado",
-  submitted: "Audio recibido",
-  edited: "Procesado",
-  approved: "Listo"
-};
-
 const NAV_ITEMS = [
   { id: "followup", label: "Seguimiento", Icon: LayoutDashboard },
   { id: "students", label: "Alumnos", Icon: UsersRound },
@@ -38,15 +30,39 @@ const NAV_ITEMS = [
   { id: "audio", label: "Audios", Icon: Headphones }
 ];
 
-const normalizeWorkflowStatus = (student) => (
-  student?.audioWorkflow?.status || (student?.audioReady ? "approved" : "pending")
+const hasRecordedAudio = (student) => Boolean(
+  student?.audioKey ||
+    student?.audioWorkflow?.rawAudioKey ||
+    student?.audioWorkflow?.hasRawAudio ||
+    student?.audioWorkflow?.rawUploadedAt ||
+    student?.audioWorkflow?.submittedAt ||
+    student?.audioWorkflow?.editorAudioKey ||
+    student?.audioWorkflow?.hasEditedAudio
+);
+
+const hasBeginnerAudio = (student) => Boolean(
+  student?.audioKey ||
+    student?.audioWorkflow?.beginnerAudioKey ||
+    student?.audioWorkflow?.hasBeginnerAudio
 );
 
 const getAudioGroup = (student) => {
-  const status = normalizeWorkflowStatus(student);
-  if (status === "approved") return "ready";
-  if (status === "submitted" || status === "edited") return "processing";
+  if (hasBeginnerAudio(student)) return "ready";
+  if (hasRecordedAudio(student)) return "processing";
   return "pending";
+};
+
+const getAudioLabel = (student) => {
+  const group = getAudioGroup(student);
+  if (group === "ready") return "Principiante listo";
+  if (group === "processing") return "Procesando";
+  return "Falta grabar";
+};
+
+const getAccessMeta = (student) => {
+  if (!student?.email) return { label: "Falta email", tone: "warning" };
+  if (!student?.auth?.hasPassword) return { label: "Crear contraseña", tone: "warning" };
+  return { label: "Acceso activo", tone: "ok" };
 };
 
 const getRiskMeta = (student) => {
@@ -172,12 +188,17 @@ function StudentDrawer({
   if (!student) return null;
 
   const risk = getRiskMeta(student);
-  const workflowStatus = normalizeWorkflowStatus(student);
   const weekly = student.weeklyPractice || {};
   const beginner = student.beginnerAudioProgress || {};
   const apneaDays = Array.isArray(student.apneaDailyLog) ? student.apneaDailyLog.slice(0, 4) : [];
   const active = student.status !== "inactive";
   const advancedInfo = getAdvancedInfo(student);
+  const access = getAccessMeta(student);
+  const accessActionLabel = !student.email
+    ? "Copiar link anterior"
+    : student.auth?.hasPassword
+      ? "Copiar credenciales"
+      : "Crear contraseña";
   const initial = String(student.name || student.slug || "A").trim().slice(0, 1).toUpperCase();
 
   return (
@@ -198,7 +219,8 @@ function StudentDrawer({
 
         <div className="admin2-drawer-summary">
           <StatusBadge tone={risk.tone}>{risk.label}</StatusBadge>
-          <StatusBadge tone={getAudioGroup(student)}>{WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}</StatusBadge>
+          <StatusBadge tone={getAudioGroup(student)}>{getAudioLabel(student)}</StatusBadge>
+          <StatusBadge tone={access.tone}>{access.label}</StatusBadge>
           <StatusBadge tone={active ? "ok" : "neutral"}>{active ? "Activo" : "Inactivo"}</StatusBadge>
         </div>
 
@@ -238,8 +260,10 @@ function StudentDrawer({
             <h3>Audio y acceso</h3>
           </div>
           <dl className="admin2-detail-list">
-            <div><dt>Estado del audio</dt><dd>{WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}</dd></div>
-            <div><dt>Advanced</dt><dd>{advancedInfo.unlocked ? "Habilitado" : "Bloqueado"}</dd></div>
+            <div><dt>Grabación</dt><dd>{hasRecordedAudio(student) ? "Recibida" : "Falta grabar"}</dd></div>
+            <div><dt>Principiante</dt><dd>{hasBeginnerAudio(student) ? "Listo" : "Pendiente"}</dd></div>
+            <div><dt>Advanced</dt><dd>{advancedInfo.unlocked ? "Habilitado" : advancedInfo.advancedAudioReady ? `Listo · faltan ${advancedInfo.remainingDays} días` : "Pendiente"}</dd></div>
+            <div><dt>Acceso</dt><dd>{access.label}</dd></div>
             <div><dt>Colores</dt><dd>{student.features?.colorVisionEnabled ? "Habilitada" : "Bloqueada"}</dd></div>
           </dl>
         </section>
@@ -265,7 +289,7 @@ function StudentDrawer({
 
         <section className="admin2-drawer-actions" aria-label="Acciones del alumno">
           <button type="button" className="admin2-button primary" onClick={() => onCopyLink(student)}>
-            <Copy size={17} /> Copiar acceso
+            <Copy size={17} /> {accessActionLabel}
           </button>
           <a className="admin2-button secondary" href={studentUrl(student)} target="_blank" rel="noreferrer">
             <ExternalLink size={17} /> Abrir app
@@ -553,7 +577,6 @@ export default function Admin2Dashboard({
                   const practicedDays = weekly.practicedDays || 0;
                   const weekPct = Math.min(100, Math.round((practicedDays / expectedDays) * 100));
                   const risk = getRiskMeta(student);
-                  const workflowStatus = normalizeWorkflowStatus(student);
                   const initial = String(student.name || student.slug || "A").trim().slice(0, 1).toUpperCase();
                   return (
                     <tr key={student.slug} className={`risk-${risk.tone}`}>
@@ -574,7 +597,7 @@ export default function Admin2Dashboard({
                       <td data-label="Semana">
                         <div className="admin2-week-cell"><strong>{practicedDays}/{expectedDays}</strong><span><i style={{ width: `${weekPct}%` }} /></span></div>
                       </td>
-                      <td data-label="Audio"><StatusBadge tone={getAudioGroup(student)}>{WORKFLOW_STATUS_LABELS[workflowStatus] || workflowStatus}</StatusBadge></td>
+                      <td data-label="Audio"><StatusBadge tone={getAudioGroup(student)}>{getAudioLabel(student)}</StatusBadge></td>
                       <td data-label="Riesgo"><StatusBadge tone={risk.tone}>{risk.label}</StatusBadge></td>
                       <td>
                         <button type="button" className="admin2-icon-button" title={`Abrir ficha de ${student.name}`} aria-label={`Abrir ficha de ${student.name}`} onClick={() => setSelectedSlug(student.slug)}>

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:advanced-policy": "node scripts/test-advanced-unlock-policy.mjs",
     "students:generate": "node scripts/generate_students.mjs"
   },
   "dependencies": {
