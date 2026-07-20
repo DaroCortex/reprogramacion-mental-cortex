@@ -447,3 +447,21 @@ El primer deployment habilito la migracion y el segundo dejo apply estrictamente
 
 ### Risks / Follow-Up
 La conciliacion de email y alta de contrasena sigue siendo gradual para alumnos antiguos. El enlace con token permanece disponible como respaldo transitorio.
+
+## 2026-07-20 12:22:58 -03 - Registrados los Advanced procesados de nueve alumnos F2
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Corregir alumnos F2 que ya tenian Principiante generado pero carecian de la voz Advanced aprobada para el desbloqueo posterior
+
+### Touched
+- Cloudflare R2 student records via RM admin API; slugs F2 sincronizados desde Formulario Cortex
+
+### Details
+Formulario reutilizo la voz ya limpiada de cada alumno, subio solo edited y ejecuto attach-edited-audio mas approve-edited-audio. Se conservaron las dos pistas Principiante existentes y la politica after_7_beginner_days; no se concedio acceso inmediato.
+
+### Verification
+- 9/9 registros RM tienen workflow approved, editorAudioKey presente y advancedUnlockPolicy=after_7_beginner_days. Caso control Hernan quedo 0/7, Advanced feature false y audio preparado para desbloqueo automatico al completar 7 dias.
+
+### Risks / Follow-Up
+Los objetos R2 edited fueron agregados de forma intencional. Una reversa completa requiere restaurar los registros RM y limpiar sus keys; no afecta alumnos legacy_immediate.
