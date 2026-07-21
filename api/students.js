@@ -374,6 +374,31 @@ const buildAuthenticatedStudent = (student, appSettings) => {
   };
 };
 
+const buildPublicStudentsPayload = (students, appSettings) => ({
+  students: students.map((item) => {
+    const advancedInfo = getAdvancedAccessInfo(item);
+    const hasApprovedAudio = advancedInfo.beginnerReady;
+    return {
+      name: item.name,
+      slug: item.slug,
+      audioReady: hasApprovedAudio,
+      createdAt: item.createdAt || "",
+      updatedAt: item.updatedAt || "",
+      lastAudioAccessAt: item.lastAudioAccessAt || "",
+      usage: buildSafeUsageSummary(item.usage || {}),
+      beginnerAudioProgress: advancedInfo.progress,
+      advancedUnlockPolicy: advancedInfo.unlockPolicy,
+      advancedBlockedReason: advancedInfo.blockedReason,
+      audioWorkflow: buildSafeAudioWorkflow(item),
+      features: buildStudentFeatures(item, appSettings)
+    };
+  }),
+  settings: {
+    magicUnlockScore: appSettings.magicUnlockScore,
+    channelingEnabled: Boolean(appSettings.channelingEnabled)
+  }
+});
+
 export default async function handler(req, res) {
   try {
     if (req.method === "POST") {
@@ -771,45 +796,18 @@ export default async function handler(req, res) {
       });
     }
 
-    const sessionAuth = findStudentBySession(students, req);
-    if (sessionAuth) {
-      const nextStudents = students.slice();
-      const nextStudent = touchStudentSession(sessionAuth.student, sessionAuth.tokenHash);
-      nextStudents[sessionAuth.index] = nextStudent;
-      await writeStudents(nextStudents);
-      return res.status(200).json({
-        student: buildAuthenticatedStudent(nextStudent, appSettings)
-      });
-    }
-
-    const safe = students.map((item) => {
-      const advancedInfo = getAdvancedAccessInfo(item);
-      const hasApprovedAudio = advancedInfo.beginnerReady;
-      return {
-        name: item.name,
-        slug: item.slug,
-        audioReady: hasApprovedAudio,
-        createdAt: item.createdAt || "",
-        updatedAt: item.updatedAt || "",
-        lastAudioAccessAt: item.lastAudioAccessAt || "",
-        usage: buildSafeUsageSummary(item.usage || {}),
-        beginnerAudioProgress: advancedInfo.progress,
-        advancedUnlockPolicy: advancedInfo.unlockPolicy,
-        advancedBlockedReason: advancedInfo.blockedReason,
-        audioWorkflow: buildSafeAudioWorkflow(item),
-        features: buildStudentFeatures(item, appSettings)
-      };
-    });
-    return res.status(200).json({
-      students: safe,
-      settings: {
-        magicUnlockScore: appSettings.magicUnlockScore,
-        channelingEnabled: Boolean(appSettings.channelingEnabled)
-      }
-    });
+    // Keep the public list contract stable even when the request carries a session cookie.
+    // Authenticated profile reads belong to /api/students/me.
+    return res.status(200).json(buildPublicStudentsPayload(students, appSettings));
   } catch (error) {
     return res.status(500).json({ error: "No se pudo cargar estudiantes" });
   }
 }
 
-export { buildAuthenticatedStudent, buildMobileAudio, buildStudentFeatures, hasApprovedAdvancedAudio };
+export {
+  buildAuthenticatedStudent,
+  buildMobileAudio,
+  buildPublicStudentsPayload,
+  buildStudentFeatures,
+  hasApprovedAdvancedAudio
+};

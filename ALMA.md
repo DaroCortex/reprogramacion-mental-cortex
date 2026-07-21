@@ -501,3 +501,39 @@ El deployment productivo quedo READY y el dominio sirve el bundle que contiene e
 
 ### Risks / Follow-Up
 El flujo autenticado debe usarse con un alumno real cuando operaciones haga la primera alta; el backend deduplica por email.
+
+## 2026-07-21 10:13:41 -03 - Estabilizado el contrato publico de estudiantes para iOS
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Corregir el error de Principiante de Gabriela Luna sin requerir una nueva version de la app
+
+### Touched
+- api/students.js; scripts/test-students-contract.mjs; package.json
+
+### Details
+GET /api/students sin slug/token ahora siempre devuelve {students, settings}, aunque haya cookie de sesion. El perfil autenticado sigue disponible en /api/students/me y /api/auth/me. Se agrego una prueba que valida la forma publica y que no expone email ni token.
+
+### Verification
+- npm run test:students-contract OK; npm run test:advanced-policy OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+La descarga inicial de las dos pistas Principiante sigue siendo grande en iOS; si una red lenta falla, la web queda como respaldo mientras se evalua descarga diferida en una version futura.
+
+## 2026-07-21 10:16:45 -03 - Publicado el arreglo urgente de audio Principiante para iOS
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Restaurar el acceso de Gabriela Luna al audio ya procesado y mantener disponible la web RM
+
+### Touched
+- Vercel deployment dpl_9H4KsrAVinGzqba7VQ8LydJ4LNWD; https://rm.academiacortex.com.ar; api/students.js
+
+### Details
+El dominio productivo fue promovido con el contrato publico estable. No se modificaron registros ni objetos de audio de alumnos.
+
+### Verification
+- Deployment READY y alias asignado; GET /api/students HTTP 200 con {students,settings}; Gabriela encontrada con audioReady=true; perfil autenticado por slug/token HTTP 200 con 2 pistas Principiante ready; beginner y beginner-alt HTTP 206 audio/mpeg; contraseña configurada y 3 sesiones vigentes; GET web pendiente de smoke final
+
+### Risks / Follow-Up
+Gabriela debe cerrar y reabrir la app para repetir la carga. Si la red no tolera las dos pistas grandes, puede usar rm.academiacortex.com.ar mientras se evalua descarga diferida para un build futuro.
