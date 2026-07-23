@@ -537,3 +537,21 @@ El dominio productivo fue promovido con el contrato publico estable. No se modif
 
 ### Risks / Follow-Up
 Gabriela debe cerrar y reabrir la app para repetir la carga. Si la red no tolera las dos pistas grandes, puede usar rm.academiacortex.com.ar mientras se evalua descarga diferida para un build futuro.
+
+## 2026-07-23 11:15:06 -03 - Actualizado el automatico de Advanced web a cinco ciclos
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Alinear RM web con el nuevo modo automatico de 5 vueltas sin alterar configuraciones manuales personalizadas
+
+### Touched
+- src/advancedConfig.js; src/App.jsx; scripts/test-advanced-config.mjs; package.json
+
+### Details
+El default automatico pasa de 3 a 5 ciclos. Al cargar localStorage solo se migra una configuracion que coincida exactamente con el preset automatico anterior; cualquier manual distinto conserva sus ciclos.
+
+### Verification
+- npm run test:advanced-config OK; npm run test:advanced-policy OK; npm run test:students-contract OK; npm run build OK; git diff --check OK.
+
+### Risks / Follow-Up
+Pendiente commit, push y verificacion del deployment productivo en rm.academiacortex.com.ar.

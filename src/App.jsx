@@ -2,23 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 import Admin2Dashboard from "./Admin2Dashboard";
 import { useSolutgenSupportWidget } from "./SolutgenSupportWidget";
-
-const DEFAULT_CONFIG = {
-  breathsPerCycle: 30,
-  inhaleSeconds: 2,
-  exhaleSeconds: 2,
-  recoverySeconds: 15,
-  cycles: 3,
-  breathStyle: "activation",
-  audioVolume: 0.8,
-  breathCueVolume: 1,
-  bosqueVolume: 0.5,
-  ambientSound: "bosque",
-  septasyncTrack: "none",
-  septasyncVolume: 0.5,
-  reverbMix: 0.12,
-  reverbMode: "soft"
-};
+import {
+  DEFAULT_ADVANCED_CONFIG as DEFAULT_CONFIG,
+  migrateSavedAdvancedConfig
+} from "./advancedConfig";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -1762,7 +1749,7 @@ export default function App() {
     const savedConfig = localStorage.getItem(`rmcortex_config_${slug}`);
     if (savedConfig) {
       try {
-        const parsed = JSON.parse(savedConfig);
+        const parsed = migrateSavedAdvancedConfig(JSON.parse(savedConfig));
         setConfig((prev) => ({
           ...prev,
           ...parsed,
