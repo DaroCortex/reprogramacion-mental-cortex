@@ -555,3 +555,21 @@ El default automatico pasa de 3 a 5 ciclos. Al cargar localStorage solo se migra
 
 ### Risks / Follow-Up
 Pendiente commit, push y verificacion del deployment productivo en rm.academiacortex.com.ar.
+
+## 2026-07-23 11:17:37 -03 - Publicado el automatico de Advanced de cinco ciclos
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Aplicar en RM productivo el nuevo numero de vueltas automaticas solicitado
+
+### Touched
+- Vercel deployment dpl_97WaYTA8Kcmkjcv7XTbBMM52aHaT; https://rm.academiacortex.com.ar; GitHub commit 138e1ebe52bd3a927c1a217b6f2173056d32c986
+
+### Details
+El deployment fue generado automaticamente desde GitHub main y promovido a los aliases productivos.
+
+### Verification
+- Vercel READY y aliasAssigned=true; commit SHA del deployment coincide con 138e1eb; GET del HTML productivo HTTP 200; bundle /assets/index-BgDMPMGR.js HTTP 200 y contiene el preset cycles:5.
+
+### Risks / Follow-Up
+Rollback disponible promoviendo el deployment productivo anterior dpl_Cr2ptPuZVKKxfFbegzhK3C7pdcYP. Las configuraciones manuales diferentes al automatico anterior no se migran.
