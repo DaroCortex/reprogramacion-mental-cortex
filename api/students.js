@@ -5,6 +5,7 @@ import {
   hasApprovedAdvancedAudio,
   normalizeBeginnerAudioUsage
 } from "../lib/beginner-progress.js";
+import { buildAdvancedPlayback } from "../lib/advanced-playback.js";
 import { findStudentBySession, touchStudentSession } from "../lib/student-auth.js";
 
 const clampNumber = (value, min, max, fallback = 0) => {
@@ -365,6 +366,7 @@ const buildAuthenticatedStudent = (student, appSettings) => {
     createdAt: student.createdAt || "",
     updatedAt: student.updatedAt || "",
     features: buildStudentFeatures(student, appSettings),
+    advancedPlayback: buildAdvancedPlayback(student),
     audioWorkflow: buildSafeAudioWorkflow(student),
     mobileAudio: buildMobileAudio(student),
     advancedUnlockPolicy: advancedInfo.unlockPolicy,
@@ -390,7 +392,8 @@ const buildPublicStudentsPayload = (students, appSettings) => ({
       advancedUnlockPolicy: advancedInfo.unlockPolicy,
       advancedBlockedReason: advancedInfo.blockedReason,
       audioWorkflow: buildSafeAudioWorkflow(item),
-      features: buildStudentFeatures(item, appSettings)
+      features: buildStudentFeatures(item, appSettings),
+      advancedPlayback: buildAdvancedPlayback(item)
     };
   }),
   settings: {

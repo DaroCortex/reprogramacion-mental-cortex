@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:advanced-config": "node scripts/test-advanced-config.mjs",
+    "test:advanced-playback": "node scripts/test-advanced-playback.mjs",
     "test:advanced-policy": "node scripts/test-advanced-unlock-policy.mjs",
     "test:students-contract": "node scripts/test-students-contract.mjs",
     "students:generate": "node scripts/generate_students.mjs"

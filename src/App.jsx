@@ -6,6 +6,10 @@ import {
   DEFAULT_ADVANCED_CONFIG as DEFAULT_CONFIG,
   migrateSavedAdvancedConfig
 } from "./advancedConfig";
+import {
+  buildAdvancedPlayback,
+  getAdvancedVoiceTargetVolume
+} from "../lib/advanced-playback";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -1413,6 +1417,46 @@ export default function App() {
     if (!slug) return null;
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
+  const advancedPlayback = useMemo(() => buildAdvancedPlayback(student), [student]);
+  const continuousAdvancedVoice = advancedPlayback.continuousVoiceEnabled;
+  const getAdvancedVoiceVolume = useCallback(
+    (targetPhase) =>
+      getAdvancedVoiceTargetVolume({
+        playback: advancedPlayback,
+        phase: targetPhase,
+        configuredVolume: config.audioVolume
+      }),
+    [advancedPlayback, config.audioVolume]
+  );
+  const applyAdvancedVoiceVolume = useCallback(
+    (targetPhase, { smooth = true } = {}) => {
+      if (!audioRef.current) return;
+      const targetVolume = getAdvancedVoiceVolume(targetPhase);
+      const hasGraph = ensureReverbGraph();
+      if (hasGraph && masterGainRef.current) {
+        audioRef.current.volume = 1;
+        if (smooth) {
+          smoothGainTo(
+            masterGainRef.current,
+            targetVolume,
+            advancedPlayback.transitionSeconds
+          );
+        } else {
+          const now = audioContextRef.current?.currentTime || 0;
+          masterGainRef.current.gain.cancelScheduledValues(now);
+          masterGainRef.current.gain.setValueAtTime(targetVolume, now);
+        }
+        return;
+      }
+      audioRef.current.volume = targetVolume;
+    },
+    [
+      advancedPlayback.transitionSeconds,
+      ensureReverbGraph,
+      getAdvancedVoiceVolume,
+      smoothGainTo
+    ]
+  );
   const hasStudentSession = Boolean(hasRouteStudentSession && student?.slug);
 
   const uploadSlug = getRouteSlug("upload");
@@ -1786,14 +1830,19 @@ export default function App() {
 
   useEffect(() => {
     if (!audioRef.current) return;
+    const targetPhase =
+      continuousAdvancedVoice && isRunningRef.current
+        ? phaseRef.current
+        : "apnea";
+    const targetVolume = getAdvancedVoiceVolume(targetPhase);
     const hasGraph = Boolean(audioSourceNodeRef.current);
     if (hasGraph && masterGainRef.current) {
       audioRef.current.volume = 1;
-      masterGainRef.current.gain.value = Math.min(1, Math.max(0, config.audioVolume));
+      masterGainRef.current.gain.value = targetVolume;
       return;
     }
-    audioRef.current.volume = Math.min(1, Math.max(0, config.audioVolume));
-  }, [config.audioVolume]);
+    audioRef.current.volume = targetVolume;
+  }, [config.audioVolume, continuousAdvancedVoice, getAdvancedVoiceVolume]);
 
   useEffect(() => {
     const nextVolume = Math.min(1, Math.max(0, config.breathCueVolume ?? 1));
@@ -2203,6 +2252,9 @@ export default function App() {
         setSubphase("inhale");
         setCurrentBreathNumber(1);
         playBreathSound();
+        if (continuousAdvancedVoice) {
+          playAudio({ phaseName: "breathing", restart: false });
+        }
         setPhase("breathing");
         const inhaleMs = config.inhaleSeconds * 1000;
         phaseDeadlineRef.current = Date.now() + inhaleMs;
@@ -2591,6 +2643,9 @@ export default function App() {
     setSubphase("inhale");
     if (effectiveAmbientUrl) playBosque();
     if (effectiveSeptasyncUrl) playSeptasync();
+    if (continuousAdvancedVoice && (audioRef.current?.src || audioSrc)) {
+      playAudio({ phaseName: "breathing", restart: true, smooth: false });
+    }
     recordPracticeActivity();
     playBreathSound();
     const inhaleMs = config.inhaleSeconds * 1000;
@@ -2728,7 +2783,11 @@ export default function App() {
       }
     }
     setIsPaused(false);
-    if (phase === "apnea") playAudio();
+    if (continuousAdvancedVoice && ["breathing", "recovery", "apnea"].includes(phase)) {
+      playAudio({ phaseName: phase, restart: false });
+    } else if (phase === "apnea") {
+      playAudio();
+    }
     if (phase === "breathing" || phase === "recovery" || phase === "apnea") {
       playBosque();
       playSeptasync();
@@ -2790,7 +2849,10 @@ export default function App() {
     breathCueIndexRef.current = 0;
     stopBreathSound();
     const startPlayback = () => {
-      playAudio();
+      playAudio({
+        phaseName: "apnea",
+        restart: !continuousAdvancedVoice
+      });
       setTimeout(() => {
         if (!isRunningRef.current || isPausedRef.current) return;
         if (selectedAmbientUrl) playBosque();
@@ -2815,7 +2877,11 @@ export default function App() {
       lastApneaMsRef.current = apneaMs;
       setPreviousApneaSeconds(apneaSeconds);
       roundApneaByCycleRef.current[cycleIndex - 1] = apneaSeconds;
-      stopAudio();
+      if (continuousAdvancedVoice) {
+        playAudio({ phaseName: "recovery", restart: false });
+      } else {
+        stopAudio();
+      }
       if (cycleIndex < config.cycles) {
         playEndApnea();
       }
@@ -3022,13 +3088,20 @@ export default function App() {
     });
   };
 
-  const playAudio = () => {
+  const playAudio = ({
+    phaseName = "apnea",
+    restart = !continuousAdvancedVoice,
+    smooth = true
+  } = {}) => {
     if (!audioRef.current) return;
     ensureReverbGraph();
     markRealAudioPlayback(audioRef.current);
     audioRef.current.muted = false;
-    audioRef.current.currentTime = 0;
+    if (restart) {
+      audioRef.current.currentTime = 0;
+    }
     audioRef.current.loop = true;
+    applyAdvancedVoiceVolume(phaseName, { smooth });
     audioRef.current.play().catch(() => {
       // Autoplay might be blocked until user gesture
     });
