@@ -666,3 +666,21 @@ Se activó `features.advancedPlaybackProfile=continuous_voice_v1` únicamente en
 
 ### Risks / Follow-Up
 La prueba audible queda habilitada sólo para Apple Review. Rollback inmediato y de bajo impacto: cambiar `features.advancedPlaybackProfile` de apple-review a `apnea_only`. Rollback de código sin perder commits posteriores: revertir e8d08fa y desplegar; promover dpl_3GeL62t7i4TPkifWSNayzVoKa5YG sólo serviría como emergencia porque también quitaría cambios posteriores. iOS tiene el soporte local, pero requiere runtime, tests completos y una nueva build/TestFlight antes de usar este perfil en la app nativa.
+
+## 2026-07-25 12:58:18 -03 - Publiqué la sincronización de metas y el archivo de Universal Links
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Activar en producción las tareas del informe y permitir que los links /s abran la app iOS
+
+### Touched
+- GitHub commits ed0663c y 0663183; Vercel dpl_4CAeYNBgzuVxn49pt5w3DUVxx2H2; api/integrations/report-plan.js; public/.well-known/apple-app-site-association; rm.academiacortex.com.ar
+
+### Details
+Se configuró FORM_REPORT_SYNC_SECRET como variable cifrada de producción sin exponer su valor. El redeploy tomó la variable y quedó promovido. El endpoint privado conserva historial, reemplaza solamente el plan vigente y rechaza identidad o formato ambiguos.
+
+### Verification
+- Deployment READY target production y aliasAssigned=true; SHA 0663183b17dcba2edb71c61d7b1e88ae683cf487; smoke Bearer llegó a 404 Alumno no encontrado en lugar de 401; AASA HTTP 200 application/json con appID 9XAX634M7F.com.darocortex.rmcortex y /s/*.
+
+### Risks / Follow-Up
+Rollback promoviendo dpl_JDDgjpojZ3VZae7EbWJJR7DBUKzS. Universal Links requiere una nueva build iOS con el entitlement y puede estar sujeto a caché de Apple.
