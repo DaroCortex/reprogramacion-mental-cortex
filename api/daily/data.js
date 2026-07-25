@@ -1,4 +1,5 @@
 import { checkStudentAccess, listBackups, loadDaily, restoreBackup, saveDaily } from "../../lib/daily.js";
+import { mergeClientDailyPayload } from "../../lib/report-plan.js";
 import { readStudents } from "../../lib/r2.js";
 import { findStudentBySession } from "../../lib/student-auth.js";
 
@@ -75,7 +76,9 @@ export default async function handler(req, res) {
       }
       const access = await resolveStudentAccess({ req, slug, token });
       if (!access.ok) return res.status(access.status).json({ error: access.error });
-      await saveDaily(access.slug, payload);
+      const current = await loadDaily(access.slug);
+      const mergedPayload = mergeClientDailyPayload({ current, incoming: payload });
+      await saveDaily(access.slug, mergedPayload);
       return res.status(200).json({ ok: true });
     }
 

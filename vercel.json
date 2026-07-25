@@ -3,7 +3,16 @@
     { "path": "/api/admin/cleanup-audios", "schedule": "0 3 * * *" },
     { "path": "/api/cron/dario-breathing", "schedule": "0 2 * * *" }
   ],
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ]
+    }
+  ],
   "rewrites": [
+    { "source": "/.well-known/apple-app-site-association", "destination": "/.well-known/apple-app-site-association" },
     { "source": "/.well-known/assetlinks.json", "destination": "/.well-known/assetlinks.json" },
     { "source": "/privacidad", "destination": "/privacidad/index.html" },
     { "source": "/s/:slug", "destination": "/" },

@@ -573,3 +573,75 @@ El deployment fue generado automaticamente desde GitHub main y promovido a los a
 
 ### Risks / Follow-Up
 Rollback disponible promoviendo el deployment productivo anterior dpl_Cr2ptPuZVKKxfFbegzhK3C7pdcYP. Las configuraciones manuales diferentes al automatico anterior no se migran.
+
+## 2026-07-25 10:41:02 -03 - Reemplacé el Advanced defectuoso de Romina por la voz procesada con Auphonic y fundidos
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El audio Advanced de Romina tenía un golpe de micrófono en la palabra orquestando; la muestra Auphonic fue aprobada por el usuario para reemplazo
+
+### Touched
+- Cloudflare R2 student-edited/romina-saaied; registro RM romina-saaied; /Users/forax/Downloads/Romina-Saaied-Auphonic-Crossfade.mp3; /Users/forax/Documents/Claude/backups/rm-romina-audio-20260725-103805; cortex:/root/backups/rm-romina-audio-20260725-103805
+
+### Details
+Se aplicó fade-in de 1.2 s y fade-out de 3.5 s a la salida Auphonic cutter ya recortada. Se subió una clave R2 nueva, se adjuntó como editorAudioKey y se promovió como audioKey activo conservando legacy_immediate. El primer intento de promoción leyó el estado previo inmediatamente después del attach; la validación lo detectó y una segunda promoción sobre el editorAudioKey ya persistido dejó el registro consistente. Principiante 1/2 y raw no cambiaron. El audio anterior era editor-legacy/requestSource admin del 2026-07-15, sin sourceExternalId; raw y Advanced eran byte-idénticos, por lo que no provenía del pipeline Auphonic y el optimizador legacy había conservado el original.
+
+### Verification
+- API pública: status approved, Advanced habilitado, legacy_immediate y beginnerCompletedDays 5/7. GET admin de kind=edited descargó 1105397 bytes con SHA-256 46d3907869b4bbcd33c849ed06eb3e2d46c985dd19160ab71167f1514ddb3453, idéntico al candidato local. Claves de raw, beginner y beginner-alt presentes y sin cambios.
+
+### Risks / Follow-Up
+El MP3 anterior quedó respaldado localmente junto con el registro previo; rollback requiere re-subir ese MP3 porque el endpoint de reemplazo puede limpiar la clave R2 vieja. La web RM recibe el archivo nuevo al recargar; la app iOS mantiene caché temporal por URL estable y puede requerir invalidación de caché en una futura versión si Romina cambia de la web a iOS.
+
+## 2026-07-25 10:51:54 -03 - Regeneré los dos Principiante de Romina con la voz Auphonic y el pipeline vigente
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Completar el reemplazo que antes había actualizado solo Advanced y dejar los tres audios reproducibles con el procesamiento actual
+
+### Touched
+- Cloudflare R2 student-beginner/romina-saaied y student-beginner-alt/romina-saaied; registro RM romina-saaied; /Users/forax/Documents/Claude/backups/rm-romina-audio-20260725-103805; cortex:/root/backups/rm-romina-audio-20260725-103805
+
+### Details
+Se reutilizó la salida Auphonic cutter ya aprobada, sin consumir otra producción. Se mezcló la voz en Océano y Bosque durante las cinco ventanas de apnea con parámetros productivos base 0.55, voz 1.25, fade-in 2 s y fade-out 9 s, sin doble realce de voz. Se reemplazaron secuencialmente ambas claves, esperando persistencia antes de restaurar el estado approved y legacy_immediate. Se mantuvieron requestSource admin, rawSource editor-legacy y ausencia de sourceExternalId para no inventar un formulario nuevo. Identidad, credenciales, actividad y progreso no se modificaron.
+
+### Verification
+- Backups previos SHA-256 4debfa882f206bd4870c89ae272c186d27c9390092826c3fddd5e0fe6c57e6d4 y 1568281219881c04b0c26535b79fdab938beeb03f1f4352bbc775685e90e78b1. Producción: edited 1105397 bytes SHA 46d3907869b4bbcd33c849ed06eb3e2d46c985dd19160ab71167f1514ddb3453; Océano 45362826 bytes SHA 976d894bd8559873ff2ef734d298d3003e074de35505a30ad09201295e2a6704; Bosque 45362826 bytes SHA 8f0ed36a5a7838d54ef5f1fccc0085026490e0590effad16b647b60f05a46c18. Registro approved, Advanced activo, policy legacy_immediate, ambos Principiante habilitados, raw presente y 5 días completados.
+
+### Risks / Follow-Up
+La app iOS puede mantener caché temporal por URLs estables; la web recarga los objetos nuevos. Rollback: re-subir los MP3 beginner.before y beginner-alt.before desde los respaldos local/remoto y restaurar sus claves mediante los endpoints admin. Los objetos R2 anteriores fueron limpiados por el reemplazo.
+
+## 2026-07-25 12:20:46 -03 - Agregué un perfil experimental por alumno para voz Advanced continua
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Probar con un único usuario que la voz personalizada permanezca baja en respiración y recuperación y suba durante apnea, sin cambiar al resto
+
+### Touched
+- lib/advanced-playback.js; api/students.js; src/App.jsx; scripts/test-advanced-playback.mjs; scripts/test-students-contract.mjs; package.json
+
+### Details
+El contrato advancedPlayback normaliza dos perfiles: apnea_only por defecto y continuous_voice_v1. El perfil continuo usa multiplicadores fijos 0.4/0.4/1.0 y transición de 0.8 s. La web conserva la posición del audio entre fases únicamente para el perfil experimental; cualquier alumno sin flag mantiene el flujo anterior.
+
+### Verification
+- npm run test:advanced-playback OK; npm run test:students-contract OK; npm run test:advanced-config OK; npm run test:advanced-policy OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+Todavía no se desplegó ni se activó un usuario. Rollback de datos: quitar features.advancedPlaybackProfile del único usuario de prueba. Rollback de código: revertir este lote.
+
+## 2026-07-25 12:28:19 -03 - Conecté Metas Diarias con los checks reales del informe y añadí AASA
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Las tareas del alumno deben salir del plan_alumno del informe y los links /s deben abrir la app iOS
+
+### Touched
+- api/integrations/report-plan.js; lib/report-plan.js; api/daily/data.js; src/modules/daily/DailyGoalsModuleCore.jsx; public/.well-known/apple-app-site-association; vercel.json; scripts/test-report-plan.mjs
+
+### Details
+Endpoint Bearer privado, validación estricta 12/5, IDs estables, sincronización idempotente, preservación de historial y protección contra guardados obsoletos. Se eliminaron las metas ficticias.
+
+### Verification
+- npm run test:report-plan OK; test:advanced-playback OK; test:students-contract OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+Pendiente configurar el secreto compartido, desplegar y ejecutar el backfill desde Formulario. Rollback mediante deployment previo de Vercel.

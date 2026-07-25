@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "9XAX634M7F.com.darocortex.rmcortex"
+        ],
+        "components": [
+          {
+            "/": "/s/*",
+            "comment": "Open Academia Cortex student links in the iOS app"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -389,14 +389,8 @@ function DailyGoalsModule({
       return [{
         id: fixedId,
         name: fixedName,
-        coachNotes: "Plan personal diario",
-        templates: [
-          { id: `${fixedId}-resp`, text: "Respiracion de reprogramacion mental", category: "Salud", critical: true, points: 12 },
-          { id: `${fixedId}-kpi`, text: "Revision de KPIs", category: "Sistema", critical: true, points: 10 },
-          { id: `${fixedId}-foco`, text: "Tarea principal completada", category: "Sistema", critical: true, points: 10 },
-          { id: `${fixedId}-familia`, text: "Momento de presencia personal/familiar", category: "Familia", critical: false, points: 8 },
-          { id: `${fixedId}-registro`, text: "Registro breve emocional", category: "Salud", critical: false, points: 8 }
-        ]
+        coachNotes: "Tu plan aparecera cuando este listo el informe de tu reunion.",
+        templates: []
       }];
     }
     const raw = localStorage.getItem(studentsKey);
@@ -504,7 +498,7 @@ function DailyGoalsModule({
                     ...item,
                     name: payload.studentName || item.name,
                     coachNotes: payload.coachNotes || item.coachNotes,
-                    templates: Array.isArray(payload.templates) && payload.templates.length
+                    templates: Array.isArray(payload.templates)
                       ? payload.templates
                       : item.templates
                   }
@@ -1051,6 +1045,11 @@ function DailyGoalsModule({
                 <span>{formatDate(yesterdayKey)}</span>
               </header>
               <p className="hint">Tocas un cuadro y se pinta. El texto del check siempre esta visible.</p>
+              {yesterdayDay.items.length === 0 && (
+                <p className="hint">
+                  Tu checklist aparecera cuando este listo el informe de tu reunion.
+                </p>
+              )}
               <ul className="check-list">
                 {yesterdayDay.items.map((item) => (
                   <li
@@ -1124,6 +1123,11 @@ function DailyGoalsModule({
                 <span>{formatDate(focusDate)}</span>
               </header>
               <p className="hint">Hoy puedes cargar hasta {DAILY_ACTION_LIMIT} acciones.</p>
+              {todayDay.items.length === 0 && (
+                <p className="hint">
+                  Todavia no hay tareas asignadas desde tu informe.
+                </p>
+              )}
               <div className="test-actions two">
                 <button type="button" onClick={addCustomTodayItem}>
                   Agregar ayuda de hoy
