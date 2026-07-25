@@ -4897,6 +4897,30 @@ export default function App() {
     };
   };
 
+  const handleUpdateStudentIdentity = async ({ slug, email, sourceExternalId }) => {
+    const cleanSlug = String(slug || "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanSourceExternalId = String(sourceExternalId || "").trim();
+    if (!adminPassword) throw new Error("Ingresá nuevamente como administrador.");
+    if (!cleanSlug) throw new Error("No se encontró el alumno.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      throw new Error("Ingresá un email válido.");
+    }
+    if (cleanSourceExternalId && !/^[a-fA-F0-9]{24}$/.test(cleanSourceExternalId)) {
+      throw new Error("El ID del formulario debe tener 24 caracteres hexadecimales.");
+    }
+
+    await updateStudentWorkflow({
+      slug: cleanSlug,
+      action: "update-profile",
+      email: cleanEmail,
+      sourceExternalId: cleanSourceExternalId,
+      sourceSystem: cleanSourceExternalId ? "formulario-cortex" : ""
+    });
+    await ensureAdminList(adminPassword, { silent: true });
+    setAdminMessage("Identidad actualizada. El alumno ya puede usar este email como usuario.");
+  };
+
   const handleAdminCreateSpecialRequest = async () => {
     if (!adminPassword || !adminName.trim()) {
       setAdminMessage("Completa nombre para el pedido especial.");
@@ -5726,6 +5750,7 @@ export default function App() {
           onCopyLink={copyStudentAccess}
           onRequestAudio={(item) => handleRequestStudentAudio(item.slug)}
           onReplaceAudio={(item) => handleReplaceClick(item.slug)}
+          onUpdateIdentity={handleUpdateStudentIdentity}
           onToggleStudentStatus={(item) => handleToggleStudentStatus(
             item.slug,
             item.status === "inactive" ? "active" : "inactive"

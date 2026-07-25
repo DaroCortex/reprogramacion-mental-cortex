@@ -1,7 +1,7 @@
 import { deleteObject, getObjectBuffer, readStudents, writeStudents, uploadObject } from "../../lib/r2.js";
 import { verifyAdminPassword, verifyEditorPassword } from "../../lib/auth.js";
 import { buildAudioKey, optimizeAudioBuffer } from "../../lib/audio-optimizer.js";
-import { normalizeEmail } from "../../lib/student-auth.js";
+import { isValidEmail, normalizeEmail } from "../../lib/student-auth.js";
 import {
   ADVANCED_UNLOCK_POLICIES,
   getAdvancedUnlockPolicy
@@ -176,6 +176,32 @@ export default async function handler(req, res) {
     const safeEmail = normalizeEmail(email);
     const safeSourceExternalId = String(sourceExternalId || "").trim();
     const safeSourceSystem = String(sourceSystem || (safeSourceExternalId ? "formulario-cortex" : "")).trim();
+    if (action === "update-profile") {
+      if (!isValidEmail(safeEmail)) {
+        return res.status(400).json({ error: "Email invalido" });
+      }
+      if (safeSourceExternalId && !/^[a-fA-F0-9]{24}$/.test(safeSourceExternalId)) {
+        return res.status(400).json({ error: "ID de formulario invalido" });
+      }
+      const emailOwner = students.find(
+        (item) => item.slug !== slug && normalizeEmail(item.email) === safeEmail
+      );
+      if (emailOwner) {
+        return res.status(409).json({ error: "El email ya pertenece a otro alumno" });
+      }
+      if (safeSourceExternalId) {
+        const sourceOwner = students.find((item) => {
+          if (item.slug === slug) return false;
+          const source = item.source || item.externalSource || {};
+          const externalId = String(source.externalId || source.sourceExternalId || "").trim();
+          const system = String(source.system || source.sourceSystem || "").trim();
+          return externalId === safeSourceExternalId && system === safeSourceSystem;
+        });
+        if (sourceOwner) {
+          return res.status(409).json({ error: "El formulario ya pertenece a otro alumno" });
+        }
+      }
+    }
 
     const next = students.map((item) => {
       if (item.slug !== slug) return item;
@@ -385,7 +411,12 @@ export default async function handler(req, res) {
         status: nextStatus,
         inactive: nextStatus === "inactive",
         updatedAt: nowIso,
-        lastAudioAccessAt: activeAudioKey ? item.lastAudioAccessAt || nowIso : item.lastAudioAccessAt || ""
+        lastAudioAccessAt:
+          action === "update-profile"
+            ? item.lastAudioAccessAt || ""
+            : activeAudioKey
+              ? item.lastAudioAccessAt || nowIso
+              : item.lastAudioAccessAt || ""
       };
     });
 

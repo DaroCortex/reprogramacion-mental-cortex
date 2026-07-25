@@ -422,12 +422,82 @@
   line-height: 1.55;
 }
 
-.admin2-create-form > label:not(.admin2-checkbox-row) {
+.admin2-create-form > label:not(.admin2-checkbox-row),
+.admin2-advanced-fields label {
   display: grid;
   gap: 7px;
   color: var(--ink);
   font-size: 12px;
   font-weight: 700;
+}
+
+.admin2-create-form > label small,
+.admin2-advanced-fields label small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.admin2-optional-label {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin2-advanced-fields {
+  padding: 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 32%, var(--card) 68%);
+}
+
+.admin2-advanced-fields summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin2-advanced-fields[open] summary {
+  margin-bottom: 13px;
+}
+
+.admin2-identity-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  padding: 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.admin2-identity-summary span {
+  grid-row: span 2;
+  align-self: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin2-identity-summary strong,
+.admin2-identity-summary small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin2-identity-summary small {
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .admin2-create-form input[type="text"],

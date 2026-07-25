@@ -14,6 +14,7 @@ import {
   Link2,
   Menu,
   Moon,
+  Pencil,
   RefreshCw,
   Search,
   Settings,
@@ -273,12 +274,144 @@ function NewStudentModal({ onClose, onCreate, onOpenStudent }) {
   );
 }
 
+function EditIdentityModal({ student, onClose, onSave }) {
+  const source = student?.source || student?.externalSource || {};
+  const [email, setEmail] = useState(student?.email || "");
+  const [sourceExternalId, setSourceExternalId] = useState(
+    source.externalId || source.sourceExternalId || ""
+  );
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape" && status !== "loading") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose, status]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setStatus("loading");
+    setError("");
+    try {
+      await onSave({
+        slug: student.slug,
+        email,
+        sourceExternalId
+      });
+      setStatus("success");
+      onClose();
+    } catch (saveError) {
+      setStatus("error");
+      setError(saveError?.message || "No se pudo actualizar la identidad.");
+    }
+  };
+
+  return (
+    <div className="admin2-modal-layer">
+      <button
+        type="button"
+        className="admin2-modal-backdrop"
+        aria-label="Cerrar edición de identidad"
+        onClick={status === "loading" ? undefined : onClose}
+      />
+      <section
+        className="admin2-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin2-edit-identity-title"
+      >
+        <header className="admin2-modal-header">
+          <div>
+            <span className="admin2-eyebrow">Acceso del alumno</span>
+            <h2 id="admin2-edit-identity-title">Editar identidad</h2>
+          </div>
+          <button
+            type="button"
+            className="admin2-icon-button"
+            aria-label="Cerrar edición de identidad"
+            onClick={onClose}
+            disabled={status === "loading"}
+          >
+            <X size={20} />
+          </button>
+        </header>
+
+        <form className="admin2-create-form" onSubmit={submit}>
+          <div className="admin2-identity-summary">
+            <span>Alumno</span>
+            <strong>{student.name}</strong>
+            <small>Slug: {student.slug}</small>
+          </div>
+          <label>
+            Email de acceso
+            <input
+              autoFocus
+              required
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="alumno@email.com"
+              autoComplete="off"
+            />
+            <small>Será el usuario para ingresar a RM y no puede estar asignado a otro alumno.</small>
+          </label>
+          <details className="admin2-advanced-fields">
+            <summary>
+              Vínculo con Formularios <span className="admin2-optional-label">Opcional</span>
+            </summary>
+            <label>
+              ID del formulario vinculado
+              <input
+                type="text"
+                value={sourceExternalId}
+                onChange={(event) => setSourceExternalId(event.target.value)}
+                placeholder="ID de 24 caracteres"
+                pattern="[a-fA-F0-9]{24}"
+                maxLength={24}
+                autoComplete="off"
+              />
+              <small>Modificalo solamente para corregir el vínculo con una submission confirmada.</small>
+            </label>
+          </details>
+          {error && <p className="admin2-form-error" role="alert">{error}</p>}
+          <div className="admin2-modal-actions">
+            <button
+              type="button"
+              className="admin2-button secondary"
+              onClick={onClose}
+              disabled={status === "loading"}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="admin2-button primary"
+              disabled={status === "loading" || !email.trim()}
+            >
+              <Pencil size={17} /> {status === "loading" ? "Guardando..." : "Guardar identidad"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function StudentDrawer({
   student,
   onClose,
   onCopyLink,
   onRequestAudio,
   onReplaceAudio,
+  onEditIdentity,
   onToggleStudentStatus,
   onToggleColor,
   canRequestAudio,
@@ -375,6 +508,7 @@ function StudentDrawer({
             <h3>Audio y acceso</h3>
           </div>
           <dl className="admin2-detail-list">
+            <div><dt>Email</dt><dd>{student.email || "Sin email"}</dd></div>
             <div><dt>Grabación</dt><dd>{hasRecordedAudio(student) ? "Recibida" : "Falta grabar"}</dd></div>
             <div><dt>Principiante</dt><dd>{hasBeginnerAudio(student) ? "Listo" : "Pendiente"}</dd></div>
             <div><dt>Advanced</dt><dd>{advancedInfo.unlocked ? "Habilitado" : advancedInfo.advancedAudioReady ? `Listo · faltan ${advancedInfo.remainingDays} días` : "Pendiente"}</dd></div>
@@ -403,6 +537,9 @@ function StudentDrawer({
         </section>
 
         <section className="admin2-drawer-actions" aria-label="Acciones del alumno">
+          <button type="button" className="admin2-button secondary" onClick={() => onEditIdentity(student)}>
+            <Pencil size={17} /> Editar identidad
+          </button>
           <button type="button" className="admin2-button primary" onClick={() => onCopyLink(student)}>
             <Copy size={17} /> {accessActionLabel}
           </button>
@@ -441,6 +578,7 @@ export default function Admin2Dashboard({
   onCopyLink,
   onRequestAudio,
   onReplaceAudio,
+  onUpdateIdentity,
   onToggleStudentStatus,
   onToggleColor,
   canRequestAudio,
@@ -457,6 +595,7 @@ export default function Admin2Dashboard({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [selectedSlug, setSelectedSlug] = useState("");
+  const [editingSlug, setEditingSlug] = useState("");
   const [newStudentOpen, setNewStudentOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(30);
 
@@ -473,6 +612,10 @@ export default function Admin2Dashboard({
   const selectedStudent = useMemo(
     () => allRows.find((student) => student.slug === selectedSlug) || null,
     [allRows, selectedSlug]
+  );
+  const editingStudent = useMemo(
+    () => allRows.find((student) => student.slug === editingSlug) || null,
+    [allRows, editingSlug]
   );
 
   const filteredRows = useMemo(() => {
@@ -748,6 +891,7 @@ export default function Admin2Dashboard({
         onCopyLink={onCopyLink}
         onRequestAudio={onRequestAudio}
         onReplaceAudio={onReplaceAudio}
+        onEditIdentity={(item) => setEditingSlug(item.slug)}
         onToggleStudentStatus={onToggleStudentStatus}
         onToggleColor={onToggleColor}
         canRequestAudio={canRequestAudio}
@@ -755,6 +899,13 @@ export default function Admin2Dashboard({
         formatDuration={formatDuration}
         getAdvancedInfo={getAdvancedInfo}
       />
+      {editingStudent && (
+        <EditIdentityModal
+          student={editingStudent}
+          onClose={() => setEditingSlug("")}
+          onSave={onUpdateIdentity}
+        />
+      )}
       {newStudentOpen && (
         <NewStudentModal
           onClose={() => setNewStudentOpen(false)}
