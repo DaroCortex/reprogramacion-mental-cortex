@@ -645,3 +645,24 @@ Endpoint Bearer privado, validación estricta 12/5, IDs estables, sincronizació
 
 ### Risks / Follow-Up
 Pendiente configurar el secreto compartido, desplegar y ejecutar el backfill desde Formulario. Rollback mediante deployment previo de Vercel.
+
+## 2026-07-25 12:37:00 -03 - Desplegué y validé la voz Advanced continua sólo en Apple Review
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Validar en producción el comportamiento de voz personalizada continua con una cuenta técnica antes de considerar cualquier ampliación
+
+### Touched
+- GitHub commit e8d08fa427b34d375aae68c357f19c2d3d9e8031; Vercel deployment dpl_GJtnjX97i6rkCPtWjT41KZFRsFFp; deployment productivo vigente dpl_4CAeYNBgzuVxn49pt5w3DUVxx2H2; registro apple-review
+
+### Details
+Se activó `features.advancedPlaybackProfile=continuous_voice_v1` únicamente en `apple-review`. La cuenta reproduce la voz al 40 por ciento durante respiración y recuperación y al 100 por ciento durante apnea, conserva la posición entre fases y aplica rampas de 0.8 segundos. No se cambiaron audios, progreso ni habilitaciones. `test-2` se usó como control y permaneció en `apnea_only`.
+
+### Verification
+- El deployment de la funcionalidad quedó READY y correspondió al SHA e8d08fa. El deployment productivo posterior 0663183, que incluye ese commit como ancestro, quedó READY y con alias rm.academiacortex.com.ar. El bundle productivo `/assets/index-C2CUegVu.js` contiene `continuous_voice_v1`.
+- Contrato autenticado de apple-review: Advanced edited ready, perfil continuo activo, multiplicadores 0.4/1.0/0.4 y transición 0.8 s.
+- API pública después de la activación: exactamente un perfil continuo (`apple-review`); `test-2` y el resto permanecen en `apnea_only`.
+- Playwright con la cuenta técnica y una configuración temporal de un ciclo: la voz inició en 0.32, llegó a apnea en posición 2.11 s sin reinicio, subió a 0.8 en 0.8 s, llegó a recuperación en posición 66.77 s sin reinicio y bajó a 0.32 en 0.8 s. La configuración local de QA se restauró a 30 respiraciones, 5 ciclos y Bosque.
+
+### Risks / Follow-Up
+La prueba audible queda habilitada sólo para Apple Review. Rollback inmediato y de bajo impacto: cambiar `features.advancedPlaybackProfile` de apple-review a `apnea_only`. Rollback de código sin perder commits posteriores: revertir e8d08fa y desplegar; promover dpl_3GeL62t7i4TPkifWSNayzVoKa5YG sólo serviría como emergencia porque también quitaría cambios posteriores. iOS tiene el soporte local, pero requiere runtime, tests completos y una nueva build/TestFlight antes de usar este perfil en la app nativa.
