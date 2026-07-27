@@ -8,6 +8,7 @@ import {
   verifyPassword
 } from "../../lib/student-auth.js";
 import { verifyStudentSupportPassword } from "../../lib/student-support-credential.js";
+import { hydrateBeginnerTelemetry } from "../../lib/beginner-telemetry.js";
 import { buildAuthenticatedStudent } from "../students.js";
 
 const genericUnauthorized = (res) => res.status(401).json({ error: "Email o contraseña incorrectos" });
@@ -26,7 +27,7 @@ export default async function handler(req, res) {
     const index = students.findIndex((student) => normalizeEmail(student.email) === email);
     if (index < 0) return genericUnauthorized(res);
 
-    const current = students[index];
+    const current = await hydrateBeginnerTelemetry(students[index]);
     const primaryPasswordOk = await verifyPassword(password, getPasswordHash(current));
     const supportPasswordOk =
       !primaryPasswordOk &&

@@ -96,6 +96,93 @@ const afterOne25MinutePractice = applyBeginnerAudioEvent(
 );
 assert.equal(getAdvancedAccessInfo(afterOne25MinutePractice).completedDays, 1);
 
+const sessionBase = makeStudent({
+  policy: ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS,
+  days: 0
+});
+const afterFirstCheckpoint = applyBeginnerAudioEvent(
+  sessionBase,
+  {
+    ...eventAt25Minutes,
+    eventType: "checkpoint",
+    eventAt: "2026-07-27T11:10:00.000Z",
+    currentTimeSeconds: 600,
+    playedSeconds: 600,
+    sessionId: "ios-test-session",
+    eventId: "ios-test-session:1",
+    sequence: 1
+  },
+  "2026-07-27T11:10:01.000Z"
+);
+const afterSecondCheckpoint = applyBeginnerAudioEvent(
+  afterFirstCheckpoint,
+  {
+    ...eventAt25Minutes,
+    eventType: "checkpoint",
+    eventAt: "2026-07-27T11:20:00.000Z",
+    currentTimeSeconds: 1200,
+    playedSeconds: 1200,
+    sessionId: "ios-test-session",
+    eventId: "ios-test-session:2",
+    sequence: 2
+  },
+  "2026-07-27T11:20:01.000Z"
+);
+assert.equal(afterSecondCheckpoint.usage.beginnerAudioUsage.sessions.length, 1);
+assert.equal(afterSecondCheckpoint.usage.beginnerAudioUsage.sessions[0].playedSeconds, 1200);
+assert.equal(
+  afterSecondCheckpoint.usage.beginnerAudioUsage.events.filter((event) => event.eventType === "checkpoint").length,
+  1
+);
+
+const afterDuplicateCheckpoint = applyBeginnerAudioEvent(
+  afterSecondCheckpoint,
+  {
+    ...eventAt25Minutes,
+    eventType: "checkpoint",
+    eventAt: "2026-07-27T11:20:02.000Z",
+    currentTimeSeconds: 10,
+    playedSeconds: 10,
+    sessionId: "ios-test-session",
+    eventId: "ios-test-session:2",
+    sequence: 2
+  },
+  "2026-07-27T11:20:03.000Z"
+);
+assert.deepEqual(afterDuplicateCheckpoint, afterSecondCheckpoint);
+
+const afterCompletedCheckpoint = applyBeginnerAudioEvent(
+  afterSecondCheckpoint,
+  {
+    ...eventAt25Minutes,
+    eventType: "checkpoint",
+    eventAt: "2026-07-27T11:25:00.000Z",
+    sessionId: "ios-test-session",
+    eventId: "ios-test-session:3",
+    sequence: 3
+  },
+  "2026-07-27T11:25:01.000Z"
+);
+const afterCompletedPause = applyBeginnerAudioEvent(
+  afterCompletedCheckpoint,
+  {
+    ...eventAt25Minutes,
+    eventType: "paused",
+    eventAt: "2026-07-27T11:25:02.000Z",
+    sessionId: "ios-test-session",
+    eventId: "ios-test-session:4",
+    sequence: 4
+  },
+  "2026-07-27T11:25:03.000Z"
+);
+assert.equal(afterCompletedPause.usage.beginnerAudioUsage.completedDays, 1);
+assert.equal(afterCompletedPause.usage.beginnerAudioUsage.completedByDay["2026-07-27"].count, 1);
+assert.equal(afterCompletedPause.usage.beginnerAudioUsage.sessions[0].completed, true);
+assert.equal(
+  afterCompletedPause.usage.beginnerAudioUsage.events.some((event) => event.eventType === "checkpoint"),
+  false
+);
+
 const shortLegacyTrackCompleted = normalizeBeginnerAudioEvent({
   ...eventAt25Minutes,
   eventType: "completed",

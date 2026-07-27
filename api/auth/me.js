@@ -1,4 +1,5 @@
 import { readAppSettings, readStudents, writeStudents } from "../../lib/r2.js";
+import { hydrateBeginnerTelemetry } from "../../lib/beginner-telemetry.js";
 import { findStudentBySession, touchStudentSession } from "../../lib/student-auth.js";
 import { buildAuthenticatedStudent } from "../students.js";
 
@@ -15,7 +16,8 @@ export default async function handler(req, res) {
     }
 
     const nextStudents = students.slice();
-    const nextStudent = touchStudentSession(sessionAuth.student, sessionAuth.tokenHash);
+    const hydratedStudent = await hydrateBeginnerTelemetry(sessionAuth.student);
+    const nextStudent = touchStudentSession(hydratedStudent, sessionAuth.tokenHash);
     nextStudents[sessionAuth.index] = nextStudent;
     await writeStudents(nextStudents);
     return res.status(200).json({

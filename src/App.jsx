@@ -2476,13 +2476,15 @@ export default function App() {
           state.durationSeconds >= BEGINNER_COMPLETION_SECONDS &&
           listenedSeconds >= BEGINNER_COMPLETION_SECONDS);
       const reportedAt = new Date().toISOString();
+      state.sequence = Number(state.sequence || 0) + 1;
+      const eventId = `${state.sessionId}:${state.sequence}`;
       const eventType = completed
         ? "completed"
         : status === "partial"
           ? "paused"
           : status === "started"
             ? "started"
-            : "resumed";
+            : "checkpoint";
       const payload = {
         slug: student.slug,
         token,
@@ -2499,7 +2501,10 @@ export default function App() {
           completionPercent: state.durationSeconds > 0 ? listenedSeconds / state.durationSeconds : 0,
           completed,
           seeked: Boolean(state.seeked),
-          source: "web"
+          source: "web",
+          sessionId: state.sessionId,
+          eventId,
+          sequence: state.sequence
         }
       };
 
@@ -2568,6 +2573,7 @@ export default function App() {
         maxPositionSeconds: 0,
         durationSeconds: 0,
         lastReportAt: 0,
+        sequence: 0,
         completed: false,
         seeked: false
       };
@@ -2590,7 +2596,7 @@ export default function App() {
       Number.isFinite(audioEl.duration) ? audioEl.duration : 0
     );
     const now = Date.now();
-    if (state.maxPositionSeconds >= 30 && now - Number(state.lastReportAt || 0) > 30000) {
+    if (state.maxPositionSeconds >= 15 && now - Number(state.lastReportAt || 0) > 15000) {
       sendBeginnerAudioPlayback("progress", { audioId });
     }
   };

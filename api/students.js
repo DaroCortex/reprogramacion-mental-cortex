@@ -7,6 +7,10 @@ import {
   normalizeBeginnerAudioUsage
 } from "../lib/beginner-progress.js";
 import { buildAdvancedPlayback } from "../lib/advanced-playback.js";
+import {
+  hydrateBeginnerTelemetry,
+  writeBeginnerTelemetry
+} from "../lib/beginner-telemetry.js";
 import { findStudentBySession, touchStudentSession } from "../lib/student-auth.js";
 
 const clampNumber = (value, min, max, fallback = 0) => {
@@ -443,6 +447,7 @@ export default async function handler(req, res) {
         index = sessionAuth.index;
         student = touchStudentSession(sessionAuth.student, sessionAuth.tokenHash);
       }
+      student = await hydrateBeginnerTelemetry(student);
 
       if (action === "submitRawAudio") {
         const safeAudioKey = String(rawAudioKey || "").trim();
@@ -512,6 +517,7 @@ export default async function handler(req, res) {
         const nextStudents = students.slice();
         const nextStudent = applyBeginnerAudioEvent(student, eventPayload, nowIso);
         nextStudents[index] = nextStudent;
+        await writeBeginnerTelemetry(nextStudent);
         await writeStudents(nextStudents);
         const advancedInfo = getAdvancedAccessInfo(nextStudent);
         return res.status(200).json({
@@ -646,6 +652,7 @@ export default async function handler(req, res) {
         );
         const nextStudents = students.slice();
         nextStudents[index] = nextStudent;
+        await writeBeginnerTelemetry(nextStudent);
         await writeStudents(nextStudents);
         return res.status(200).json({
           ok: true,
@@ -796,7 +803,8 @@ export default async function handler(req, res) {
       if (!requestedSlug || !requestedToken) {
         return res.status(400).json({ error: "Datos incompletos" });
       }
-      const student = students.find((item) => item.slug === requestedSlug);
+      const storedStudent = students.find((item) => item.slug === requestedSlug);
+      const student = await hydrateBeginnerTelemetry(storedStudent);
       if (!student) {
         return res.status(404).json({ error: "Estudiante no encontrado" });
       }

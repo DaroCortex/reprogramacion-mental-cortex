@@ -6,6 +6,7 @@ import {
   hashPassword,
   setSessionCookie
 } from "../../lib/student-auth.js";
+import { hydrateBeginnerTelemetry } from "../../lib/beginner-telemetry.js";
 import { buildAuthenticatedStudent } from "../students.js";
 
 export default async function handler(req, res) {
@@ -37,8 +38,9 @@ export default async function handler(req, res) {
       passwordResetTokenHash: "",
       passwordResetExpiresAt: ""
     };
+    const hydratedStudent = await hydrateBeginnerTelemetry(match.student);
     const withPassword = {
-      ...match.student,
+      ...hydratedStudent,
       auth: nextAuth,
       passwordHash: "",
       updatedAt: nowIso

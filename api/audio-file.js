@@ -3,6 +3,7 @@ import { getBucket, getS3Client, readStudents, signGetUrl, writeStudents } from 
 import { verifyAdminPassword, verifyEditorPassword } from "../lib/auth.js";
 import { findStudentBySession } from "../lib/student-auth.js";
 import { getAdvancedAccessInfo, hasApprovedAdvancedAudio } from "../lib/beginner-progress.js";
+import { hydrateBeginnerTelemetry } from "../lib/beginner-telemetry.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala", "oceano", "balance", "gamma", "trance"]);
 
@@ -30,7 +31,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Slug requerido" });
     }
 
-    const student = students.find((item) => item.slug === slug);
+    const storedStudent = students.find((item) => item.slug === slug);
+    const student = await hydrateBeginnerTelemetry(storedStudent);
     const workflow = student?.audioWorkflow || {};
     const advancedInfo = student ? getAdvancedAccessInfo(student) : null;
     let selectedKey = student?.audioKey || "";
