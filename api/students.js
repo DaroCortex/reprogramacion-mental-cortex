@@ -1,6 +1,7 @@
 import { readAppSettings, readStudents, writeStudents } from "../lib/r2.js";
 import {
   applyBeginnerAudioEvent,
+  BEGINNER_COMPLETION_SECONDS,
   getAdvancedAccessInfo,
   hasApprovedAdvancedAudio,
   normalizeBeginnerAudioUsage
@@ -192,7 +193,15 @@ const normalizeBeginnerAudioSession = (session = {}) => {
   const startedAt = Number.isNaN(startedAtDate.getTime())
     ? reportedAt
     : startedAtDate.toISOString();
-  const completed = Boolean(session.completed || status === "complete" || percent >= 96);
+  const completed = Boolean(
+    session.completed ||
+      status === "complete" ||
+      percent >= 96 ||
+      (
+        durationSeconds >= BEGINNER_COMPLETION_SECONDS &&
+        listenedSeconds >= BEGINNER_COMPLETION_SECONDS
+      )
+  );
 
   return {
     id: String(session.id || `${startedAt}-${Math.random().toString(36).slice(2, 8)}`).slice(0, 100),

@@ -12,6 +12,7 @@
     "test:advanced-policy": "node scripts/test-advanced-unlock-policy.mjs",
     "test:students-contract": "node scripts/test-students-contract.mjs",
     "test:report-plan": "node scripts/test-report-plan.mjs",
+    "backfill:beginner-25m": "node scripts/backfill-beginner-25m.mjs",
     "students:generate": "node scripts/generate_students.mjs"
   },
   "dependencies": {

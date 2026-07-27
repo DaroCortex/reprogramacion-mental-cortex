@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import {
   ADVANCED_UNLOCK_POLICIES,
+  applyBeginnerAudioEvent,
+  BEGINNER_COMPLETION_SECONDS,
   getAdvancedAccessInfo,
-  hasApprovedAdvancedAudio
+  hasApprovedAdvancedAudio,
+  normalizeBeginnerAudioEvent
 } from "../lib/beginner-progress.js";
 import { buildMobileAudio } from "../api/students.js";
 import { buildReport, classifyStudent } from "../api/admin/migrate-advanced-access.js";
@@ -54,6 +57,54 @@ assert.equal(buildMobileAudio(legacyRecordedNotEnabled).advanced.status, "locked
 const afterSevenDays = makeStudent({ policy: ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS, days: 7 });
 assert.equal(getAdvancedAccessInfo(afterSevenDays).unlocked, true);
 assert.equal(buildMobileAudio(afterSevenDays).advanced.ready, true);
+
+const eventAt25Minutes = {
+  eventType: "paused",
+  eventAt: "2026-07-27T12:00:00.000Z",
+  dayKey: "2026-07-27",
+  kind: "beginner",
+  durationSeconds: 1890,
+  currentTimeSeconds: BEGINNER_COMPLETION_SECONDS,
+  playedSeconds: BEGINNER_COMPLETION_SECONDS,
+  completionPercent: BEGINNER_COMPLETION_SECONDS / 1890,
+  seeked: false,
+  source: "ios"
+};
+assert.equal(normalizeBeginnerAudioEvent(eventAt25Minutes).completed, true);
+assert.equal(
+  normalizeBeginnerAudioEvent({
+    ...eventAt25Minutes,
+    currentTimeSeconds: BEGINNER_COMPLETION_SECONDS - 1,
+    playedSeconds: BEGINNER_COMPLETION_SECONDS - 1
+  }).completed,
+  false
+);
+assert.equal(normalizeBeginnerAudioEvent({ ...eventAt25Minutes, seeked: true }).completed, false);
+assert.equal(
+  normalizeBeginnerAudioEvent({
+    ...eventAt25Minutes,
+    currentTimeSeconds: BEGINNER_COMPLETION_SECONDS,
+    playedSeconds: 120
+  }).completed,
+  false
+);
+
+const afterOne25MinutePractice = applyBeginnerAudioEvent(
+  makeStudent({ policy: ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS, days: 0 }),
+  eventAt25Minutes,
+  "2026-07-27T12:00:01.000Z"
+);
+assert.equal(getAdvancedAccessInfo(afterOne25MinutePractice).completedDays, 1);
+
+const shortLegacyTrackCompleted = normalizeBeginnerAudioEvent({
+  ...eventAt25Minutes,
+  eventType: "completed",
+  durationSeconds: 300,
+  currentTimeSeconds: 300,
+  playedSeconds: 300,
+  completionPercent: 1
+});
+assert.equal(shortLegacyTrackCompleted.completed, true);
 
 const missingRecording = makeStudent({ advancedEnabled: false, recording: false, advanced: false });
 assert.equal(classifyStudent(missingRecording).reason, "missing-recording");

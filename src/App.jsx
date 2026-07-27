@@ -10,6 +10,7 @@ import {
   buildAdvancedPlayback,
   getAdvancedVoiceTargetVolume
 } from "../lib/advanced-playback";
+import { BEGINNER_COMPLETION_SECONDS } from "../lib/beginner-progress";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -2468,7 +2469,12 @@ export default function App() {
       const percent = clampPercent(
         state.durationSeconds > 0 ? (listenedSeconds / state.durationSeconds) * 100 : 0
       );
-      const completed = status === "complete" || options.completed || percent >= 96;
+      const completed =
+        status === "complete" ||
+        options.completed ||
+        (!state.seeked &&
+          state.durationSeconds >= BEGINNER_COMPLETION_SECONDS &&
+          listenedSeconds >= BEGINNER_COMPLETION_SECONDS);
       const reportedAt = new Date().toISOString();
       const eventType = completed
         ? "completed"
