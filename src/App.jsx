@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 import Admin2Dashboard from "./Admin2Dashboard";
 import { useSolutgenSupportWidget } from "./SolutgenSupportWidget";
@@ -10,7 +11,10 @@ import {
   buildAdvancedPlayback,
   getAdvancedVoiceTargetVolume
 } from "../lib/advanced-playback";
-import { BEGINNER_COMPLETION_SECONDS } from "../lib/beginner-progress";
+import {
+  BEGINNER_COMPLETION_SECONDS,
+  mergeBeginnerProgressMonotonic
+} from "../lib/beginner-progress";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -1007,6 +1011,8 @@ export default function App() {
     apneaHistory: []
   });
   const [studentUsageSummary, setStudentUsageSummary] = useState(null);
+  const [beginnerPlayerUi, setBeginnerPlayerUi] = useState({});
+  const [beginnerPlaybackNotice, setBeginnerPlaybackNotice] = useState("");
   const [quickCheckState, setQuickCheckState] = useState({
     loading: false,
     error: "",
@@ -2470,11 +2476,15 @@ export default function App() {
         state.durationSeconds > 0 ? (listenedSeconds / state.durationSeconds) * 100 : 0
       );
       const completed =
-        status === "complete" ||
-        options.completed ||
-        (!state.seeked &&
+        !state.seeked &&
+        (
+          status === "complete" ||
+          options.completed ||
+          (
           state.durationSeconds >= BEGINNER_COMPLETION_SECONDS &&
-          listenedSeconds >= BEGINNER_COMPLETION_SECONDS);
+            listenedSeconds >= BEGINNER_COMPLETION_SECONDS
+          )
+        );
       const reportedAt = new Date().toISOString();
       state.sequence = Number(state.sequence || 0) + 1;
       const eventId = `${state.sessionId}:${state.sequence}`;
@@ -2532,15 +2542,28 @@ export default function App() {
           setStudents((prev) =>
             prev.map((item) => {
               if (item.slug !== student.slug) return item;
+              const currentProgress =
+                item.beginnerAudioProgress ||
+                item.usage?.beginnerAudioUsage ||
+                {};
+              const mergedProgress = mergeBeginnerProgressMonotonic(
+                currentProgress,
+                data.beginnerAudioProgress
+              );
+              const incomingIsOlder =
+                safeTimestamp(data.beginnerAudioProgress?.lastEventAt) <
+                safeTimestamp(currentProgress?.lastEventAt);
               return {
                 ...item,
-                beginnerAudioProgress: data.beginnerAudioProgress,
-                advancedBlockedReason: data.advancedBlockedReason || item.advancedBlockedReason || "",
+                beginnerAudioProgress: mergedProgress,
+                advancedBlockedReason: incomingIsOlder
+                  ? item.advancedBlockedReason || ""
+                  : data.advancedBlockedReason || item.advancedBlockedReason || "",
                 usage: {
                   ...(item.usage || {}),
-                  beginnerAudioUsage: data.beginnerAudioProgress
+                  beginnerAudioUsage: mergedProgress
                 },
-                features: data.features || item.features
+                features: incomingIsOlder ? item.features : data.features || item.features
               };
             })
           );
@@ -2560,9 +2583,39 @@ export default function App() {
     });
   };
 
+  const syncBeginnerPlayerUi = (audioId, audioEl) => {
+    if (!audioEl) return;
+    setBeginnerPlayerUi((previous) => ({
+      ...previous,
+      [audioId]: {
+        currentTime: Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0,
+        duration: Number.isFinite(audioEl.duration) ? audioEl.duration : 0,
+        paused: audioEl.paused,
+        ended: audioEl.ended
+      }
+    }));
+  };
+
+  const toggleBeginnerAudio = async (audioId) => {
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    if (!audioEl) return;
+    if (!audioEl.paused) {
+      audioEl.pause();
+      return;
+    }
+    try {
+      await audioEl.play();
+    } catch {
+      setBeginnerPlaybackNotice("No pudimos iniciar el audio. Tocá reproducir nuevamente.");
+    }
+  };
+
   const handleBeginnerAudioPlay = (audioId = "beginner-1", audioLabel = "Audio básico") => {
     if (!student?.slug || !hasStudentAccess) return;
     pauseOtherBeginnerAudios(audioId);
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    syncBeginnerPlayerUi(audioId, audioEl);
+    setBeginnerPlaybackNotice("");
     const current = beginnerPlaybackRef.current;
     if (!current || current.completed || current.audioId !== audioId) {
       beginnerPlaybackRef.current = {
@@ -2575,7 +2628,9 @@ export default function App() {
         lastReportAt: 0,
         sequence: 0,
         completed: false,
-        seeked: false
+        seeked: false,
+        lastAllowedPosition: Number.isFinite(audioEl?.currentTime) ? audioEl.currentTime : 0,
+        correctingSeek: false
       };
       sendBeginnerAudioPlayback("started", { audioId });
       return;
@@ -2586,7 +2641,13 @@ export default function App() {
   const handleBeginnerAudioTimeUpdate = (audioId = "beginner-1") => {
     const state = beginnerPlaybackRef.current;
     const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    syncBeginnerPlayerUi(audioId, audioEl);
     if (!state || state.completed || state.audioId !== audioId || !audioEl) return;
+    if (!audioEl.seeking && !state.correctingSeek) {
+      state.lastAllowedPosition = Number.isFinite(audioEl.currentTime)
+        ? audioEl.currentTime
+        : state.lastAllowedPosition || 0;
+    }
     state.maxPositionSeconds = Math.max(
       Number(state.maxPositionSeconds || 0),
       Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0
@@ -2604,19 +2665,40 @@ export default function App() {
   const handleBeginnerAudioPause = (audioId = "beginner-1") => {
     const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
     const state = beginnerPlaybackRef.current;
+    syncBeginnerPlayerUi(audioId, audioEl);
     if (!state || state.completed || state.audioId !== audioId || audioEl?.ended) return;
     if (Number(state.maxPositionSeconds || 0) < 5) return;
     sendBeginnerAudioPlayback("partial", { audioId });
   };
 
   const handleBeginnerAudioEnded = (audioId = "beginner-1") => {
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    syncBeginnerPlayerUi(audioId, audioEl);
     sendBeginnerAudioPlayback("complete", { audioId, completed: true });
   };
 
   const handleBeginnerAudioSeeking = (audioId = "beginner-1") => {
     const state = beginnerPlaybackRef.current;
-    if (!state || state.audioId !== audioId) return;
-    state.seeked = true;
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    if (!state || state.audioId !== audioId || !audioEl) return;
+    if (state.correctingSeek) {
+      state.correctingSeek = false;
+      return;
+    }
+    const requestedPosition = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+    const allowedPosition = Math.max(
+      0,
+      Number(state.lastAllowedPosition || state.maxPositionSeconds || 0)
+    );
+    if (requestedPosition > allowedPosition + 1.5) {
+      state.correctingSeek = true;
+      audioEl.currentTime = allowedPosition;
+      setBeginnerPlaybackNotice(
+        "No se puede adelantar el audio. Volvimos al último punto escuchado y tu práctica sigue activa."
+      );
+      return;
+    }
+    state.lastAllowedPosition = requestedPosition;
   };
 
   useEffect(() => {
@@ -2634,6 +2716,8 @@ export default function App() {
 
   useEffect(() => {
     beginnerPlaybackRef.current = null;
+    setBeginnerPlayerUi({});
+    setBeginnerPlaybackNotice("");
   }, [beginnerAudioUrl, beginnerAudioOptions.length, slug]);
 
   const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
@@ -6754,38 +6838,83 @@ export default function App() {
           <p className="eyebrow">Primera etapa</p>
           <h2>Reprogramacion Mental Principiante</h2>
           <p className="muted">
-            Escuchás tu audio completo editado. Advanced se habilita al completar 7 días de reproducción de inicio a fin:
-            reproducir, cerrar ojos y dejar que corra.
+            Escuchás tu audio completo editado. Advanced se habilita al completar 7 días de reproducción. Cada día
+            cuenta al superar 25 minutos sin adelantar el audio.
           </p>
+          <p className="beginner-playback-rule">
+            La línea de progreso es informativa. Podés pausar y continuar, pero no adelantar.
+          </p>
+          {beginnerPlaybackNotice && (
+            <p className="status warning" role="status">{beginnerPlaybackNotice}</p>
+          )}
           {beginnerAudioOptions.length > 0 ? (
             <div className="beginner-audio-list">
-              {beginnerAudioOptions.map((audioItem, index) => (
-                <div className="beginner-audio-option" key={audioItem.id}>
-                  <div className="beginner-audio-option-head">
-                    <span>{audioItem.label}</span>
-                    <small>{audioItem.fileName || `Opción ${index + 1}`}</small>
+              {beginnerAudioOptions.map((audioItem, index) => {
+                const playerUi = beginnerPlayerUi[audioItem.id] || {};
+                const currentTime = Number(playerUi.currentTime || 0);
+                const duration = Number(playerUi.duration || 0);
+                const progressPercent = duration > 0
+                  ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
+                  : 0;
+                const isPlaying = playerUi.paused === false && !playerUi.ended;
+                return (
+                  <div className="beginner-audio-option" key={audioItem.id}>
+                    <div className="beginner-audio-option-head">
+                      <span>{audioItem.label}</span>
+                      <small>{audioItem.fileName || `Opción ${index + 1}`}</small>
+                    </div>
+                    <div className="beginner-player">
+                      <button
+                        type="button"
+                        className="beginner-player-toggle"
+                        onClick={() => toggleBeginnerAudio(audioItem.id)}
+                        title={isPlaying ? "Pausar audio" : "Reproducir audio"}
+                        aria-label={isPlaying ? "Pausar audio" : "Reproducir audio"}
+                      >
+                        {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                        <span>{isPlaying ? "Pausar" : "Reproducir"}</span>
+                      </button>
+                      <div className="beginner-player-progress-wrap">
+                        <div
+                          className="beginner-player-progress"
+                          role="progressbar"
+                          aria-label={`Progreso de ${audioItem.label}`}
+                          aria-valuemin="0"
+                          aria-valuemax="100"
+                          aria-valuenow={Math.round(progressPercent)}
+                        >
+                          <span style={{ width: `${progressPercent}%` }} />
+                        </div>
+                        <div className="beginner-player-time">
+                          <span>{formatDurationClock(currentTime)}</span>
+                          <span>{formatDurationClock(duration)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <audio
+                      ref={(node) => {
+                        if (node) {
+                          beginnerAudioRefs.current[audioItem.id] = node;
+                          if (index === 0) beginnerAudioRef.current = node;
+                        } else {
+                          delete beginnerAudioRefs.current[audioItem.id];
+                        }
+                      }}
+                      className="beginner-player-source"
+                      preload="metadata"
+                      playsInline
+                      src={audioItem.src}
+                      onLoadedMetadata={(event) => syncBeginnerPlayerUi(audioItem.id, event.currentTarget)}
+                      onDurationChange={(event) => syncBeginnerPlayerUi(audioItem.id, event.currentTarget)}
+                      onPlay={() => handleBeginnerAudioPlay(audioItem.id, audioItem.label)}
+                      onTimeUpdate={() => handleBeginnerAudioTimeUpdate(audioItem.id)}
+                      onPause={() => handleBeginnerAudioPause(audioItem.id)}
+                      onEnded={() => handleBeginnerAudioEnded(audioItem.id)}
+                      onSeeking={() => handleBeginnerAudioSeeking(audioItem.id)}
+                    />
                   </div>
-                  <audio
-                    ref={(node) => {
-                      if (node) {
-                        beginnerAudioRefs.current[audioItem.id] = node;
-                        if (index === 0) beginnerAudioRef.current = node;
-                      } else {
-                        delete beginnerAudioRefs.current[audioItem.id];
-                      }
-                    }}
-                    className="beginner-player"
-                    controls
-                    preload="metadata"
-                    src={audioItem.src}
-                    onPlay={() => handleBeginnerAudioPlay(audioItem.id, audioItem.label)}
-                    onTimeUpdate={() => handleBeginnerAudioTimeUpdate(audioItem.id)}
-                    onPause={() => handleBeginnerAudioPause(audioItem.id)}
-                    onEnded={() => handleBeginnerAudioEnded(audioItem.id)}
-                    onSeeking={() => handleBeginnerAudioSeeking(audioItem.id)}
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="status error">El audio todavía no está aprobado.</p>

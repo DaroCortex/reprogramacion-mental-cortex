@@ -5,8 +5,10 @@ import {
   BEGINNER_COMPLETION_SECONDS,
   getAdvancedAccessInfo,
   hasApprovedAdvancedAudio,
+  mergeBeginnerProgressMonotonic,
   normalizeBeginnerAudioEvent
 } from "../lib/beginner-progress.js";
+import { mergeTelemetryRecords } from "../lib/beginner-telemetry.js";
 import { buildMobileAudio } from "../api/students.js";
 import { buildReport, classifyStudent } from "../api/admin/migrate-advanced-access.js";
 
@@ -96,6 +98,17 @@ const afterOne25MinutePractice = applyBeginnerAudioEvent(
 );
 assert.equal(getAdvancedAccessInfo(afterOne25MinutePractice).completedDays, 1);
 
+const monotonicProgress = mergeBeginnerProgressMonotonic(
+  afterOne25MinutePractice.usage.beginnerAudioUsage,
+  {
+    completedByDay: {},
+    lastEventAt: "2026-07-27T11:59:59.000Z",
+    events: []
+  }
+);
+assert.equal(monotonicProgress.completedDays, 1);
+assert.ok(monotonicProgress.completedByDay["2026-07-27"]);
+
 const sessionBase = makeStudent({
   policy: ADVANCED_UNLOCK_POLICIES.AFTER_7_BEGINNER_DAYS,
   days: 0
@@ -182,6 +195,34 @@ assert.equal(
   afterCompletedPause.usage.beginnerAudioUsage.events.some((event) => event.eventType === "checkpoint"),
   false
 );
+
+const durableCompletion = {
+  version: 1,
+  slug: "test",
+  usage: {
+    beginnerAudioUsage: afterCompletedPause.usage.beginnerAudioUsage,
+    practiceActivityByDay: { "2026-07-27": 1 }
+  },
+  lastAudioAccessAt: "2026-07-27T11:25:03.000Z",
+  updatedAt: "2026-07-27T11:25:03.000Z"
+};
+const staleConcurrentCheckpoint = {
+  version: 1,
+  slug: "test",
+  usage: {
+    beginnerAudioUsage: afterSecondCheckpoint.usage.beginnerAudioUsage,
+    practiceActivityByDay: { "2026-07-27": 1 }
+  },
+  lastAudioAccessAt: "2026-07-27T11:20:01.000Z",
+  updatedAt: "2026-07-27T11:20:01.000Z"
+};
+const mergedTelemetry = mergeTelemetryRecords(
+  durableCompletion,
+  staleConcurrentCheckpoint
+);
+assert.equal(mergedTelemetry.usage.beginnerAudioUsage.completedDays, 1);
+assert.equal(mergedTelemetry.usage.beginnerAudioUsage.sessions[0].completed, true);
+assert.equal(mergedTelemetry.usage.beginnerAudioUsage.sessions[0].lastSequence, 4);
 
 const shortLegacyTrackCompleted = normalizeBeginnerAudioEvent({
   ...eventAt25Minutes,

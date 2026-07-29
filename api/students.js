@@ -516,15 +516,16 @@ export default async function handler(req, res) {
         const nowIso = new Date().toISOString();
         const nextStudents = students.slice();
         const nextStudent = applyBeginnerAudioEvent(student, eventPayload, nowIso);
-        nextStudents[index] = nextStudent;
         await writeBeginnerTelemetry(nextStudent);
+        const consolidatedStudent = await hydrateBeginnerTelemetry(nextStudent);
+        nextStudents[index] = consolidatedStudent;
         await writeStudents(nextStudents);
-        const advancedInfo = getAdvancedAccessInfo(nextStudent);
+        const advancedInfo = getAdvancedAccessInfo(consolidatedStudent);
         return res.status(200).json({
           ok: true,
           beginnerAudioProgress: advancedInfo.progress,
           advancedBlockedReason: advancedInfo.blockedReason,
-          features: buildStudentFeatures(nextStudent, await readAppSettings())
+          features: buildStudentFeatures(consolidatedStudent, await readAppSettings())
         });
       }
 
@@ -653,6 +654,8 @@ export default async function handler(req, res) {
         const nextStudents = students.slice();
         nextStudents[index] = nextStudent;
         await writeBeginnerTelemetry(nextStudent);
+        nextStudent = await hydrateBeginnerTelemetry(nextStudent);
+        nextStudents[index] = nextStudent;
         await writeStudents(nextStudents);
         return res.status(200).json({
           ok: true,

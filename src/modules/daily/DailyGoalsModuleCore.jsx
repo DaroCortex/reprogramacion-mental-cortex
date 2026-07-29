@@ -408,6 +408,7 @@ function DailyGoalsModule({
   const [focusDate, setFocusDate] = useState(dateKey());
   const [message, setMessage] = useState("");
   const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudHydrated, setCloudHydrated] = useState(false);
 
   const [newStudentName, setNewStudentName] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
@@ -478,12 +479,17 @@ function DailyGoalsModule({
   }, [activeStudentId, store]);
 
   useEffect(() => {
-    if (!cloudSlug || !cloudToken) return;
+    if (!cloudSlug) return;
     let cancelled = false;
     const loadCloud = async () => {
       setCloudLoading(true);
+      setCloudHydrated(false);
       try {
-        const response = await fetch(`/api/daily/data?slug=${encodeURIComponent(cloudSlug)}&token=${encodeURIComponent(cloudToken)}`);
+        const query = new URLSearchParams({ slug: cloudSlug });
+        if (cloudToken) query.set("token", cloudToken);
+        const response = await fetch(`/api/daily/data?${query.toString()}`, {
+          credentials: "same-origin"
+        });
         if (!response.ok) throw new Error("Sin cloud");
         const data = await response.json();
         const payload = data?.data || {};
@@ -501,12 +507,15 @@ function DailyGoalsModule({
                     templates: Array.isArray(payload.templates)
                       ? payload.templates
                       : item.templates
-                  }
+                }
             )
           );
         }
+        setCloudHydrated(true);
       } catch {
-        // fallback local
+        if (!cancelled) {
+          setMessage("No pudimos cargar tus metas. Volvé a ingresar e intentá nuevamente.");
+        }
       } finally {
         if (!cancelled) setCloudLoading(false);
       }
@@ -518,15 +527,16 @@ function DailyGoalsModule({
   }, [cloudSlug, cloudToken, activeStudentId]);
 
   useEffect(() => {
-    if (!cloudSlug || !cloudToken || cloudLoading) return;
+    if (!cloudSlug || !cloudHydrated || cloudLoading) return;
     const timer = setTimeout(async () => {
       try {
-        await fetch("/api/daily/data", {
+        const response = await fetch("/api/daily/data", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             slug: cloudSlug,
-            token: cloudToken,
+            ...(cloudToken ? { token: cloudToken } : {}),
             payload: {
               studentId: activeStudentId,
               studentName: activeStudent?.name || fixedName,
@@ -536,12 +546,22 @@ function DailyGoalsModule({
             }
           })
         });
+        if (!response.ok) throw new Error("No se pudo guardar");
       } catch {
         // silent save retry on next change
       }
     }, 700);
     return () => clearTimeout(timer);
-  }, [store, activeStudent, activeStudentId, cloudSlug, cloudToken, cloudLoading, fixedName]);
+  }, [
+    store,
+    activeStudent,
+    activeStudentId,
+    cloudSlug,
+    cloudToken,
+    cloudHydrated,
+    cloudLoading,
+    fixedName
+  ]);
 
   const yesterdayKey = shiftDate(focusDate, -1);
   const todayDay = store.days[focusDate] || { items: [] };
