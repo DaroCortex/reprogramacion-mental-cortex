@@ -5,26 +5,44 @@ import {
   getAdvancedVoiceTargetVolume
 } from "../lib/advanced-playback.js";
 
-const legacy = buildAdvancedPlayback({
+const defaultPlayback = buildAdvancedPlayback({
   features: { advancedReprogrammingEnabled: true }
 });
-assert.equal(legacy.profile, ADVANCED_PLAYBACK_PROFILES.APNEA_ONLY);
-assert.equal(legacy.continuousVoiceEnabled, false);
 assert.equal(
-  getAdvancedVoiceTargetVolume({
-    playback: legacy,
-    phase: "breathing",
-    configuredVolume: 0.8
-  }),
-  0
+  defaultPlayback.profile,
+  ADVANCED_PLAYBACK_PROFILES.CONTINUOUS_VOICE_V1
+);
+assert.equal(defaultPlayback.continuousVoiceEnabled, true);
+assert.ok(
+  Math.abs(
+    getAdvancedVoiceTargetVolume({
+      playback: defaultPlayback,
+      phase: "breathing",
+      configuredVolume: 0.8
+    }) - 0.32
+  ) < Number.EPSILON
 );
 assert.equal(
   getAdvancedVoiceTargetVolume({
-    playback: legacy,
+    playback: defaultPlayback,
     phase: "apnea",
     configuredVolume: 0.8
   }),
   0.8
+);
+
+const apneaOnly = buildAdvancedPlayback({
+  features: { advancedPlaybackProfile: "apnea_only" }
+});
+assert.equal(apneaOnly.profile, ADVANCED_PLAYBACK_PROFILES.APNEA_ONLY);
+assert.equal(apneaOnly.continuousVoiceEnabled, false);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: apneaOnly,
+    phase: "breathing",
+    configuredVolume: 0.8
+  }),
+  0
 );
 
 const experiment = buildAdvancedPlayback({
