@@ -985,8 +985,7 @@
   margin: 0;
 }
 
-.admin2-detail-list > div,
-.admin2-apnea-list > div {
+.admin2-detail-list > div {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -996,13 +995,11 @@
   font-size: 11px;
 }
 
-.admin2-detail-list > div:last-child,
-.admin2-apnea-list > div:last-child {
+.admin2-detail-list > div:last-child {
   border-bottom: 0;
 }
 
-.admin2-detail-list dt,
-.admin2-apnea-list span {
+.admin2-detail-list dt {
   color: var(--muted);
 }
 
@@ -1011,8 +1008,81 @@
   font-weight: 700;
 }
 
-.admin2-apnea-list strong {
+.admin2-round-session-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin2-round-session {
+  overflow: hidden;
+  border: 1px solid var(--stroke);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--card) 74%, var(--bg) 26%);
+}
+
+.admin2-round-session > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--stroke);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.admin2-round-session > header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin2-round-session > header span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.admin2-round-session > header small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.admin2-round-session > header > strong {
+  flex: 0 0 auto;
+  color: var(--accent);
   font-size: 10px;
+}
+
+.admin2-round-session ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 9px;
+  list-style: none;
+}
+
+.admin2-round-session li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 44px;
+  place-content: center;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--stroke) 78%, transparent);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.admin2-round-session li span {
+  color: var(--muted);
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.admin2-round-session li strong {
+  color: var(--ink);
+  font-size: 12px;
 }
 
 .admin2-empty-copy {

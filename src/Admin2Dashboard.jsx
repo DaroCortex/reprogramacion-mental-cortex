@@ -122,6 +122,40 @@ const formatDateTime = (value) => {
   }).format(new Date(time));
 };
 
+const buildRecentRoundSessions = (student, limit = 4) => {
+  const usage = student?.usage || {};
+  const recentSessions = Array.isArray(usage.recentSessions) ? usage.recentSessions : [];
+  const candidates = [usage.lastSession, ...recentSessions].filter(Boolean);
+  const seen = new Set();
+
+  return candidates
+    .map((session) => {
+      const sourceRounds = Array.isArray(session?.apneaByRound)
+        ? session.apneaByRound
+        : Array.isArray(session?.rounds)
+          ? session.rounds
+          : [];
+      const rounds = sourceRounds
+        .map((value) => Math.max(0, Math.round(Number(value) || 0)))
+        .filter((value) => value > 0);
+      const completedAt = String(session?.completedAt || session?.startedAt || "");
+      const key = `${completedAt}|${rounds.join(",")}`;
+      return {
+        key,
+        completedAt,
+        durationSeconds: Math.max(0, Math.round(Number(session?.durationSeconds) || 0)),
+        rounds
+      };
+    })
+    .filter((session) => {
+      if (!session.rounds.length || seen.has(session.key)) return false;
+      seen.add(session.key);
+      return true;
+    })
+    .sort((left, right) => getTimestamp(right.completedAt) - getTimestamp(left.completedAt))
+    .slice(0, limit);
+};
+
 const getNextAction = (student) => {
   const risk = getRiskMeta(student);
   const audioGroup = getAudioGroup(student);
@@ -439,6 +473,7 @@ function StudentDrawer({
   const weekly = student.weeklyPractice || {};
   const beginner = student.beginnerAudioProgress || {};
   const apneaDays = Array.isArray(student.apneaDailyLog) ? student.apneaDailyLog.slice(0, 4) : [];
+  const recentRoundSessions = buildRecentRoundSessions(student);
   const active = student.status !== "inactive";
   const advancedInfo = getAdvancedInfo(student);
   const access = getAccessMeta(student);
@@ -520,19 +555,54 @@ function StudentDrawer({
         <section className="admin2-drawer-section">
           <div className="admin2-section-title">
             <Activity size={18} />
-            <h3>Apneas recientes</h3>
+            <h3>Rondas recientes</h3>
           </div>
-          {apneaDays.length ? (
-            <div className="admin2-apnea-list">
+          {recentRoundSessions.length ? (
+            <div className="admin2-round-session-list">
+              {recentRoundSessions.map((session) => (
+                <article className="admin2-round-session" key={session.key}>
+                  <header>
+                    <div>
+                      <span>{formatDateTime(session.completedAt)}</span>
+                      <small>{session.durationSeconds ? `Duración ${formatDuration(session.durationSeconds)}` : "Sesión registrada"}</small>
+                    </div>
+                    <strong>{session.rounds.length} {session.rounds.length === 1 ? "ronda" : "rondas"}</strong>
+                  </header>
+                  <ol>
+                    {session.rounds.map((seconds, index) => (
+                      <li key={`${session.key}-${index}`}>
+                        <span>Ronda {index + 1}</span>
+                        <strong>{formatDuration(seconds)}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+              ))}
+            </div>
+          ) : apneaDays.length ? (
+            <div className="admin2-round-session-list">
               {apneaDays.map((day) => (
-                <div key={day.dateKey || day.label}>
-                  <span>{day.label}</span>
-                  <strong>{(day.times || []).slice(0, 3).map(formatDuration).join(" · ")}</strong>
-                </div>
+                <article className="admin2-round-session" key={day.dateKey || day.label}>
+                  <header>
+                    <div>
+                      <span>{day.label}</span>
+                      <small>{day.sessions || 1} {(day.sessions || 1) === 1 ? "sesión" : "sesiones"}</small>
+                    </div>
+                    <strong>{(day.times || []).length} rondas</strong>
+                  </header>
+                  <ol>
+                    {(day.times || []).map((seconds, index) => (
+                      <li key={`${day.dateKey || day.label}-${index}`}>
+                        <span>Ronda {index + 1}</span>
+                        <strong>{formatDuration(seconds)}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                </article>
               ))}
             </div>
           ) : (
-            <p className="admin2-empty-copy">Todavía no hay apneas registradas.</p>
+            <p className="admin2-empty-copy">Todavía no hay rondas registradas.</p>
           )}
         </section>
 
@@ -588,7 +658,7 @@ export default function Admin2Dashboard({
 }) {
   const [section, setSection] = useState("followup");
   const [query, setQuery] = useState("");
-  const [riskFilter, setRiskFilter] = useState("attention");
+  const [riskFilter, setRiskFilter] = useState("all");
   const [audioFilter, setAudioFilter] = useState("all");
   const [cohortFilter, setCohortFilter] = useState("all");
   const [sortBy, setSortBy] = useState("priority");
@@ -650,7 +720,7 @@ export default function Admin2Dashboard({
 
   const switchSection = (nextSection) => {
     setSection(nextSection);
-    setRiskFilter(nextSection === "followup" || nextSection === "alerts" ? "attention" : "all");
+    setRiskFilter(nextSection === "alerts" ? "attention" : "all");
     setAudioFilter("all");
     setNavOpen(false);
   };
