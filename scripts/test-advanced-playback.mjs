@@ -28,7 +28,15 @@ assert.equal(
     phase: "apnea",
     configuredVolume: 0.8
   }),
-  0.8
+  0.96
+);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: defaultPlayback,
+    phase: "apnea",
+    configuredVolume: 1
+  }),
+  1
 );
 
 const apneaOnly = buildAdvancedPlayback({
@@ -77,7 +85,7 @@ assert.equal(
     phase: "apnea",
     configuredVolume: 0.8
   }),
-  0.8
+  0.96
 );
 
 const normalizedContract = buildAdvancedPlayback({

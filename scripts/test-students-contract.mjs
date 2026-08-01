@@ -34,7 +34,7 @@ assert.deepEqual(payload.students[0].advancedPlayback, {
   continuousVoiceEnabled: true,
   breathingVolumeMultiplier: 0.4,
   recoveryVolumeMultiplier: 0.4,
-  apneaVolumeMultiplier: 1,
+  apneaVolumeMultiplier: 1.2,
   transitionSeconds: 0.8
 });
 assert.deepEqual(payload.settings, { magicUnlockScore: 7, channelingEnabled: true });
