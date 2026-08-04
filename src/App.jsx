@@ -16,6 +16,7 @@ import {
   mergeBeginnerProgressMonotonic
 } from "../lib/beginner-progress";
 import { filterUnsyncedLocalApneaSessions } from "../lib/apnea-history";
+import { DIRECT_ACCESS_SLUG } from "../lib/student-direct-access.js";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -868,6 +869,10 @@ export default function App() {
   const currentPath = window.location.pathname;
   const isLoginRoute = currentPath.startsWith("/login");
   const isSetPasswordRoute = currentPath.startsWith("/set-password");
+  const loginNextPath = new URLSearchParams(window.location.search).get("next") || "";
+  const isDirectAccessLoginRoute = Boolean(
+    isLoginRoute && loginNextPath.split("?")[0] === `/s/${DIRECT_ACCESS_SLUG}`
+  );
   const [theme, setTheme] = useState(
     localStorage.getItem("rmcortex_theme") || "dark"
   );
@@ -1362,6 +1367,34 @@ export default function App() {
 
   useEffect(() => {
     const loadStudents = async () => {
+      const requestDirectAccess = async (directSlug) => {
+        const response = await fetch("/api/auth/direct", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: directSlug })
+        });
+        const directData = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(directData?.error || "No se pudo abrir el acceso directo");
+        }
+        if (!directData?.student?.slug) {
+          throw new Error("No se encontró la configuración de Borja");
+        }
+        return directData;
+      };
+
+      if (isDirectAccessLoginRoute) {
+        try {
+          await requestDirectAccess(DIRECT_ACCESS_SLUG);
+          window.location.replace(`/s/${DIRECT_ACCESS_SLUG}`);
+        } catch (directError) {
+          setLoadError(directError?.message || "No se pudo abrir el acceso directo");
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
       if (isLoginRoute || isSetPasswordRoute) {
         setLoading(false);
         return;
@@ -1377,6 +1410,17 @@ export default function App() {
               return;
             }
           } catch (_sessionError) {
+            if (slug === DIRECT_ACCESS_SLUG) {
+              try {
+                const directData = await requestDirectAccess(slug);
+                setAuthStudent(directData.student);
+                setStudents([directData.student]);
+                return;
+              } catch (directError) {
+                setLoadError(directError?.message || "No se pudo abrir el acceso directo");
+                return;
+              }
+            }
             window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
             return;
           }
@@ -1397,7 +1441,7 @@ export default function App() {
     };
 
     loadStudents();
-  }, [isLoginRoute, isSetPasswordRoute, slug, token]);
+  }, [isDirectAccessLoginRoute, isLoginRoute, isSetPasswordRoute, slug, token]);
 
   useEffect(() => {
     const onMessage = (event) => {

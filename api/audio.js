@@ -1,4 +1,5 @@
 import { readStudents } from "../lib/r2.js";
+import { findStudentBySession } from "../lib/student-auth.js";
 
 const PUBLIC_AUDIO_SLUGS = new Set(["respira", "bosq", "inala", "oceano", "balance", "gamma", "trance"]);
 
@@ -12,19 +13,23 @@ export default async function handler(req, res) {
 
     const students = await readStudents();
     const student = students.find((item) => item.slug === slug);
+    const sessionAuth = findStudentBySession(students, req);
+    const isSessionOwner = Boolean(sessionAuth?.student?.slug === slug);
 
     if (!student || !student.audioKey) {
       return res.status(404).json({ error: "Audio no encontrado" });
     }
 
     const isPublicAudio = PUBLIC_AUDIO_SLUGS.has(slug);
-    if (!isPublicAudio && (!token || token !== String(student.token || ""))) {
+    if (!isPublicAudio && !isSessionOwner && (!token || token !== String(student.token || ""))) {
       return res.status(403).json({ error: "Token inválido" });
     }
 
     const query = isPublicAudio
       ? `slug=${encodeURIComponent(slug)}`
-      : `slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`;
+      : token
+        ? `slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`
+        : `slug=${encodeURIComponent(slug)}`;
     const url = `/api/audio-file?${query}`;
     return res.status(200).json({ url });
   } catch (error) {

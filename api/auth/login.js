@@ -8,6 +8,7 @@ import {
   verifyPassword
 } from "../../lib/student-auth.js";
 import { verifyStudentSupportPassword } from "../../lib/student-support-credential.js";
+import { isDirectAccessExpired } from "../../lib/student-direct-access.js";
 import { hydrateBeginnerTelemetry } from "../../lib/beginner-telemetry.js";
 import { buildAuthenticatedStudent } from "../students.js";
 
@@ -28,6 +29,9 @@ export default async function handler(req, res) {
     if (index < 0) return genericUnauthorized(res);
 
     const current = await hydrateBeginnerTelemetry(students[index]);
+    if (isDirectAccessExpired(current)) {
+      return res.status(403).json({ error: "Este acceso venció después de 30 días" });
+    }
     const primaryPasswordOk = await verifyPassword(password, getPasswordHash(current));
     const supportPasswordOk =
       !primaryPasswordOk &&
