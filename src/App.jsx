@@ -15,6 +15,7 @@ import {
   BEGINNER_COMPLETION_SECONDS,
   mergeBeginnerProgressMonotonic
 } from "../lib/beginner-progress";
+import { filterUnsyncedLocalApneaSessions } from "../lib/apnea-history";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -5246,11 +5247,15 @@ export default function App() {
     const serverRecent = Array.isArray(studentUsageSummary?.recentSessions)
       ? studentUsageSummary.recentSessions
       : [];
+    const unsyncedLocalSessions = filterUnsyncedLocalApneaSessions(
+      localProgressSessions,
+      serverRecent
+    );
     const sessionsByDay = { ...(studentUsageSummary?.sessionsByDay || {}) };
     const practiceActivityByDay = { ...(studentUsageSummary?.practiceActivityByDay || {}) };
     const apneaByDay = { ...(studentUsageSummary?.apneaByDay || {}) };
 
-    localProgressSessions.forEach((session) => {
+    unsyncedLocalSessions.forEach((session) => {
       const key = session.date || localDateKey(session.completedAt || "");
       if (!key) return;
       sessionsByDay[key] = Math.max(Number(sessionsByDay[key] || 0), 1);
@@ -5290,7 +5295,7 @@ export default function App() {
         localProgressSessions[0]?.completedAt ||
         progress.lastSessionDate ||
         "",
-      recentSessions: [...localProgressSessions, ...serverRecent].slice(0, 60),
+      recentSessions: [...unsyncedLocalSessions, ...serverRecent].slice(0, 60),
       lastSession: studentUsageSummary?.lastSession || localProgressSessions[0] || null
     };
   }, [localProgressSessions, progress.lastSessionDate, progress.totalBreaths, progress.totalSessions, studentUsageSummary]);

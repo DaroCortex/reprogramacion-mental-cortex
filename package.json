@@ -10,6 +10,7 @@
     "test:advanced-config": "node scripts/test-advanced-config.mjs",
     "test:advanced-playback": "node scripts/test-advanced-playback.mjs",
     "test:advanced-policy": "node scripts/test-advanced-unlock-policy.mjs",
+    "test:apnea-history": "node scripts/test-apnea-history.mjs",
     "test:students-contract": "node scripts/test-students-contract.mjs",
     "test:students-concurrency": "node scripts/test-students-concurrency.mjs",
     "test:report-plan": "node scripts/test-report-plan.mjs",
