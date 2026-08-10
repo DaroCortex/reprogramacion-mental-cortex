@@ -5892,7 +5892,8 @@ export default function App() {
           onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
           onRefresh={() => ensureAdminList(adminPassword)}
           onCreateStudent={handleManualStudentCreate}
-          onCopyLink={copyStudentAccess}
+          onUnlockAdvanced={(item) => handleUnlockAdvanced(item.slug)}
+          advancedActionSlug={adminActionSlug}
           onRequestAudio={(item) => handleRequestStudentAudio(item.slug)}
           onReplaceAudio={(item) => handleReplaceClick(item.slug)}
           onUpdateIdentity={handleUpdateStudentIdentity}

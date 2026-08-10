@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
-  Copy,
   ExternalLink,
   Filter,
   Headphones,
@@ -442,7 +441,8 @@ function EditIdentityModal({ student, onClose, onSave }) {
 function StudentDrawer({
   student,
   onClose,
-  onCopyLink,
+  onUnlockAdvanced,
+  advancedActionSlug,
   onRequestAudio,
   onReplaceAudio,
   onEditIdentity,
@@ -477,12 +477,17 @@ function StudentDrawer({
   const active = student.status !== "inactive";
   const advancedInfo = getAdvancedInfo(student);
   const access = getAccessMeta(student);
-  const accessActionLabel = !student.email
-    ? "Copiar link anterior"
-    : student.auth?.hasPassword
-      ? "Copiar credenciales"
-      : "Crear contraseña";
+  const isUnlockingAdvanced = advancedActionSlug === student.slug;
+  const canUnlockAdvanced = advancedInfo.advancedAudioReady && !advancedInfo.unlocked;
   const initial = String(student.name || student.slug || "A").trim().slice(0, 1).toUpperCase();
+
+  const requestAdvancedUnlock = () => {
+    if (!canUnlockAdvanced || isUnlockingAdvanced) return;
+    const confirmed = window.confirm(
+      `¿Pasar a ${student.name} a Advanced? Esto habilita Advanced manualmente sin modificar su progreso de Principiante.`
+    );
+    if (confirmed) onUnlockAdvanced(student);
+  };
 
   return (
     <div className="admin2-drawer-layer">
@@ -610,8 +615,21 @@ function StudentDrawer({
           <button type="button" className="admin2-button secondary" onClick={() => onEditIdentity(student)}>
             <Pencil size={17} /> Editar identidad
           </button>
-          <button type="button" className="admin2-button primary" onClick={() => onCopyLink(student)}>
-            <Copy size={17} /> {accessActionLabel}
+          <button
+            type="button"
+            className="admin2-button primary"
+            onClick={requestAdvancedUnlock}
+            disabled={!canUnlockAdvanced || isUnlockingAdvanced}
+            title={!advancedInfo.advancedAudioReady ? "Requiere un audio Advanced aprobado" : undefined}
+          >
+            {advancedInfo.unlocked ? <CheckCircle2 size={17} /> : <ChevronRight size={17} />}
+            {isUnlockingAdvanced
+              ? "Habilitando..."
+              : advancedInfo.unlocked
+                ? "Advanced habilitado"
+                : advancedInfo.advancedAudioReady
+                  ? "Pasar a Advanced"
+                  : "Advanced no disponible"}
           </button>
           <a className="admin2-button secondary" href={studentUrl(student)} target="_blank" rel="noreferrer">
             <ExternalLink size={17} /> Abrir app
@@ -645,7 +663,8 @@ export default function Admin2Dashboard({
   onToggleTheme,
   onRefresh,
   onCreateStudent,
-  onCopyLink,
+  onUnlockAdvanced,
+  advancedActionSlug,
   onRequestAudio,
   onReplaceAudio,
   onUpdateIdentity,
@@ -958,7 +977,8 @@ export default function Admin2Dashboard({
       <StudentDrawer
         student={selectedStudent}
         onClose={() => setSelectedSlug("")}
-        onCopyLink={onCopyLink}
+        onUnlockAdvanced={onUnlockAdvanced}
+        advancedActionSlug={advancedActionSlug}
         onRequestAudio={onRequestAudio}
         onReplaceAudio={onReplaceAudio}
         onEditIdentity={(item) => setEditingSlug(item.slug)}
