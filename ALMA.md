@@ -1188,3 +1188,21 @@ Los alumnos pueden renombrar, agregar y quitar tareas sin alterar días históri
 
 ### Risks / Follow-Up
 Pendiente commit, push y deployment productivo. El comportamiento real con pantalla apagada debe verificarse además en un Android físico; el fallback limita la recuperación automática a tres intentos por ventana de 30 segundos.
+
+## 2026-08-11 10:24:45 -03 - Desplegué Metas editables y audio web resistente al segundo plano
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-background-audio-fix`
+- Reason: Publicar el lote aprobado en RM web sin perder las correcciones productivas recientes
+
+### Touched
+- GitHub main 8784882c99ca452c5234acc529f5f3ebced50a14; Vercel dpl_7uCDdzGdqCdj2p8AUk4ZfyLDKNYB; https://rm.academiacortex.com.ar; ALMA.md
+
+### Details
+El deployment fue generado desde GitHub main y conserva como ancestros el acceso directo de Borja, la fusión segura de historial y la acción manual de Advanced. No se migraron ni modificaron datos de alumnos durante el despliegue.
+
+### Verification
+- Vercel READY/PROMOTED y aliasAssigned; dominio HTTP 200; bundle /assets/index-iqKcjdka.js contiene Agregar tarea, Pasar a Advanced, mediaSession, setPositionState y recuperación desde segundo plano
+
+### Risks / Follow-Up
+Rollback funcional promoviendo dpl_FrxjVFwRqrAHRYofcYuuABLKgMXc o revirtiendo 8784882. Falta validación física del audio con pantalla apagada en Android; los tests cubren handlers, bloqueo de seek y fallback, pero no la política energética del dispositivo.
