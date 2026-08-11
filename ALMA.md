@@ -1278,3 +1278,21 @@ La fuente productiva de R2 contiene las cinco apneas de Viviana del 11/08: 105, 
 
 ### Risks / Follow-Up
 Cambio exclusivamente de presentación, pendiente de autorización para publicar y desplegar. No cambia la escritura de sesiones ni el historial. El valor Mejor y Última siguen siendo resúmenes individuales correctamente rotulados; A1-A5 muestran el detalle completo.
+
+## 2026-08-11 13:57:51 -03 - Desplegué el detalle A1-A5 de apneas en RM web
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Evitar que Viviana y otros alumnos interpreten que sólo se guardó una apnea cuando el servidor conserva todas las rondas
+
+### Touched
+- GitHub main c907096809039e78c6626cdce7a4a42f9ba60bce; Vercel dpl_E9KyUzmGqUGZfkDeGmdh5b9bY8Xr; https://rm.academiacortex.com.ar; ALMA.md
+
+### Details
+Progreso enumera A1 a A5 por cada día y el resumen final de Advanced muestra todas las rondas. No se migraron ni modificaron registros de alumnos; las cinco apneas de Viviana ya estaban completas en R2.
+
+### Verification
+- Deployment READY/PROMOTED y aliasAssigned para c907096; dominio HTTP 200 sirve /assets/index-CiXNOxb8.js y /assets/index--uOxQbU9.css; bundle contiene Apneas de, A1, A5, student-experience-apnea-times y Última sesión; HEAD local y origin/main coinciden.
+
+### Risks / Follow-Up
+Rollback funcional promoviendo dpl_CnD49iQnzuRdUq1knmLYVGQvD3pv. El commit documental posterior no cambia código y genera un deployment adicional que debe quedar promovido antes de cerrar.
