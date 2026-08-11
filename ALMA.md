@@ -1242,3 +1242,21 @@ El nuevo shell responsive agrega Inicio, Práctica, Progreso y Ayuda con navegac
 
 ### Risks / Follow-Up
 El MP4 suma 14 MB al repositorio pero se sirve como asset separado del JavaScript y usa preload metadata. El QA de datos reales debe completarse contra una sesión productiva después del despliegue; rollback de interfaz disponible promoviendo el deployment productivo anterior dpl_8rjvEcEqRzsJLe56L86Uhz16A7vd.
+
+## 2026-08-11 10:57:39 -03 - Desplegué la nueva experiencia de alumno de RM web
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Publicar la UX aprobada de iOS en la web sin modificar los contratos ni motores funcionales existentes
+
+### Touched
+- GitHub main f6a17245759f38795c54ee28b48c1ea3365a8a32; Vercel dpl_991NPgKWcxaNwL8x8y4P8HEcf7gv; https://rm.academiacortex.com.ar; ALMA.md
+
+### Details
+Vercel construyó desde main y promovió el deployment al dominio principal. El bundle conserva Metas editables, MediaSession de Principiante, la acción manual Pasar a Advanced y la deduplicación del historial. La maqueta con Alex queda fuera del bundle productivo. El video tutorial, póster y subtítulos se sirven como archivos independientes.
+
+### Verification
+- Deployment READY/PROMOTED y aliasAssigned para el SHA f6a1724; raíz HTTP 200; bundle productivo contiene Elegí tu práctica, Tu evolución, Tutorial de la app, Agregar tarea, Pasar a Advanced y mediaSession, y no contiene Alex Cortex ni ux-ios-preview; video HTTP 200 video/mp4 de 14,351,294 bytes y solicitud de rango HTTP 206 de 1,024 bytes; póster HTTP 200 image/png; subtítulos HTTP 200 text/vtt.
+
+### Risks / Follow-Up
+Rollback inmediato promoviendo dpl_8rjvEcEqRzsJLe56L86Uhz16A7vd. El commit documental de esta entrada genera un deployment adicional sin cambios funcionales; confirmar su promoción antes de cerrar.
