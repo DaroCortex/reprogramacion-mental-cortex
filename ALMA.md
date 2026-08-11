@@ -1206,3 +1206,21 @@ El deployment fue generado desde GitHub main y conserva como ancestros el acceso
 
 ### Risks / Follow-Up
 Rollback funcional promoviendo dpl_FrxjVFwRqrAHRYofcYuuABLKgMXc o revirtiendo 8784882. Falta validación física del audio con pantalla apagada en Android; los tests cubren handlers, bloqueo de seek y fallback, pero no la política energética del dispositivo.
+
+## 2026-08-11 10:33:34 -03 - Creé una propuesta navegable de RM web basada en la UX de iOS
+
+- Kind: `create`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Mostrar cómo quedaría la web app con la navegación, jerarquía y sesión Advanced de iOS antes de decidir su integración productiva
+
+### Touched
+- src/ios-ux-preview/IosUxWebPreview.jsx; src/ios-ux-preview/ios-ux-preview.css; src/main.jsx; public/preview-advanced-orb.png; public/preview-tutorial.png; ALMA.md
+
+### Details
+La ruta aislada /ux-ios-preview usa datos ficticios y no llama APIs ni modifica alumnos. En escritorio usa navegación lateral y en móvil la barra inferior de cuatro tabs. Reutiliza el arte Advanced y la miniatura de tutorial aprobados en iOS.
+
+### Verification
+- npm run build OK; git diff --check OK; QA en navegador a 390x844 y escritorio; Inicio, Práctica, Metas, Advanced, Progreso y Ayuda navegables; scrollWidth sin desborde horizontal
+
+### Risks / Follow-Up
+Propuesta sólo local en la rama preview/ios-ux-web; no se subió ni desplegó. Antes de llevarla a producción hay que conectar los componentes a los datos reales y revisar el impacto sobre el monolito App.jsx.
