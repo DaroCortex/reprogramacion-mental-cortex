@@ -1260,3 +1260,21 @@ Vercel construyó desde main y promovió el deployment al dominio principal. El 
 
 ### Risks / Follow-Up
 Rollback inmediato promoviendo dpl_8rjvEcEqRzsJLe56L86Uhz16A7vd. El commit documental de esta entrada genera un deployment adicional sin cambios funcionales; confirmar su promoción antes de cerrar.
+
+## 2026-08-11 13:48:40 -03 - Corregí la presentación de todas las apneas guardadas
+
+- Kind: `fix`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Viviana Arndt interpretó que sólo se había guardado su última apnea porque Progreso resumía cada día con un único valor
+
+### Touched
+- src/App.jsx; src/student-experience/StudentExperienceShell.jsx; src/student-experience/student-experience.css; src/ios-ux-preview/IosUxWebPreview.jsx; ALMA.md
+
+### Details
+La fuente productiva de R2 contiene las cinco apneas de Viviana del 11/08: 105, 158, 186, 210 y 204 segundos. No se modificaron datos. Progreso ahora enumera A1 a A5 para cada día y el resumen final de Advanced muestra todas las rondas en formato mm:ss en vez de una sola apnea.
+
+### Verification
+- Consulta canónica de R2 confirmó lastSession, recentSessions, apneaByDay y contadores alineados en cinco rondas; npm run build OK; test:apnea-history, test:students-contract y test:students-concurrency OK; git diff --check OK; QA 1365x900 y 390x844 sin overflow horizontal, con cinco tiempos por fila y 101 px de separación sobre la navegación móvil al final del scroll.
+
+### Risks / Follow-Up
+Cambio exclusivamente de presentación, pendiente de autorización para publicar y desplegar. No cambia la escritura de sesiones ni el historial. El valor Mejor y Última siguen siendo resúmenes individuales correctamente rotulados; A1-A5 muestran el detalle completo.

@@ -497,6 +497,22 @@ body:has(.student-experience-shell) {
   font-weight: 700;
 }
 
+.student-experience-apnea-times {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.student-experience-apnea-times em {
+  padding: 4px 6px;
+  border: 1px solid var(--student-line);
+  border-radius: 4px;
+  background: var(--student-accent-soft);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .student-experience-history-button {
   min-height: 42px;
   margin-top: 14px;
@@ -648,5 +664,14 @@ body:has(.student-experience-shell) {
 
   .student-experience-day-row {
     gap: 5px;
+  }
+
+  .student-experience-apnea-days > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .student-experience-apnea-times {
+    justify-content: flex-start;
   }
 }

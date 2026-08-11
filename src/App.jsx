@@ -7051,7 +7051,8 @@ export default function App() {
           lastApneaLabel={studentLastApneaSeconds ? formatDurationClock(studentLastApneaSeconds) : "0:00"}
           apneaDays={studentApneaDailyLog.map((day) => ({
             ...day,
-            bestLabel: formatDurationClock(day.best || 0)
+            bestLabel: formatDurationClock(day.best || 0),
+            timeLabels: day.times.map(formatDurationClock)
           }))}
           onOpenPractice={openPracticeOption}
           onOpenGoals={() => openPracticeOption("metas")}
@@ -8083,7 +8084,10 @@ export default function App() {
             </div>
             {progress.lastSummary && (
               <div className="summary">
-                Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones / apnea {progress.lastSummary.apneaSeconds || 0}s
+                Última sesión: {progress.lastSummary.cycles} ciclos / {progress.lastSummary.breaths} respiraciones / apneas{" "}
+                {Array.isArray(progress.lastSummary.rounds) && progress.lastSummary.rounds.length
+                  ? progress.lastSummary.rounds.map(formatDurationClock).join(" · ")
+                  : formatDurationClock(progress.lastSummary.apneaSeconds || 0)}
               </div>
             )}
             {progress.apneaHistory && progress.apneaHistory.length > 0 && (

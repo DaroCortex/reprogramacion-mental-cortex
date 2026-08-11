@@ -44,9 +44,9 @@ export default function IosUxWebPreview() {
       bestApneaLabel="2:04"
       lastApneaLabel="1:58"
       apneaDays={[
-        { dateKey: "demo-1", label: "Hoy", total: 5, bestLabel: "2:04" },
-        { dateKey: "demo-2", label: "Ayer", total: 5, bestLabel: "1:58" },
-        { dateKey: "demo-3", label: "Sáb 08/08", total: 5, bestLabel: "1:54" }
+        { dateKey: "demo-1", label: "Hoy", total: 5, bestLabel: "2:04", timeLabels: ["1:30", "1:42", "1:55", "2:01", "2:04"] },
+        { dateKey: "demo-2", label: "Ayer", total: 5, bestLabel: "1:58", timeLabels: ["1:29", "1:40", "1:48", "1:52", "1:58"] },
+        { dateKey: "demo-3", label: "Sáb 08/08", total: 5, bestLabel: "1:54", timeLabels: ["1:25", "1:36", "1:44", "1:49", "1:54"] }
       ]}
       onOpenPractice={() => {}}
       onOpenGoals={() => {}}

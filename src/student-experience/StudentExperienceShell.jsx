@@ -322,7 +322,11 @@ function ProgressScreen({
             {apneaDays.length > 0 ? apneaDays.slice(0, 4).map((day) => (
               <div key={day.dateKey}>
                 <span><strong>{day.label}</strong><small>{day.total} {day.total === 1 ? "apnea" : "apneas"}</small></span>
-                <em>{day.bestLabel}</em>
+                <span className="student-experience-apnea-times" aria-label={`Apneas de ${day.label}`}>
+                  {(day.timeLabels || [day.bestLabel]).map((label, index) => (
+                    <em key={`${day.dateKey}-${index}`}>A{index + 1} {label}</em>
+                  ))}
+                </span>
               </div>
             )) : <p>Sin apneas registradas todavía.</p>}
           </div>
