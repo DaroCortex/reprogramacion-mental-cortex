@@ -1224,3 +1224,21 @@ La ruta aislada /ux-ios-preview usa datos ficticios y no llama APIs ni modifica 
 
 ### Risks / Follow-Up
 Propuesta sólo local en la rama preview/ios-ux-web; no se subió ni desplegó. Antes de llevarla a producción hay que conectar los componentes a los datos reales y revisar el impacto sobre el monolito App.jsx.
+
+## 2026-08-11 10:53:42 -03 - Integré la UX de iOS con los flujos reales de RM web
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Llevar a producción la navegación y jerarquía visual aprobadas sin reemplazar los motores existentes de Principiante, Advanced, Metas ni historial
+
+### Touched
+- src/student-experience/StudentExperienceShell.jsx; src/student-experience/student-experience.css; src/App.jsx; src/main.jsx; src/ios-ux-preview/IosUxWebPreview.jsx; public/academia-cortex-tutorial.mp4; public/academia-cortex-tutorial-es.vtt; public/cortex-tutorial-thumbnail.png; ALMA.md
+
+### Details
+El nuevo shell responsive agrega Inicio, Práctica, Progreso y Ayuda con navegación lateral en escritorio y barra inferior en móvil. Cada acción invoca los handlers vigentes: Principiante conserva su reproductor protegido y MediaSession, Advanced conserva desbloqueo, precheck y motor respiratorio, y Metas abre el módulo editable actual. Inicio muestra Principiante hasta que Advanced esté habilitado. Las métricas usan el historial consolidado que prioriza servidor y agrega únicamente sesiones locales aún no sincronizadas. Ayuda incorpora el tutorial original de iOS como MP4 con carga diferida, póster y subtítulos WebVTT. La ruta con fixtures queda limitada a desarrollo y no entra al bundle productivo.
+
+### Verification
+- npm run build OK; 10 suites npm OK; git diff --check OK; el bundle productivo no contiene la ruta ni los datos ficticios; QA en navegador a 1365x900 y 390x844 para Inicio, Práctica, Progreso, Ayuda y temas oscuro/claro; sin overflow horizontal; el video reportó 206.7 s, póster correcto y una pista de subtítulos; la última práctica móvil conserva 58 px libres sobre la navegación fija al llegar al final.
+
+### Risks / Follow-Up
+El MP4 suma 14 MB al repositorio pero se sirve como asset separado del JavaScript y usa preload metadata. El QA de datos reales debe completarse contra una sesión productiva después del despliegue; rollback de interfaz disponible promoviendo el deployment productivo anterior dpl_8rjvEcEqRzsJLe56L86Uhz16A7vd.

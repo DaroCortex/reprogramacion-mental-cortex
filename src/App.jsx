@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Pause, Play } from "lucide-react";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 import Admin2Dashboard from "./Admin2Dashboard";
+import StudentExperienceShell from "./student-experience/StudentExperienceShell";
 import { useSolutgenSupportWidget } from "./SolutgenSupportWidget";
 import {
   DEFAULT_ADVANCED_CONFIG as DEFAULT_CONFIG,
@@ -940,6 +941,7 @@ export default function App() {
   const [manualConfigOpen, setManualConfigOpen] = useState(false);
   const [apneaHistoryOpen, setApneaHistoryOpen] = useState(false);
   const [practiceScreen, setPracticeScreen] = useState("menu");
+  const [studentMenuTab, setStudentMenuTab] = useState("home");
   const [whiteMagicUnlocked, setWhiteMagicUnlocked] = useState(false);
   const [whiteMagicScore, setWhiteMagicScore] = useState(0);
   const [magicUnlockScoreConfig, setMagicUnlockScoreConfig] = useState(DEFAULT_WHITE_MAGIC_UNLOCK_SCORE);
@@ -5605,6 +5607,19 @@ export default function App() {
     progress.lastApneaSeconds ||
     0;
 
+  const studentWeeklyActivity = useMemo(
+    () => studentWeeklyStats.weekKeys.map((key) => ({
+      key,
+      label: formatDateShortLabel(key),
+      shortLabel: formatWeeklyDay(key).slice(0, 1),
+      done: Math.max(
+        Number(studentUsageForPanel.sessionsByDay?.[key] || 0),
+        Number(studentUsageForPanel.practiceActivityByDay?.[key] || 0)
+      ) > 0
+    })),
+    [studentUsageForPanel.practiceActivityByDay, studentUsageForPanel.sessionsByDay, studentWeeklyStats.weekKeys]
+  );
+
   const sessionApneaBoard = Array.from({ length: Math.max(1, Number(config.cycles || 1)) }, (_, index) => {
     const recordedSeconds = Math.max(0, Number(roundApneaByCycleRef.current[index] || 0));
     const isActiveRound = phase === "apnea" && index === Math.max(0, cycleIndex - 1);
@@ -6994,59 +7009,56 @@ export default function App() {
   }
 
   if (practiceScreen === "menu") {
+    const shellPracticeOptions = practiceOptions.map((item) => ({
+      ...item,
+      status:
+        item.id === "principiante"
+          ? "Pendiente de audio"
+          : item.id === "reprogramacion"
+            ? hasApprovedAudio
+              ? advancedBlockedLabel()
+              : "Pendiente de audio"
+            : item.id === "colores"
+              ? "Bloqueado"
+              : item.id === "magia"
+                ? "Bloqueado por dashboard"
+                : "Próximamente"
+    }));
+    const advancedStatus = advancedUnlocked
+      ? "Disponible"
+      : hasApprovedAudio
+        ? advancedBlockedLabel()
+        : "Pendiente de audio";
+
     return (
-      <div className="app menu-app">
-        {renderHeader()}
-        <div className="card menu-card">
-          <div className="menu-card-title-row">
-            <h2>Selecciona práctica</h2>
-            <button
-              type="button"
-              className="apnea-history-button"
-              aria-label="Ver historial de tiempos de apnea"
-              title="Historial de apnea"
-              onClick={() => setApneaHistoryOpen(true)}
-            >
-              <span>⏱</span>
-              {studentApneaDailyLog.length > 0 && <em>{studentApneaDailyLog.length}</em>}
-            </button>
-          </div>
-          <p className="muted">
-            Principiante se habilita cuando administración aprueba tu audio. Advanced se libera al completar 7 días
-            escuchando Principiante de inicio a fin y tener listo tu audio personalizado.
-          </p>
-          <div className="practice-menu">
-            {practiceOptions.map((item) => {
-              const canClickLockedAdvanced = item.id === "reprogramacion";
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`menu-button ${item.enabled ? "enabled" : "disabled"}`}
-                  onClick={item.enabled || canClickLockedAdvanced ? () => openPracticeOption(item.id) : undefined}
-                  disabled={!item.enabled && !canClickLockedAdvanced}
-                >
-                  {item.label}
-                  {!item.enabled && (
-                    <span>
-                      {item.id === "principiante"
-                        ? "Pendiente de audio"
-                        : item.id === "reprogramacion"
-                          ? hasApprovedAudio
-                            ? advancedBlockedLabel()
-                            : "Pendiente de audio"
-                          : item.id === "colores"
-                            ? "Bloqueado"
-                            : item.id === "magia"
-                              ? "Bloqueado por dashboard"
-                              : "Proximamente"}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      <div>
+        <StudentExperienceShell
+          studentName={student.name}
+          activeTab={studentMenuTab}
+          onTabChange={setStudentMenuTab}
+          practiceOptions={shellPracticeOptions}
+          beginnerAudioCount={beginnerAudioOptions.length}
+          beginnerCompletedDays={beginnerCompletedDays}
+          beginnerRequiredDays={beginnerRequiredDays}
+          advancedUnlocked={advancedUnlocked}
+          advancedStatus={advancedStatus}
+          advancedCycles={Number(config.cycles || 1)}
+          weeklyActivity={studentWeeklyActivity}
+          weeklySessions={studentWeeklyStats.weeklySessions}
+          currentStreak={studentWeeklyStats.currentStreak || progress.streak || 0}
+          totalSessions={studentUsageForPanel.totalSessions}
+          bestApneaLabel={studentBestApneaSeconds ? formatDurationClock(studentBestApneaSeconds) : "0:00"}
+          lastApneaLabel={studentLastApneaSeconds ? formatDurationClock(studentLastApneaSeconds) : "0:00"}
+          apneaDays={studentApneaDailyLog.map((day) => ({
+            ...day,
+            bestLabel: formatDurationClock(day.best || 0)
+          }))}
+          onOpenPractice={openPracticeOption}
+          onOpenGoals={() => openPracticeOption("metas")}
+          onOpenApneaHistory={() => setApneaHistoryOpen(true)}
+          theme={theme}
+          onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+        />
         {apneaHistoryOpen && (
           <div
             className="apnea-history-overlay"

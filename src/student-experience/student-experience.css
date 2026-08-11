@@ -1,0 +1,652 @@
+.student-experience-shell {
+  --student-bg: #061618;
+  --student-sidebar: #081d1f;
+  --student-surface: #0b2526;
+  --student-surface-strong: #103032;
+  --student-line: #1d4545;
+  --student-text: #f2f7f5;
+  --student-muted: #91aaa8;
+  --student-accent: #4bd8ce;
+  --student-accent-soft: #143e3d;
+  --student-amber: #f1a43c;
+  min-height: 100vh;
+  background: var(--student-bg);
+  color: var(--student-text);
+  font-family: "Manrope", system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+[data-theme="light"] .student-experience-shell {
+  --student-bg: #f3f6f4;
+  --student-sidebar: #e9f0ed;
+  --student-surface: #ffffff;
+  --student-surface-strong: #e3f2ef;
+  --student-line: #bdd2cd;
+  --student-text: #142b2b;
+  --student-muted: #58706d;
+  --student-accent: #087c75;
+  --student-accent-soft: #d3ebe7;
+  --student-amber: #b46b17;
+}
+
+body:has(.student-experience-shell) {
+  background: var(--student-bg, #061618);
+}
+
+.student-experience-shell *,
+.student-experience-shell *::before,
+.student-experience-shell *::after {
+  box-sizing: border-box;
+}
+
+.student-experience-shell button {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.student-experience-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 236px;
+  padding: 26px 18px;
+  background: var(--student-sidebar);
+  border-right: 1px solid var(--student-line);
+  display: flex;
+  flex-direction: column;
+  z-index: 4;
+}
+
+.student-experience-brand {
+  min-height: 48px;
+  margin-bottom: 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.student-experience-brand img,
+.student-experience-mobile-header img {
+  width: 124px;
+  height: 38px;
+  object-fit: contain;
+  object-position: left center;
+  filter: invert(86%) sepia(42%) saturate(737%) hue-rotate(119deg) brightness(94%);
+}
+
+[data-theme="light"] .student-experience-brand img,
+[data-theme="light"] .student-experience-mobile-header img {
+  filter: none;
+}
+
+.student-experience-brand span {
+  padding-left: 10px;
+  border-left: 1px solid var(--student-line);
+  color: var(--student-muted);
+  font-size: 12px;
+}
+
+.student-experience-sidebar nav {
+  display: grid;
+  gap: 5px;
+}
+
+.student-experience-nav-button {
+  appearance: none;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--student-muted);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.student-experience-nav-button:hover {
+  background: color-mix(in srgb, var(--student-accent-soft) 70%, transparent);
+  color: var(--student-text);
+}
+
+.student-experience-nav-button.active {
+  background: var(--student-accent-soft);
+  color: var(--student-accent);
+}
+
+.student-experience-theme-button {
+  min-height: 42px;
+  margin-top: auto;
+  padding: 0 12px;
+  border: 1px solid var(--student-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--student-muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.student-experience-mobile-header,
+.student-experience-bottom-nav {
+  display: none;
+}
+
+.student-experience-shell > main {
+  min-height: 100vh;
+  margin-left: 236px;
+}
+
+.student-experience-screen {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 52px 42px 72px;
+}
+
+.student-experience-heading {
+  margin-bottom: 30px;
+}
+
+.student-experience-heading p,
+.student-experience-kicker,
+.student-experience-section-label span {
+  margin: 0 0 7px;
+  color: var(--student-accent);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+}
+
+.student-experience-heading h1 {
+  margin: 0;
+  color: var(--student-text);
+  font-size: clamp(30px, 4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.student-experience-heading > span {
+  display: block;
+  margin-top: 9px;
+  color: var(--student-muted);
+  font-size: 16px;
+}
+
+.student-experience-home-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 14px;
+}
+
+.student-experience-advanced-action,
+.student-experience-summary-panel,
+.student-experience-practice-entry,
+.student-experience-goals-link {
+  width: 100%;
+  border: 1px solid var(--student-line);
+  border-radius: 8px;
+  color: var(--student-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.student-experience-advanced-action {
+  min-height: 196px;
+  grid-row: span 2;
+  padding: 26px;
+  background: var(--student-surface-strong);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.student-experience-advanced-action::before {
+  content: "";
+  position: absolute;
+  width: 126px;
+  height: 126px;
+  top: 18px;
+  right: 26px;
+  border: 1px solid color-mix(in srgb, var(--student-accent) 52%, transparent);
+  border-radius: 50%;
+}
+
+.student-experience-advanced-action.locked::before {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.student-experience-advanced-action.compact {
+  min-height: 86px;
+  padding: 15px;
+  align-items: center;
+}
+
+.student-experience-advanced-action.compact::before {
+  display: none;
+}
+
+.student-experience-advanced-action strong {
+  display: block;
+  margin: 2px 0 7px;
+  font-size: 28px;
+}
+
+.student-experience-advanced-action.compact strong {
+  font-size: 17px;
+}
+
+.student-experience-advanced-action small,
+.student-experience-summary-panel small,
+.student-experience-practice-entry small,
+.student-experience-goals-link small,
+.student-experience-video-panel small {
+  display: block;
+  margin-top: 4px;
+  color: var(--student-muted);
+}
+
+.student-experience-round-action {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--student-accent);
+  color: var(--student-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  z-index: 1;
+}
+
+.student-experience-advanced-action.locked .student-experience-round-action {
+  border: 1px solid var(--student-line);
+  background: var(--student-surface);
+  color: var(--student-muted);
+}
+
+.student-experience-summary-panel {
+  min-height: 91px;
+  padding: 16px 18px;
+  background: var(--student-surface);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.student-experience-summary-panel:hover,
+.student-experience-practice-entry:hover:not(:disabled),
+.student-experience-goals-link:hover,
+.student-experience-advanced-action:hover {
+  border-color: color-mix(in srgb, var(--student-accent) 62%, var(--student-line));
+}
+
+.student-experience-summary-panel strong,
+.student-experience-practice-entry strong,
+.student-experience-goals-link strong,
+.student-experience-section-label strong,
+.student-experience-video-panel strong {
+  display: block;
+  font-size: 15px;
+}
+
+.student-experience-summary-icon,
+.student-experience-choice-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--student-accent-soft);
+  color: var(--student-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.student-experience-summary-icon.amber {
+  color: var(--student-amber);
+}
+
+.student-experience-metrics-band {
+  margin-top: 18px;
+  border-top: 1px solid var(--student-line);
+  border-bottom: 1px solid var(--student-line);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.student-experience-metrics-band div {
+  min-width: 0;
+  padding: 18px 8px;
+  border-right: 1px solid var(--student-line);
+  text-align: center;
+}
+
+.student-experience-metrics-band div:last-child {
+  border-right: 0;
+}
+
+.student-experience-metrics-band strong {
+  display: block;
+  color: var(--student-text);
+  font-size: 20px;
+}
+
+.student-experience-metrics-band span {
+  color: var(--student-muted);
+  font-size: 12px;
+}
+
+.student-experience-practice-section {
+  margin-bottom: 30px;
+}
+
+.student-experience-section-label {
+  min-height: 44px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.student-experience-section-label span {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.student-experience-section-label svg {
+  color: var(--student-accent);
+}
+
+.student-experience-practice-entry,
+.student-experience-goals-link {
+  min-height: 76px;
+  padding: 13px 15px;
+  background: var(--student-surface);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.student-experience-practice-entry.disabled {
+  color: var(--student-muted);
+  cursor: default;
+}
+
+.student-experience-practice-entry.disabled .student-experience-choice-icon {
+  opacity: 0.55;
+}
+
+.student-experience-goals-link {
+  margin-top: 10px;
+}
+
+.student-experience-supplemental-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.student-experience-progress-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+  gap: 14px;
+}
+
+.student-experience-data-panel {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--student-line);
+  border-radius: 8px;
+  background: var(--student-surface);
+}
+
+.student-experience-day-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin: 24px 0;
+}
+
+.student-experience-day-row > span {
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--student-accent-soft) 75%, transparent);
+  color: var(--student-muted);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.student-experience-day-row > span.done {
+  background: var(--student-accent);
+  color: var(--student-bg);
+}
+
+.student-experience-data-summary,
+.student-experience-apnea-summary {
+  padding-top: 16px;
+  border-top: 1px solid var(--student-line);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.student-experience-data-summary span,
+.student-experience-apnea-summary span {
+  min-width: 0;
+  color: var(--student-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.student-experience-data-summary strong,
+.student-experience-apnea-summary strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--student-text);
+  font-size: 16px;
+}
+
+.student-experience-apnea-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 0 16px;
+  border-top: 0;
+  border-bottom: 1px solid var(--student-line);
+}
+
+.student-experience-apnea-days {
+  display: grid;
+}
+
+.student-experience-apnea-days > div {
+  min-height: 54px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--student-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.student-experience-apnea-days strong,
+.student-experience-apnea-days small {
+  display: block;
+}
+
+.student-experience-apnea-days small,
+.student-experience-apnea-days p {
+  margin: 3px 0 0;
+  color: var(--student-muted);
+  font-size: 12px;
+}
+
+.student-experience-apnea-days em {
+  color: var(--student-accent);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.student-experience-history-button {
+  min-height: 42px;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--student-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.student-experience-video-panel {
+  max-width: 900px;
+  border: 1px solid var(--student-line);
+  border-radius: 8px;
+  background: var(--student-surface);
+  overflow: hidden;
+}
+
+.student-experience-video-panel video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000000;
+}
+
+.student-experience-video-panel > div {
+  padding: 18px 20px 20px;
+}
+
+@media (max-width: 820px) {
+  .student-experience-sidebar {
+    display: none;
+  }
+
+  .student-experience-shell > main {
+    margin-left: 0;
+  }
+
+  .student-experience-mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    height: 58px;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--student-line);
+    background: color-mix(in srgb, var(--student-bg) 94%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .student-experience-mobile-header img {
+    width: 132px;
+    height: 36px;
+  }
+
+  .student-experience-mobile-header button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--student-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .student-experience-screen {
+    padding: 28px 14px 102px;
+  }
+
+  .student-experience-heading {
+    margin-bottom: 24px;
+  }
+
+  .student-experience-heading h1 {
+    font-size: 31px;
+  }
+
+  .student-experience-heading > span {
+    font-size: 14px;
+  }
+
+  .student-experience-home-grid,
+  .student-experience-progress-layout,
+  .student-experience-supplemental-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .student-experience-advanced-action {
+    grid-row: auto;
+    min-height: 170px;
+  }
+
+  .student-experience-advanced-action.compact {
+    min-height: 86px;
+  }
+
+  .student-experience-bottom-nav {
+    position: fixed;
+    inset: auto 10px 10px;
+    z-index: 6;
+    min-height: 64px;
+    padding: 5px;
+    border: 1px solid var(--student-line);
+    border-radius: 8px;
+    background: var(--student-sidebar);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .student-experience-bottom-nav .student-experience-nav-button {
+    min-height: 52px;
+    padding: 4px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .student-experience-metrics-band div {
+    padding: 14px 5px;
+  }
+
+  .student-experience-metrics-band strong {
+    font-size: 17px;
+  }
+
+  .student-experience-summary-panel {
+    padding-inline: 13px;
+  }
+
+  .student-experience-summary-panel strong,
+  .student-experience-practice-entry strong,
+  .student-experience-goals-link strong {
+    font-size: 14px;
+  }
+
+  .student-experience-data-panel {
+    padding: 16px 13px;
+  }
+
+  .student-experience-day-row {
+    gap: 5px;
+  }
+}

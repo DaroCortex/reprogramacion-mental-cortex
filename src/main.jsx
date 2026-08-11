@@ -36,7 +36,9 @@ class AppErrorBoundary extends React.Component {
 }
 
 const root = createRoot(document.getElementById("root"));
-const RootApp = window.location.pathname === "/ux-ios-preview" ? IosUxWebPreview : App;
+const RootApp = import.meta.env.DEV && window.location.pathname === "/ux-ios-preview"
+  ? IosUxWebPreview
+  : App;
 root.render(
   <AppErrorBoundary>
     <RootApp />
