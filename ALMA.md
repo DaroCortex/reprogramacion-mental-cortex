@@ -684,3 +684,507 @@ Se configuró FORM_REPORT_SYNC_SECRET como variable cifrada de producción sin e
 
 ### Risks / Follow-Up
 Rollback promoviendo dpl_JDDgjpojZ3VZae7EbWJJR7DBUKzS. Universal Links requiere una nueva build iOS con el entitlement y puede estar sujeto a caché de Apple.
+
+## 2026-07-25 13:02:32 -03 - Verifiqué el deployment documental final sin cambios ejecutables
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Vercel generó un deployment al versionar ALMA.md aunque el commit usó skip ci
+
+### Touched
+- GitHub commit a277bae; Vercel dpl_2XWHgv48waD4Lja7D7qTNVpSBMBM; rm.academiacortex.com.ar
+
+### Details
+El commit sólo agregó documentación a ALMA.md y conserva exactamente el código de la integración ya validada.
+
+### Verification
+- Deployment READY target production aliasAssigned=true; SHA a277bae620e68d90fe83c6e03258e46bddd9b5c1; smoke Bearer final autorizado con 404 técnico esperado; AASA live conserva appID y /s/*.
+
+### Risks / Follow-Up
+No volver a pushear esta entrada durante este trabajo para evitar otro deployment documental. Rollback funcional disponible con dpl_JDDgjpojZ3VZae7EbWJJR7DBUKzS.
+
+## 2026-07-25 17:05:36 -03 - Habilité Advanced como excepción para TEST test-2
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario solicitó liberar el acceso del alumno técnico sin exigirle siete días de Principiante
+
+### Touched
+- rm.academiacortex.com.ar student test-2; R2 students production record; ALMA.md
+
+### Details
+Se mantuvo el progreso real de Principiante en 0/7. Se asignó al alumno la referencia al audio Advanced ya aprobado del fixture Apple Review y se cambió únicamente su política a legacy_immediate con Advanced habilitado. No se copiaron archivos, no se fabricaron eventos de escucha y no se modificó la regla global.
+
+### Verification
+- GET /api/students devolvió Advanced habilitado, policy legacy_immediate, blockedReason vacío y Principiante 0/7. La vista real /s/test-2 mostró Reprogramación Mental Advanced como botón habilitado.
+
+### Risks / Follow-Up
+La excepción comparte el objeto Advanced aprobado del fixture Apple Review. Rollback: retirar esa referencia de test-2, restablecer advancedReprogrammingEnabled=false y policy after_7_beginner_days; no requiere borrar el objeto compartido.
+
+## 2026-07-25 18:43:12 -03 - Agregué edición segura de identidad en el admin de RM
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Permitir asignar email y, sólo cuando corresponda, corregir el vínculo de Formularios para alumnos legacy como test-2
+
+### Touched
+- api/admin/update-student.js; src/App.jsx; src/Admin2Dashboard.jsx; src/admin2.css; GitHub commit e3f6296; Vercel dpl_DpY6kTHzPUjiJApSw5QATSuu6V59; rm.academiacortex.com.ar/admin
+
+### Details
+El drawer del alumno ahora muestra su email y abre un modal Editar identidad. El email es obligatorio y único. El ID de Formularios queda en una sección opcional cerrada, valida 24 caracteres hexadecimales y no puede repetirse. Las ediciones de perfil preservan lastAudioAccessAt para no fabricar actividad. No se modificó test-2: sigue sin email y conserva su vínculo histórico hasta que administración ingrese datos confirmados.
+
+### Verification
+- npm run build OK; node --check api/admin/update-student.js OK; npm run test:students-contract OK; npm run test:advanced-policy OK; git diff --check OK; deployment READY y dominio sirviendo el bundle nuevo; prueba productiva no mutante devolvió 400 para email inválido y test-2 permaneció sin cambios; QA Chrome desktop 1736x1227 y móvil 390x844 sin overflow horizontal ni solapamientos
+
+### Risks / Follow-Up
+El sourceExternalId histórico de test-2 apunta a un formulario no encontrado y no debe reemplazarse sin un ID confirmado. Rollback de código: revertir e3f6296. Rollback de deployment: promover dpl_2XWHgv48waD4Lja7D7qTNVpSBMBM. ALMA.md conserva entradas locales previas y no se pushea en este lote para evitar un deployment sólo documental.
+
+## 2026-07-27 11:08:28 -03 - Conté Principiante al llegar a 25 minutos y recuperé el progreso histórico
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El audio termina las respiraciones antes de la meditación final; el usuario pidió considerar completa cada práctica al reproducir 25 minutos y habilitar Advanced a Mariam
+
+### Touched
+- lib/beginner-progress.js; src/App.jsx; api/students.js; scripts/backfill-beginner-25m.mjs; scripts/test-advanced-unlock-policy.mjs; package.json; R2 students.json producción; alumno mariam-rujana; GitHub 75128ba; Vercel dpl_AFKynKcBETZykCY4N1HfS9BSGash
+
+### Details
+La regla exige al menos 1500 segundos realmente reproducidos, posición de al menos 1500 segundos y ausencia de seek; conserva el cierre de audios legacy cortos. El backfill sumó días omitidos a 17 alumnos y una segunda pasada dio 0 cambios. Mariam pasó de 0 a 2 días reales. Como no alcanzó 7, se aplicó la excepción solicitada: se vinculó a mariam-rujana el Advanced legacy aprobado del duplicado mariam, confirmado por el mismo source externalId, sin fabricar cinco días.
+
+### Verification
+- npm run test:advanced-policy OK; npm run test:students-contract OK; npm run test:advanced-playback OK; npm run build OK; node --check y git diff --check OK; deployment READY y alias rm.academiacortex.com.ar en SHA 75128ba; backfill apply 17 y dry-run posterior 0; contrato autenticado de mariam-rujana: advanced ready=true, status=approved, completedDays=2 y blockedReason vacío
+
+### Risks / Follow-Up
+El desbloqueo de Mariam es una excepción legacy_immediate; el resto conserva su política. Rollback de código: revertir 75128ba o promover dpl_DpY6kTHzPUjiJApSw5QATSuu6V59. Rollback de datos: quitar sólo los dayKey agregados listados en el reporte de migración y restaurar los campos de Mariam desde el backup temporal capturado antes del cambio. ALMA.md conserva entradas locales previas y no debe pushearse en este lote sólo documental.
+
+## 2026-07-27 13:16:14 -03 - Habilité Advanced como excepción para Mariana Urdaibay
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario solicitó pasar a Mariana a Advanced sin esperar siete días de Principiante
+
+### Touched
+- R2 students.json producción; alumno mariana-urdaibay; api/admin/update-student en rm.academiacortex.com.ar; ALMA.md
+
+### Details
+Se verificó que el registro tenía Principiante y un archivo Advanced existente y accesible. Se cambió únicamente a policy legacy_immediate, status approved y Advanced habilitado. Se conservaron sus 0 días reales de Principiante y no se reemplazó ni regeneró ningún audio.
+
+### Verification
+- Lectura productiva previa confirmó el objeto Advanced disponible; POST autorizado respondió HTTP 200; lectura posterior y GET autenticado /api/students devolvieron advanced ready=true, status=approved, policy=legacy_immediate, blockedReason vacío y completedDays=0
+
+### Risks / Follow-Up
+Es una excepción manual. Rollback: restaurar audioKey, audioWorkflow, advancedUnlockPolicy y features desde /tmp/mariana-advanced-backup.json; no requiere borrar archivos de audio.
+
+## 2026-07-27 13:48:38 -03 - Telemetria durable de reproduccion Principiante
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Registrar siempre cuanto reprodujo el alumno incluso ante cierre de app, segundo plano, reintentos o escrituras concurrentes
+
+### Touched
+- lib/beginner-progress.js; lib/beginner-telemetry.js; api/students.js; api/auth/me.js; api/auth/login.js; api/auth/set-password.js; api/audio-file.js; src/App.jsx; scripts/test-advanced-unlock-policy.mjs
+
+### Details
+Se agregaron sesiones y eventos idempotentes con checkpoints, secuencia y eventId; el progreso se consolida por alumno en R2 y la web reporta cada 15 segundos.
+
+### Verification
+- node --check OK; test:advanced-policy OK; test:students-contract OK; test:advanced-playback OK antes del reinicio; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+El checkpoint nativo requiere distribuir una nueva version iOS para llegar a alumnos; backend y web son retrocompatibles con clientes anteriores.
+
+## 2026-07-27 13:52:45 -03 - Telemetria Principiante desplegada en produccion
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Activar checkpoints web y consolidacion durable sin esperar una nueva build iOS
+
+### Touched
+- GitHub commit ed22d3d; Vercel deployment dpl_Bo1e9wtPYrShaSamRHBDnyJVPSmF; rm.academiacortex.com.ar; fixture test-2
+
+### Details
+El alias productivo sirve el bundle con checkpoints cada 15 segundos. Un smoke idempotente sobre test-2 creo una sesion tecnica de 16 segundos sin completar ningun dia.
+
+### Verification
+- Deployment READY; alias productivo activo; root HTTP 200; bundle incluye checkpoint e intervalo 15s; POST y GET autenticados HTTP 200; sessionFound=true, playedSeconds=16, sequence=1, completed=false, completedDays=0
+
+### Risks / Follow-Up
+Los alumnos web quedan cubiertos de inmediato. Los alumnos iOS requieren publicar la nueva build para tener persistencia offline y flush de ciclo de vida.
+
+## 2026-07-27 18:42:21 -03 - Evité pérdidas por escrituras concurrentes y reparé Principiante 2 de Raul Suazo
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El alumno juristashn@hotmail.com podía reproducir Principiante 1 pero Principiante 2 devolvía 404 porque una actualización de sesión revirtió la referencia recién sincronizada
+
+### Touched
+- lib/r2.js; scripts/test-students-concurrency.mjs; package.json; GitHub commit 29e8d38; Vercel deployment dpl_CVBAyS5rpwp5oDEL8pJJWjaW26iA; R2 students.json; alumno raul-rolando-suazo-barillas
+
+### Details
+students.json ahora usa ETag/If-Match, reintentos y merge profundo por slug para conservar cambios concurrentes de audio, sesión y telemetría. Se reasoció beginnerAltAudioKey al objeto ya generado de 45.362.826 bytes; no se reprocesaron audios ni se modificaron reglas de desbloqueo.
+
+### Verification
+- node --check lib/r2.js OK; test:students-concurrency, test:advanced-policy, test:students-contract y test:advanced-playback OK; npm run build OK; pruebas descartables reales en R2 confirmaron 412 para ETag obsoleto y merge de audio+sesión; deployment READY en rm.academiacortex.com.ar; Principiante 1 y 2 devolvieron HTTP 206 audio/mpeg con rango de 1024 bytes
+
+### Risks / Follow-Up
+Rollback de código: revertir 29e8d38 o promover dpl_Bo1e9wtPYrShaSamRHBDnyJVPSmF. Rollback de datos: restaurar beginnerAltAudioKey al valor anterior terminado en 1785172559533, aunque ese objeto no existe; el valor reparado termina en 1785176648734. ALMA.md conserva entradas locales previas y no se incluye en el commit de código.
+
+## 2026-07-28 10:37:45 -03 - Actualicé en RM los tres audios corregidos de Jessica Gabazza
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El recorte fijo del procesamiento anterior había eliminado las primeras palabras de la voz personalizada y el usuario aprobó reprocesar el raw original con el pipeline corregido.
+
+### Touched
+- RM production student jessica-gabazza; R2 beginnerAudioKey; R2 beginnerAltAudioKey; R2 editorAudioKey; respaldo /root/backups/formulario-auphonic-dynamic-trim-20260728-102517/rm-jessica-before.json
+
+### Details
+Formulario reproceso el raw v1 de Jessica con Auphonic y deteccion dinámica del comienzo de voz, luego sincronizo Principiante 1, Principiante 2 y Advanced al slug existente jessica-gabazza. Whisper verifico la frase inicial completa en todas las variantes y en un segundo loop de Principiante 1.
+
+### Verification
+- Las tres claves cambiaron; beginner, beginner-alt y edited respondieron HTTP 206 audio/mpeg con Range de 1024 bytes usando acceso admin, sin registrar reproducción del alumno. El workflow RM permanece approved y conserva advancedUnlockPolicy=after_7_beginner_days.
+
+### Risks / Follow-Up
+Los registros RM antes/despues están respaldados con permisos restringidos en /root/backups/formulario-auphonic-dynamic-trim-20260728-102517. No hubo cambio de código ni deployment RM en este lote; para rollback de datos deben restaurarse las tres claves del snapshot before.
+
+## 2026-07-28 14:00:24 -03 - Dupliqué el audio legacy de Johanna al usuario canónico con email
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario solicitó conservar el registro viejo y agregar copias independientes al usuario johanna-vera-ducharne vinculado a comunidadyoghika7@gmail.com
+
+### Touched
+- RM producción: johanna-vera y johanna-vera-ducharne; R2 raw y edited; /root/backups/rm-johanna-duplicate-20260728-165937
+
+### Details
+Se copiaron físicamente raw y Advanced a nuevas claves del usuario canónico. Se conservó sin cambios el registro legacy. El destino mantuvo email, token, contraseña y sesión; quedó approved, Advanced habilitado y policy legacy_immediate.
+
+### Verification
+- Ambos slugs devolvieron HTTP 206 para raw y edited; las claves origen/destino son distintas; contrato autenticado del destino devolvió advanced ready=true y status=approved; sourceUnchanged=true.
+
+### Risks / Follow-Up
+No se generaron audios Principiante porque el registro legacy sólo tenía el audio de voz/Advanced de 72.202 s. Rollback disponible restaurando el snapshot privado y eliminando únicamente las dos claves nuevas del destino.
+
+## 2026-07-29 10:26:18 -03 - Corregí Metas Diarias por sesión y protegí el progreso Principiante
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Los alumnos con email y contraseña no cargaban sus metas, Viviana perdió un día completado por respuestas concurrentes y se pidió impedir que el alumno adelante el audio
+
+### Touched
+- src/modules/daily/DailyGoalsModuleCore.jsx; src/App.jsx; src/styles.css; lib/beginner-progress.js; lib/beginner-telemetry.js; api/students.js; scripts/test-advanced-unlock-policy.mjs
+
+### Details
+Metas Diarias ahora autentica con la cookie HttpOnly aunque no exista token legacy y espera la hidratación cloud antes de guardar. El reproductor web usa controles propios sin scrubber, permite pausar, revierte intentos de avance y avisa al alumno. La telemetría se consolida con ETag/If-Match y merges monotónicos para que una escritura o respuesta obsoleta no reduzca días completados.
+
+### Verification
+- test:advanced-policy, test:students-concurrency, test:students-contract, test:advanced-playback, test:report-plan y test:advanced-config OK; npm run build OK; node --check y git diff --check OK; Playwright local confirmó GET/POST de Metas sólo con slug/cookie, sin token, y un salto de 20 s volvió a ~1.3 s mostrando el aviso; QA móvil 390x844 sin controles nativos ni solapamientos
+
+### Risks / Follow-Up
+El bloqueo visual se activa inmediatamente en web. Clientes nativos anteriores siguen dependiendo de enviar seeked=true para invalidar una sesión; el backend mantiene esa regla. Rollback de código: revertir el commit de este lote y promover el deployment productivo anterior dpl_CVBAyS5rpwp5oDEL8pJJWjaW26iA.
+
+## 2026-07-29 10:30:23 -03 - Desplegué las correcciones de Metas y Principiante en RM
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Activar para los alumnos con email/contraseña la carga de Metas Diarias y evitar pérdidas o adelantamientos en las prácticas de Principiante
+
+### Touched
+- GitHub commit 643fcaf; Vercel deployment dpl_AdJEdCLXo8AZ9uRnEGvKuf7ttpUk; https://rm.academiacortex.com.ar; producción R2 leída sin cambios
+
+### Details
+El push a main disparó el deployment productivo automático y Vercel promovió el alias principal. No se migraron ni alteraron datos de alumnos durante el despliegue.
+
+### Verification
+- Vercel READY/PROMOTED y alias asignado; raíz HTTP 200; bundle productivo contiene el bloqueo de adelantamiento, aviso y acceso /api/daily/data por sesión. Lectura R2 posterior: Viviana conserva 5 días completados (25-29/07) y 12 plantillas de Metas Diarias.
+
+### Risks / Follow-Up
+Rollback: promover dpl_CVBAyS5rpwp5oDEL8pJJWjaW26iA y revertir 643fcaf. El frontend web queda protegido ya; clientes iOS anteriores sólo invalidan seek si reportan seeked=true y requieren una futura build para replicar el bloqueo visual nativo.
+
+## 2026-07-29 10:43:21 -03 - Aclaré cuándo cuenta cada día de Principiante
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Eliminar la redundancia sobre adelantar el audio y explicar que el día cuenta al terminar los ciclos de respiración
+
+### Touched
+- src/App.jsx; ALMA.md
+
+### Details
+El texto principal ahora indica que cada día cuenta al terminar los ciclos de respiración, aproximadamente a los 25 minutos. La regla de pausa y adelanto queda sólo en el aviso inferior. No cambió el umbral técnico de 1500 segundos ni la política de 7 días.
+
+### Verification
+- npm run build OK; npm run test:advanced-policy OK
+
+### Risks / Follow-Up
+Cambio validado localmente y todavía no desplegado; requiere aprobación explícita para crear un nuevo deployment de Vercel.
+
+## 2026-07-31 09:42:58 -03 - Habilité Advanced como excepción individual para Ana Agostino
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario solicitó habilitar Advanced a Ana Agostino sin alterar la regla global ni su progreso real de Principiante
+
+### Touched
+- RM producción: alumno ana-agostino; R2 students.json; respaldo privado /tmp/rm-ana-agostino-advanced-before-20260731T124237Z.json
+
+### Details
+Se cambió únicamente advancedUnlockPolicy de after_7_beginner_days a legacy_immediate y se habilitó features.advancedReprogrammingEnabled usando el Advanced ya aprobado. Se conservaron sin cambios Principiante 1, Principiante 2, Advanced y los 3/7 días reales.
+
+### Verification
+- POST /api/admin/update-student action=unlock-advanced respondió OK; lectura posterior de /api/admin/list y /api/students confirmó policy=legacy_immediate, Advanced habilitado, workflow approved, sin bloqueo, 3/7 preservados y las tres claves de audio sin cambios.
+
+### Risks / Follow-Up
+Excepción limitada a ana-agostino. No hubo cambio de código, deployment ni modificación de la regla global. Rollback: restaurar policy, features y audioWorkflow desde el snapshot privado con permisos 600.
+
+## 2026-07-31 18:36:17 -03 - Habilité Advanced en la cuenta canónica de Rafa Pino
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario solicitó dar acceso Advanced a Rafa Pino; el alumno tenía los audios aprobados en un registro legacy sin email y usaba una cuenta nueva vinculada al formulario
+
+### Touched
+- RM producción: rafael-pino y rafael-ernesto-pino; R2 raw, Principiante 1, Principiante 2 y Advanced; /tmp/rm-rafa-pino-advanced-before-20260731T213540Z.json
+
+### Details
+Se copiaron físicamente los cuatro audios del registro legacy a claves independientes del registro canónico coachrafapino@gmail.com. El destino mantuvo identidad, formulario vinculado, contraseña, sesiones, token, uso y progreso; quedó approved, policy legacy_immediate y Advanced habilitado. El registro legacy y sus referencias no cambiaron.
+
+### Verification
+- Las cuatro copias conservaron tamaño y contenido; lectura posterior de R2 confirmó referencias independientes. GET autenticado /api/students devolvió mobileAudio.advanced ready=true/status=approved y dos audios Principiante ready. Se verificó sourcePreserved=true, authPreserved=true y usagePreserved=true.
+
+### Risks / Follow-Up
+Excepción limitada a rafael-ernesto-pino; no hubo cambio de código ni deployment. Rollback: restaurar los campos del destino desde el snapshot privado con permisos 600 y eliminar únicamente las cuatro claves nuevas; el registro rafael-pino no requiere restauración.
+
+## 2026-08-01 17:16:58 -03 - Activé voz Advanced continua sólo para Gabriela Luna
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Gabriela solicitó escuchar su voz personalizada también durante respiración y recuperación, a menor volumen que durante apnea
+
+### Touched
+- RM producción: gabriela-lucero-luna-portilla; R2 students.json; /tmp/rm-gabriela-luna-continuous-voice-before-20260801T201638Z.json
+
+### Details
+Se configuró únicamente features.advancedPlaybackProfile=continuous_voice_v1. El contrato resultante usa multiplicadores 0.4 en respiración, 0.4 en recuperación y 1.0 en apnea, con transición de 0.8 segundos. No se regeneró ni reemplazó ningún audio y no se modificó la política Advanced.
+
+### Verification
+- GET autenticado /api/students confirmó profile continuous_voice_v1, continuousVoiceEnabled=true, Advanced ready/approved y progreso Principiante 7/7. Se compararon antes/después: audioWorkflow, referencias de audio, usage, auth, identidad, política y lastAudioAccessAt quedaron sin cambios. El archive iOS público 1.0.1 (20) contiene continuous_voice_v1.
+
+### Risks / Follow-Up
+Excepción limitada a gabriela-lucero-luna-portilla. No hubo cambio de código ni deployment. Rollback inmediato: configurar advancedPlaybackProfile=apnea_only; el estado previo está documentado en el snapshot privado con permisos 600.
+
+## 2026-08-01 18:17:22 -03 - Mostré todas las rondas y amplié Seguimiento a alumnos activos
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Gabriela Lucero Luna Portilla tenía cinco rondas guardadas pero el drawer mostraba sólo tres y Seguimiento la ocultaba por el filtro de atención
+
+### Touched
+- src/Admin2Dashboard.jsx; src/admin2.css; GitHub a73bb9f; Vercel dpl_FXU72ncLi2ep6Y2EGRoWoKfBUEQo; https://rm.academiacortex.com.ar/admin
+
+### Details
+El drawer agrupa sesiones recientes, muestra fecha, duración y cada ronda numerada sin recortar valores. Seguimiento ahora abre con todos los alumnos activos ordenados por prioridad; Alertas conserva el filtro de quienes requieren atención. Los datos de Gabriela no se modificaron: producción conserva una sesión de 26:37 con cinco rondas.
+
+### Verification
+- npm run build OK; test:students-contract OK; test:advanced-policy OK; git diff --check OK; Playwright con fixture exacto de Gabriela validó escritorio y móvil 390x844 sin overflow y las cinco rondas; deployment READY/PROMOTED; dominio HTTP 200 sirve bundle con Rondas recientes y CSS nuevo
+
+### Risks / Follow-Up
+Cambio sólo de presentación y filtro inicial. Rollback: revertir a73bb9f o promover dpl_AdJEdCLXo8AZ9uRnEGvKuf7ttpUk. ALMA.md conserva entradas locales previas y no se incluyó en el commit para no mezclar trabajos.
+
+## 2026-08-01 18:45:56 -03 - Permití que cada alumno edite sus tareas de Metas Diarias
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El alumno debe poder renombrar, agregar y quitar tareas desde RM sin alterar el historial ni los campos definidos por el informe
+
+### Touched
+- lib/report-plan.js; scripts/test-report-plan.mjs; src/modules/daily/DailyGoalsModuleCore.jsx; src/modules/daily/daily-goals.css
+
+### Details
+Las ediciones afectan el día actual y los siguientes; los días históricos permanecen intactos. Se agregaron tareas personales canónicas, validación de nombres y duplicados, protección studentEditedAt contra informes obsoletos y filtrado de IDs desconocidos. Categoría, puntaje y criticidad del informe no son editables.
+
+### Verification
+- test:report-plan y suites advanced-config, advanced-policy, students-contract, students-concurrency y advanced-playback OK; npm run build OK; git diff --check OK; Playwright en 390x844 confirmó modal, guardado, mensaje de éxito y ausencia de overflow.
+
+### Risks / Follow-Up
+Cambio validado sólo en local. No hubo commit ni deployment a Vercel; requiere aprobación explícita antes de producción.
+
+## 2026-08-01 19:39:55 -03 - Creé un clon técnico de Gabriela Luna para probar la voz Advanced continua
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Permitir validar que la voz personalizada se escucha durante las respiraciones sin alterar las estadísticas de la alumna real
+
+### Touched
+- RM producción: gabriela-lucero-luna-portilla y prueba-gabriela-luna-voz-continua; R2 students.json; snapshots privados /tmp/rm-gabriela-clone-before-20260801T223801Z.json y /tmp/rm-gabriela-clone-after-20260801T223917Z.json
+
+### Details
+El clon no copia email, formulario, contraseña, sesiones ni historial. Reutiliza sólo las referencias de Principiante 1, Principiante 2 y Advanced; quedó con policy legacy_immediate y advancedPlaybackProfile=continuous_voice_v1. La voz usa 0.4 durante respiración/recuperación y 1.0 durante apnea.
+
+### Verification
+- API autenticada confirmó Advanced ready/approved, dos audios Principiante y perfil continuo activo; Range de 1024 bytes devolvió HTTP 206 audio/mpeg para beginner, beginner-alt y edited; el clon conserva 0 sesiones, 0 rondas y 0 respiraciones; fingerprint completo del registro original permaneció idéntico antes y después.
+
+### Risks / Follow-Up
+Las reproducciones del enlace de prueba se registrarán sólo en el clon. Rollback: eliminar únicamente prueba-gabriela-luna-voz-continua desde el endpoint admin; las referencias compartidas permanecen protegidas porque siguen usadas por Gabriela.
+
+## 2026-08-01 19:52:36 -03 - Activé la voz personalizada continua como regla general de Advanced
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: La prueba con el clon de Gabriela fue aprobada y el usuario pidió aplicar el mismo comportamiento a todos los alumnos
+
+### Touched
+- lib/advanced-playback.js; scripts/test-advanced-playback.mjs; GitHub f5c7023; Vercel dpl_BCVjUmTEJQF1ZEAKg1gL71JihhhP; https://rm.academiacortex.com.ar
+
+### Details
+El perfil predeterminado ahora es continuous_voice_v1: volumen 0.4 durante respiración y recuperación, 1.0 durante apnea y transición de 0.8 s. Se conserva apnea_only como excepción individual explícita. No se migraron datos ni se modificaron audios, progreso o estadísticas.
+
+### Verification
+- test:advanced-playback, test:students-contract, test:advanced-policy y test:advanced-config OK; npm run build y git diff --check OK; deployment READY/PROMOTED; raíz HTTP 200; API productiva confirmó 82/82 alumnos con Advanced aprobado usando continuous_voice_v1 y multiplicadores correctos.
+
+### Risks / Follow-Up
+Cambio global para todo Advanced actual y futuro. Rollback: revertir f5c7023 o promover dpl_FXU72ncLi2ep6Y2EGRoWoKfBUEQo; para una excepción individual se puede fijar advancedPlaybackProfile=apnea_only.
+
+## 2026-08-01 20:07:56 -03 - Aumenté la voz personalizada a 120% durante la apnea
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario indicó que el contraste con la voz de respiración no se percibía suficientemente
+
+### Touched
+- lib/advanced-playback.js; scripts/test-advanced-playback.mjs; scripts/test-students-contract.mjs; GitHub 071f67a; Vercel dpl_Ci88H4kVcdZCQeiLMqGhMJiL2xSZ; https://rm.academiacortex.com.ar
+
+### Details
+El multiplicador de apnea pasó de 1.0 a 1.2. Con el volumen estándar 0.8 la voz queda en 0.96 durante apnea, frente a 0.32 durante respiración/recuperación. El cálculo limita el resultado a 1.0 para evitar saturación cuando el alumno configuró volumen máximo.
+
+### Verification
+- test:advanced-playback, test:students-contract, test:advanced-policy y test:advanced-config OK; npm run build y git diff --check OK; deployment READY/PROMOTED; API productiva confirmó 82/82 Advanced aprobados con breathing=0.4, recovery=0.4 y apnea=1.2.
+
+### Risks / Follow-Up
+Cambio global para Advanced web y clientes que consumen el contrato. Rollback: revertir 071f67a o promover dpl_BCVjUmTEJQF1ZEAKg1gL71JihhhP.
+
+## 2026-08-04 10:18:50 -03 - Restauré Advanced inmediato para Isacc del Castillo
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El audio legado había quedado en estado edited después de un reemplazo y el usuario pidió volver a habilitar Advanced
+
+### Touched
+- RM producción: isacc-del-castillo-garcia; R2 students.json; snapshot privado /tmp/rm-isacc-before-unlock-20260804T131832Z.json
+
+### Details
+Se aplicó unlock-advanced sobre el archivo editado actual. El workflow quedó approved, la política legacy_immediate y la habilitación Advanced activa; no se reemplazaron archivos ni se alteró el historial.
+
+### Verification
+- API autenticada: mobileAudio.advanced.ready=true; audio edited respondió HTTP 206 audio/mpeg; fingerprints de usage y claves de audio permanecieron idénticos
+
+### Risks / Follow-Up
+Rollback disponible desde el snapshot privado con permisos 600; no se modificaron email, contraseña, Metas Diarias ni estadísticas.
+
+## 2026-08-04 10:22:31 -03 - Eliminé la duplicación visual de apneas sincronizadas
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Viviana veía dos veces las cinco apneas de días anteriores porque la pantalla anexaba el historial local al mismo historial ya confirmado por el servidor
+
+### Touched
+- lib/apnea-history.js; src/App.jsx; scripts/test-apnea-history.mjs; package.json; GitHub 8829a2c; Vercel dpl_8hr41sHASXsAWk9S1TPpQHoR4LMi; https://rm.academiacortex.com.ar
+
+### Details
+La pantalla compara fecha, secuencia de apneas y hora de finalización. Descarta únicamente la copia local equivalente a una sesión del servidor y conserva sesiones locales genuinamente pendientes o distintas. Los cambios locales ajenos de Metas Diarias y copy de Principiante quedaron fuera del commit.
+
+### Verification
+- test:apnea-history, test:students-contract, npm run build y git diff --check OK; deployment READY/PROMOTED del SHA 8829a2c; dominio HTTP 200 con bundle nuevo; contrato productivo de Isacc sigue ready=true
+
+### Risks / Follow-Up
+Una sesión idéntica sólo se deduplica si finalizó dentro de una tolerancia de 30 segundos; dos sesiones reales posteriores con los mismos tiempos permanecen separadas. Rollback: revertir 8829a2c o promover dpl_tD2ot5CtjKPvSwovLeVf8TUTqRk3.
+
+## 2026-08-08 12:33:28 -03 - Protegí el historial ante escrituras concurrentes y reparé la sesión de Romina
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Romina tenía las apneas del 8/8 en apneaByDay, pero recentSessions omitía la sesión y lastSession mezclaba la fecha nueva con las apneas del día anterior
+
+### Touched
+- lib/r2.js; scripts/test-students-concurrency.mjs; GitHub 130abe0; Vercel dpl_DjHJUmFVkCXmRJ6o4GjFF85YXopY; R2 romina-saaied; /root/backups/rm-romina-apnea-repair-20260808T152456Z
+
+### Details
+La fusión de snapshots ahora compara valores JSON estructuralmente antes de crear un patch, evitando que arrays clonados pero sin cambios sobrescriban historial más nuevo durante un conflicto de ETag. La regresión reproduce la combinación exacta observada en Romina tras serializar baseline, desired y latest. Después de desplegar la protección se reparó con If-Match único sólo lastSession y recentSessions: la sesión 2026-08-08T11:07:34.070Z quedó con apneas 126, 130 y 142; apneaByDay, totales y todos los demás campos permanecieron idénticos.
+
+### Verification
+- test:students-concurrency, test:students-contract, test:apnea-history y test:advanced-policy OK; npm run build OK; git diff --check y node --check OK; deployment READY/PROMOTED del SHA 130abe07b5c9d7bfeb21c285635733c235d17730; dominio HTTP 200; API productiva devuelve una sola recentSession del 8/8 con 126/130/142, lastSession igual y apneaByDay igual; contadores preservados en 13 sesiones, 52.05 rondas y 2126 respiraciones; backup 3 archivos, 0 vacíos, permisos 600
+
+### Risks / Follow-Up
+Rollback de código: revertir 130abe0 o promover dpl_CtzbrnacuYmdwxy63f5rmRLAqjXD. Rollback de datos: restaurar únicamente romina-saaied desde el snapshot before del backup privado. Dos escrituras que modifiquen legítimamente el mismo array al mismo tiempo todavía requieren resolución de dominio; este fix cubre la sobrescritura observada por escrituras concurrentes no relacionadas. Los cambios locales de Metas Diarias no se incluyeron ni modificaron.
+
+## 2026-08-10 16:11:59 -03 - Habilité Advanced manualmente para Luz Denice Restrepo
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario pidió una excepción manual antes de completar los siete días de Principiante
+
+### Touched
+- RM producción: luz-denice-restrepo; /root/backups/rm-luz-advanced-20260810T191105Z
+
+### Details
+Se aplicó unlock-advanced únicamente al registro canónico luzrpo70@gmail.com. La política quedó legacy_immediate y el workflow siguió approved; no se reemplazaron audios ni se alteró el progreso.
+
+### Verification
+- Panel productivo mostró Advanced Habilitado; Advanced enabled=true; policy legacy_immediate; timestamp presente; fingerprints de usage y auth idénticos; identidad y cuatro claves de audio preservadas; progreso 2/7.
+
+### Risks / Follow-Up
+Rollback disponible desde el backup privado con permisos restrictivos. La operación sólo modificó la habilitación y política Advanced de Luz.
+
+## 2026-08-10 16:11:59 -03 - Preparé la acción manual Pasar a Advanced en Seguimiento
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: Reemplazar el botón de generación/copia de contraseña por una acción operativa para excepciones manuales
+
+### Touched
+- src/Admin2Dashboard.jsx; src/App.jsx; commit aislado 1bac565
+
+### Details
+El drawer moderno muestra Pasar a Advanced sólo cuando existe un audio Advanced aprobado; pide confirmación y refleja estados Habilitando, Advanced habilitado y Advanced no disponible. El commit está listo pero no se publicó ni desplegó porque falta autorización explícita para modificar main.
+
+### Verification
+- npm run build OK; test:advanced-policy, test:students-contract y test:students-concurrency OK; git diff --check OK; QA visual con fixture en escritorio y 390x844 sin desborde; estados ya habilitado y sin audio quedaron desactivados.
+
+### Risks / Follow-Up
+Pendiente de push y despliegue productivo. Rollback antes de publicar: descartar el commit aislado 1bac565; no afecta la habilitación de Luz ya aplicada por API.
+
+## 2026-08-10 16:19:34 -03 - Desplegué Pasar a Advanced en Seguimiento
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/reprogramacion-mental-cortex`
+- Reason: El usuario autorizó publicar el botón manual para excepciones Advanced
+
+### Touched
+- src/Admin2Dashboard.jsx; src/App.jsx; GitHub 1bac565; Vercel dpl_FrxjVFwRqrAHRYofcYuuABLKgMXc; https://rm.academiacortex.com.ar/admin
+
+### Details
+El drawer moderno reemplaza Crear contraseña/Copiar credenciales por Pasar a Advanced. La acción exige un audio Advanced aprobado, pide confirmación, conserva el progreso y muestra estados no repetibles para ya habilitado o sin audio. Luz Denice Restrepo ya estaba habilitada y ahora aparece como Advanced habilitado.
+
+### Verification
+- Vercel READY/PROMOTED y alias asignado al SHA 1bac56587a8db8428036df9f4121d054979b9fef; dominio HTTP 200 sirve /assets/index-D7icEvPj.js con los tres estados nuevos; panel productivo autenticado mostró Advanced habilitado desactivado para Luz y eliminó Copiar credenciales; build, advanced-policy, students-contract, students-concurrency, diff-check y QA 390x844/escritorio OK.
+
+### Risks / Follow-Up
+Rollback de código: revertir 1bac565 o promover dpl_DjHJUmFVkCXmRJ6o4GjFF85YXopY. El cambio sólo afecta el drawer moderno; el endpoint unlock-advanced conserva sus validaciones existentes.
+
+## 2026-08-11 10:20:44 -03 - Integré Metas editables y reproducción Principiante resistente al segundo plano
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-background-audio-fix`
+- Reason: Publicar la paridad funcional con iOS y corregir el audio web que se pausaba o no podía reanudarse al apagar la pantalla
+
+### Touched
+- lib/report-plan.js; src/modules/daily/DailyGoalsModuleCore.jsx; src/modules/daily/daily-goals.css; src/App.jsx; src/beginner-media-session.js; src/daily-precheck.js; scripts/test-report-plan.mjs; scripts/test-beginner-media-session.mjs; scripts/test-daily-precheck.mjs; package.json; ALMA.md
+
+### Details
+Los alumnos pueden renombrar, agregar y quitar tareas sin alterar días históricos ni campos protegidos del informe. Advanced omite el precheck sólo cuando el servidor confirma que no hay metas activas. Principiante registra Media Session, bloquea adelantos desde controles del sistema, precarga el stream y reintenta el endpoint protegido desde el último segundo válido después de suspensión, error o regreso desde segundo plano.
+
+### Verification
+- npm run build OK; 10 suites npm OK; git diff --check OK
+
+### Risks / Follow-Up
+Pendiente commit, push y deployment productivo. El comportamiento real con pantalla apagada debe verificarse además en un Android físico; el fallback limita la recuperación automática a tres intentos por ventana de 30 segundos.

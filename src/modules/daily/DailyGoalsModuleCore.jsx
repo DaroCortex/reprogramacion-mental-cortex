@@ -415,6 +415,7 @@ function DailyGoalsModule({
   const [reportPreview, setReportPreview] = useState([]);
   const [backupText, setBackupText] = useState("");
   const [recentItemId, setRecentItemId] = useState("");
+  const [taskEditor, setTaskEditor] = useState(null);
 
   const activeStudent = students.find((s) => s.id === activeStudentId) || students[0];
 
@@ -629,11 +630,11 @@ function DailyGoalsModule({
     });
   };
 
-  const addCustomTodayItem = () => {
+  const addCustomTodayItem = (text) => {
     if (!activeStudent) return;
-    const text = prompt("Escribe una ayuda diaria corta para hoy (quedará para los próximos días).");
-    if (!text || text.trim().length < 4) return;
     const cleanText = text.trim();
+    if (cleanText.length < 4 || cleanText.length > 90) return;
+    const studentEditedAt = new Date().toISOString();
     const textKey = cleanText.toLowerCase();
     const currentItems = store.days[focusDate]?.items || [];
     const duplicatedInToday = currentItems.some(
@@ -651,7 +652,8 @@ function DailyGoalsModule({
       category: "Personal",
       critical: false,
       points: 8,
-      recurringCustom: true
+      recurringCustom: true,
+      studentEditedAt
     };
 
     if (!existingTemplate) {
@@ -705,6 +707,69 @@ function DailyGoalsModule({
     }
   };
 
+  const editTodayItem = (itemId, text) => {
+    const cleanText = text.trim();
+    if (cleanText.length < 4 || cleanText.length > 90) return;
+    const currentItem = (store.days[focusDate]?.items || []).find((item) => item.id === itemId);
+    if (!currentItem) return;
+    const templateId = String(currentItem.templateId || "");
+    const studentEditedAt = new Date().toISOString();
+
+    if (templateId) {
+      setStudents((prev) =>
+        prev.map((studentItem) =>
+          studentItem.id !== activeStudentId
+            ? studentItem
+            : {
+                ...studentItem,
+                templates: studentItem.templates.map((template) =>
+                  template.id === templateId
+                    ? { ...template, text: cleanText, studentEditedAt }
+                    : template
+                )
+              }
+        )
+      );
+    }
+
+    setStore((prev) => ({
+      ...prev,
+      days: Object.fromEntries(
+        Object.entries(prev.days).map(([key, day]) => [
+          key,
+          key < focusDate
+            ? day
+            : {
+                ...day,
+                items: (day.items || []).map((item) =>
+                  (templateId && item.templateId === templateId) || (!templateId && item.id === itemId)
+                    ? { ...item, text: cleanText }
+                    : item
+                )
+              }
+        ])
+      )
+    }));
+    setMessage("Tarea actualizada para hoy y los próximos días.");
+  };
+
+  const openTaskEditor = (item = null) => {
+    setTaskEditor({
+      mode: item ? "edit" : "add",
+      itemId: item?.id || "",
+      text: item?.text || ""
+    });
+  };
+
+  const submitTaskEditor = (event) => {
+    event.preventDefault();
+    const text = String(taskEditor?.text || "").trim();
+    if (text.length < 4 || text.length > 90) return;
+    if (taskEditor.mode === "edit") editTodayItem(taskEditor.itemId, text);
+    else addCustomTodayItem(text);
+    setTaskEditor(null);
+  };
+
   const removeTodayItem = (id) => {
     const item = (store.days[focusDate]?.items || []).find((entry) => entry.id === id);
     const templateId = String(item?.templateId || "");
@@ -721,10 +786,12 @@ function DailyGoalsModule({
         const nextDays = Object.fromEntries(
           Object.entries(prev.days).map(([key, value]) => [
             key,
-            {
+            key < focusDate
+              ? value
+              : {
               ...value,
               items: (value.items || []).filter((entry) => entry.templateId !== templateId)
-            }
+                }
           ])
         );
         const sourceTemplateIds = Array.isArray(prev.activeTemplateIds)
@@ -1149,8 +1216,8 @@ function DailyGoalsModule({
                 </p>
               )}
               <div className="test-actions two">
-                <button type="button" onClick={addCustomTodayItem}>
-                  Agregar ayuda de hoy
+                <button type="button" onClick={() => openTaskEditor()}>
+                  Agregar tarea
                 </button>
               </div>
               <ul className="check-list compact">
@@ -1160,9 +1227,14 @@ function DailyGoalsModule({
                       <strong>{item.text}</strong>
                       <small>{item.category}</small>
                     </div>
-                    <button type="button" className="ghost" onClick={() => removeTodayItem(item.id)}>
-                      Quitar
-                    </button>
+                    <div className="task-row-actions">
+                      <button type="button" className="ghost" onClick={() => openTaskEditor(item)}>
+                        Editar
+                      </button>
+                      <button type="button" className="ghost danger" onClick={() => removeTodayItem(item.id)}>
+                        Quitar
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -1272,6 +1344,51 @@ function DailyGoalsModule({
           </section>
         </main>
       )}
+
+      {taskEditor ? (
+        <div className="task-editor-backdrop" role="presentation" onMouseDown={() => setTaskEditor(null)}>
+          <section
+            className="task-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-editor-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <form onSubmit={submitTaskEditor}>
+              <header className="task-editor-head">
+                <div>
+                  <p className="eyebrow">Rutina personal</p>
+                  <h3 id="task-editor-title">
+                    {taskEditor.mode === "edit" ? "Editar tarea" : "Nueva tarea"}
+                  </h3>
+                </div>
+                <button type="button" className="task-editor-close" onClick={() => setTaskEditor(null)} aria-label="Cerrar editor">
+                  ×
+                </button>
+              </header>
+              <label className="task-editor-field">
+                Nombre de la tarea
+                <input
+                  autoFocus
+                  value={taskEditor.text}
+                  maxLength={90}
+                  onChange={(event) => setTaskEditor((current) => ({ ...current, text: event.target.value }))}
+                  placeholder="Ejemplo: Preparar el día siguiente"
+                />
+              </label>
+              <p className="task-editor-counter">{taskEditor.text.trim().length}/90</p>
+              <footer className="task-editor-actions">
+                <button type="button" className="ghost" onClick={() => setTaskEditor(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" disabled={taskEditor.text.trim().length < 4}>
+                  {taskEditor.mode === "edit" ? "Guardar cambios" : "Agregar"}
+                </button>
+              </footer>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       {message ? <p className="flash">{message}</p> : null}
     </div>

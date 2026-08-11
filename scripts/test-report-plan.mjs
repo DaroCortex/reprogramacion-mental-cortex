@@ -90,4 +90,109 @@ assert.equal(staleClientSave.store.days[today], undefined);
 assert.deepEqual(staleClientSave.store.days[oldDay], current.store.days[oldDay]);
 assert.equal(staleClientSave.sourceReport.checksum, first.payload.sourceReport.checksum);
 
+const editedAt = "2026-07-25T16:00:00.000Z";
+const editableTemplate = first.payload.templates[0];
+const secondTemplate = first.payload.templates[1];
+const studentEditedSave = mergeClientDailyPayload({
+  current: first.payload,
+  incoming: {
+    studentId: "alumna",
+    studentName: "Alumna",
+    templates: [
+      {
+        ...editableTemplate,
+        text: "Respiracion matutina adaptada por la alumna",
+        points: 99,
+        critical: false,
+        studentEditedAt: editedAt
+      },
+      secondTemplate,
+      {
+        id: "alumna-custom-1",
+        text: "Preparar la ropa del dia siguiente",
+        category: "Ventas",
+        points: 99,
+        critical: true,
+        recurringCustom: true,
+        studentEditedAt: editedAt
+      }
+    ],
+    store: {
+      days: {
+        [today]: {
+          createdAt: editedAt,
+          items: [
+            {
+              id: `${editableTemplate.id}-${today}`,
+              templateId: editableTemplate.id,
+              text: "texto manipulado",
+              category: "Ventas",
+              points: 99,
+              critical: false,
+              status: "done"
+            },
+            {
+              id: `alumna-custom-1-${today}`,
+              templateId: "alumna-custom-1",
+              text: "Preparar la ropa del dia siguiente",
+              category: "Personal",
+              points: 8,
+              critical: false,
+              recurringCustom: true,
+              status: "pending"
+            }
+          ]
+        },
+        [oldDay]: current.store.days[oldDay]
+      },
+      activeTemplateIds: [editableTemplate.id, "alumna-custom-1", "desconocida"]
+    }
+  },
+  now
+});
+
+const editedTemplate = studentEditedSave.templates.find((item) => item.id === editableTemplate.id);
+assert.equal(editedTemplate.text, "Respiracion matutina adaptada por la alumna");
+assert.equal(editedTemplate.sourceText, editableTemplate.text);
+assert.equal(editedTemplate.points, editableTemplate.points);
+assert.equal(editedTemplate.critical, editableTemplate.critical);
+const customTemplate = studentEditedSave.templates.find((item) => item.id === "alumna-custom-1");
+assert.deepEqual(
+  {
+    text: customTemplate.text,
+    category: customTemplate.category,
+    points: customTemplate.points,
+    critical: customTemplate.critical,
+    recurringCustom: customTemplate.recurringCustom
+  },
+  {
+    text: "Preparar la ropa del dia siguiente",
+    category: "Personal",
+    points: 8,
+    critical: false,
+    recurringCustom: true
+  }
+);
+assert.deepEqual(studentEditedSave.store.activeTemplateIds, [editableTemplate.id, "alumna-custom-1"]);
+assert.equal(studentEditedSave.store.days[today].items[0].text, editedTemplate.text);
+assert.equal(studentEditedSave.store.days[today].items[0].points, editableTemplate.points);
+assert.deepEqual(studentEditedSave.store.days[oldDay], current.store.days[oldDay]);
+
+const staleEditWithoutTimestamp = mergeClientDailyPayload({
+  current: studentEditedSave,
+  incoming: {
+    ...studentEditedSave,
+    templates: studentEditedSave.templates.map((template) =>
+      template.id === editableTemplate.id
+        ? { ...template, text: "Texto viejo", studentEditedAt: undefined }
+        : template
+    )
+  },
+  now
+});
+assert.equal(
+  staleEditWithoutTimestamp.templates.find((item) => item.id === editableTemplate.id).text,
+  editedTemplate.text
+);
+
 console.log("report plan tests passed");

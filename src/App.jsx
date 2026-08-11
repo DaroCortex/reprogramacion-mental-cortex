@@ -17,6 +17,12 @@ import {
 } from "../lib/beginner-progress";
 import { filterUnsyncedLocalApneaSessions } from "../lib/apnea-history";
 import { DIRECT_ACCESS_SLUG } from "../lib/student-direct-access.js";
+import {
+  buildBeginnerMediaMetadata,
+  installBeginnerMediaSession,
+  syncBeginnerMediaSession
+} from "./beginner-media-session.js";
+import { selectActiveDailyTemplates, shouldSkipDailyPrecheck } from "./daily-precheck.js";
 
 const PHASE_LABELS = {
   idle: "Listo para iniciar",
@@ -1099,6 +1105,10 @@ export default function App() {
   const sessionMetricsRecordedRef = useRef(false);
   const sessionStartRef = useRef(null);
   const beginnerPlaybackRef = useRef(null);
+  const beginnerMediaSessionCleanupRef = useRef(null);
+  const beginnerMediaSessionAudioIdRef = useRef("");
+  const beginnerRecoveryTimerRef = useRef(null);
+  const beginnerRecoveryRef = useRef(() => {});
   const lastTapRef = useRef(0);
   const lastDoubleTapActionRef = useRef(0);
   const studentMenuActionLockRef = useRef(0);
@@ -2197,6 +2207,12 @@ export default function App() {
 
   useEffect(() => {
     const onVisibility = () => {
+      const beginnerState = beginnerPlaybackRef.current;
+      const beginnerAudioId = beginnerState?.audioId || "beginner-1";
+      const beginnerAudio = beginnerAudioRefs.current[beginnerAudioId] || beginnerAudioRef.current;
+      if (document.visibilityState === "hidden" && beginnerState?.shouldBePlaying) {
+        beginnerState.backgroundPlaybackExpected = true;
+      }
       if (isRunningRef.current && !isPausedRef.current) {
         requestWakeLock();
         if (phaseRef.current === "apnea") {
@@ -2221,6 +2237,18 @@ export default function App() {
         }
         safePlay(bosqueAudioRef.current);
         safePlay(septasyncAudioRef.current);
+      }
+      if (
+        document.visibilityState === "visible" &&
+        beginnerState?.backgroundPlaybackExpected &&
+        beginnerState.shouldBePlaying
+      ) {
+        beginnerState.backgroundPlaybackExpected = false;
+        if (beginnerAudio?.paused && !beginnerAudio.ended) {
+          beginnerRecoveryRef.current(beginnerAudioId, "visibility");
+        } else {
+          syncBeginnerMediaSession(navigator.mediaSession, beginnerAudio);
+        }
       }
     };
 
@@ -2641,6 +2669,139 @@ export default function App() {
     }));
   };
 
+  const clearBeginnerRecoveryTimer = () => {
+    if (!beginnerRecoveryTimerRef.current) return;
+    clearTimeout(beginnerRecoveryTimerRef.current);
+    beginnerRecoveryTimerRef.current = null;
+  };
+
+  const recoverBeginnerAudio = async (audioId, reason = "playback") => {
+    const state = beginnerPlaybackRef.current;
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    const audioItem = beginnerAudioOptions.find((item) => item.id === audioId);
+    if (
+      !state ||
+      state.audioId !== audioId ||
+      !state.shouldBePlaying ||
+      state.completed ||
+      state.recovering ||
+      !audioEl ||
+      !audioItem?.src
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - Number(state.lastRecoveryAt || 0) > 30000) {
+      state.recoveryAttempts = 0;
+    }
+    if (Number(state.recoveryAttempts || 0) >= 3) {
+      setBeginnerPlaybackNotice(
+        "El audio perdio la conexion. Volve a tocar reproducir para retomar desde el ultimo punto escuchado."
+      );
+      return;
+    }
+
+    state.recovering = true;
+    state.recoveryAttempts = Number(state.recoveryAttempts || 0) + 1;
+    state.lastRecoveryAt = now;
+    const checkpoint = Math.max(
+      0,
+      Number(state.lastAllowedPosition || 0),
+      Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0
+    );
+
+    try {
+      const separator = audioItem.src.includes("?") ? "&" : "?";
+      const recoverySrc = `${audioItem.src}${separator}resume=${Date.now()}`;
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          audioEl.removeEventListener("loadedmetadata", onReady);
+          audioEl.removeEventListener("canplay", onReady);
+          audioEl.removeEventListener("error", onError);
+          callback();
+        };
+        const onReady = () => finish(resolve);
+        const onError = () => finish(() => reject(new Error("audio reload failed")));
+        const timeoutId = setTimeout(
+          () => finish(() => reject(new Error("audio reload timeout"))),
+          8000
+        );
+        audioEl.addEventListener("loadedmetadata", onReady);
+        audioEl.addEventListener("canplay", onReady);
+        audioEl.addEventListener("error", onError);
+        audioEl.src = recoverySrc;
+        audioEl.load();
+      });
+
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const resumeAt = duration > 0 ? Math.min(checkpoint, Math.max(0, duration - 0.25)) : checkpoint;
+      if (resumeAt > 0) {
+        state.correctingSeek = true;
+        audioEl.currentTime = resumeAt;
+      }
+      state.lastAllowedPosition = resumeAt;
+      await audioEl.play();
+      state.recoveryAttempts = 0;
+      state.backgroundPlaybackExpected = false;
+      setBeginnerPlaybackNotice(
+        reason === "visibility" ? "Audio reanudado desde el ultimo punto escuchado." : ""
+      );
+      syncBeginnerPlayerUi(audioId, audioEl);
+      syncBeginnerMediaSession(navigator.mediaSession, audioEl);
+    } catch (_error) {
+      setBeginnerPlaybackNotice(
+        "No pudimos reanudar el audio. Toca reproducir nuevamente para continuar desde el ultimo punto escuchado."
+      );
+    } finally {
+      state.recovering = false;
+    }
+  };
+
+  beginnerRecoveryRef.current = recoverBeginnerAudio;
+
+  const scheduleBeginnerAudioRecovery = (audioId, reason = "playback", delayMs = 1600) => {
+    clearBeginnerRecoveryTimer();
+    beginnerRecoveryTimerRef.current = setTimeout(() => {
+      beginnerRecoveryTimerRef.current = null;
+      recoverBeginnerAudio(audioId, reason);
+    }, delayMs);
+  };
+
+  const activateBeginnerMediaSession = (audioId, audioLabel) => {
+    if (!("mediaSession" in navigator)) return;
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    if (beginnerMediaSessionAudioIdRef.current === audioId) {
+      syncBeginnerMediaSession(navigator.mediaSession, audioEl);
+      return;
+    }
+
+    beginnerMediaSessionCleanupRef.current?.();
+    beginnerMediaSessionAudioIdRef.current = audioId;
+    beginnerMediaSessionCleanupRef.current = installBeginnerMediaSession({
+      mediaSession: navigator.mediaSession,
+      MediaMetadataCtor: window.MediaMetadata,
+      metadata: buildBeginnerMediaMetadata({
+        label: audioLabel,
+        artwork: [{ src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }]
+      }),
+      getAudio: () => beginnerAudioRefs.current[audioId] || beginnerAudioRef.current,
+      getPlaybackState: () => beginnerPlaybackRef.current,
+      onNotice: setBeginnerPlaybackNotice,
+      onCheckpoint: () => {
+        const current = beginnerPlaybackRef.current;
+        if (Number(current?.maxPositionSeconds || 0) >= 5) {
+          sendBeginnerAudioPlayback("partial", { audioId });
+        }
+      },
+      onPlayError: () => scheduleBeginnerAudioRecovery(audioId, "media-session", 200)
+    });
+  };
+
   const toggleBeginnerAudio = async (audioId) => {
     const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
     if (!audioEl) return;
@@ -2651,12 +2812,20 @@ export default function App() {
     try {
       await audioEl.play();
     } catch {
-      setBeginnerPlaybackNotice("No pudimos iniciar el audio. Tocá reproducir nuevamente.");
+      const state = beginnerPlaybackRef.current;
+      if (state?.audioId === audioId) {
+        state.shouldBePlaying = true;
+        state.recoveryAttempts = 0;
+        scheduleBeginnerAudioRecovery(audioId, "manual", 200);
+      } else {
+        setBeginnerPlaybackNotice("No pudimos iniciar el audio. Tocá reproducir nuevamente.");
+      }
     }
   };
 
   const handleBeginnerAudioPlay = (audioId = "beginner-1", audioLabel = "Audio básico") => {
     if (!student?.slug || !hasStudentAccess) return;
+    clearBeginnerRecoveryTimer();
     pauseOtherBeginnerAudios(audioId);
     const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
     syncBeginnerPlayerUi(audioId, audioEl);
@@ -2674,12 +2843,22 @@ export default function App() {
         sequence: 0,
         completed: false,
         seeked: false,
+        shouldBePlaying: true,
+        backgroundPlaybackExpected: false,
+        recovering: false,
+        recoveryAttempts: 0,
+        lastRecoveryAt: 0,
         lastAllowedPosition: Number.isFinite(audioEl?.currentTime) ? audioEl.currentTime : 0,
         correctingSeek: false
       };
+      activateBeginnerMediaSession(audioId, audioLabel);
       sendBeginnerAudioPlayback("started", { audioId });
       return;
     }
+    current.shouldBePlaying = true;
+    current.backgroundPlaybackExpected = false;
+    current.recoveryAttempts = 0;
+    activateBeginnerMediaSession(audioId, audioLabel);
     sendBeginnerAudioPlayback("progress", { audioId });
   };
 
@@ -2701,6 +2880,7 @@ export default function App() {
       Number(state.durationSeconds || 0),
       Number.isFinite(audioEl.duration) ? audioEl.duration : 0
     );
+    syncBeginnerMediaSession(navigator.mediaSession, audioEl);
     const now = Date.now();
     if (state.maxPositionSeconds >= 15 && now - Number(state.lastReportAt || 0) > 15000) {
       sendBeginnerAudioPlayback("progress", { audioId });
@@ -2711,6 +2891,15 @@ export default function App() {
     const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
     const state = beginnerPlaybackRef.current;
     syncBeginnerPlayerUi(audioId, audioEl);
+    syncBeginnerMediaSession(navigator.mediaSession, audioEl);
+    if (state?.recovering) return;
+    if (state?.audioId === audioId) {
+      if (document.visibilityState === "hidden" && state.shouldBePlaying) {
+        state.backgroundPlaybackExpected = true;
+      } else {
+        state.shouldBePlaying = false;
+      }
+    }
     if (!state || state.completed || state.audioId !== audioId || audioEl?.ended) return;
     if (Number(state.maxPositionSeconds || 0) < 5) return;
     sendBeginnerAudioPlayback("partial", { audioId });
@@ -2718,8 +2907,37 @@ export default function App() {
 
   const handleBeginnerAudioEnded = (audioId = "beginner-1") => {
     const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    const state = beginnerPlaybackRef.current;
+    if (state?.audioId === audioId) {
+      state.shouldBePlaying = false;
+      state.backgroundPlaybackExpected = false;
+    }
     syncBeginnerPlayerUi(audioId, audioEl);
+    syncBeginnerMediaSession(navigator.mediaSession, audioEl);
     sendBeginnerAudioPlayback("complete", { audioId, completed: true });
+  };
+
+  const handleBeginnerAudioWaiting = (audioId = "beginner-1") => {
+    const state = beginnerPlaybackRef.current;
+    if (!state?.shouldBePlaying || state.audioId !== audioId || state.recovering) return;
+    scheduleBeginnerAudioRecovery(audioId, "stalled", 2500);
+  };
+
+  const handleBeginnerAudioCanPlay = (audioId = "beginner-1") => {
+    clearBeginnerRecoveryTimer();
+    const audioEl = beginnerAudioRefs.current[audioId] || beginnerAudioRef.current;
+    const state = beginnerPlaybackRef.current;
+    if (state?.audioId === audioId && !state.recovering) {
+      state.recoveryAttempts = 0;
+    }
+    syncBeginnerPlayerUi(audioId, audioEl);
+    syncBeginnerMediaSession(navigator.mediaSession, audioEl);
+  };
+
+  const handleBeginnerAudioError = (audioId = "beginner-1") => {
+    const state = beginnerPlaybackRef.current;
+    if (!state?.shouldBePlaying || state.audioId !== audioId || state.recovering) return;
+    scheduleBeginnerAudioRecovery(audioId, "error", 200);
   };
 
   const handleBeginnerAudioSeeking = (audioId = "beginner-1") => {
@@ -2761,9 +2979,23 @@ export default function App() {
 
   useEffect(() => {
     beginnerPlaybackRef.current = null;
+    clearBeginnerRecoveryTimer();
+    beginnerMediaSessionCleanupRef.current?.();
+    beginnerMediaSessionCleanupRef.current = null;
+    beginnerMediaSessionAudioIdRef.current = "";
     setBeginnerPlayerUi({});
     setBeginnerPlaybackNotice("");
   }, [beginnerAudioUrl, beginnerAudioOptions.length, slug]);
+
+  useEffect(() => {
+    if (practiceScreen === "principiante") return;
+    const state = beginnerPlaybackRef.current;
+    if (state) state.shouldBePlaying = false;
+    clearBeginnerRecoveryTimer();
+    beginnerMediaSessionCleanupRef.current?.();
+    beginnerMediaSessionCleanupRef.current = null;
+    beginnerMediaSessionAudioIdRef.current = "";
+  }, [practiceScreen]);
 
   const beginSession = (effectiveAmbientUrl, effectiveSeptasyncUrl) => {
     phaseTransitionLockRef.current = false;
@@ -4094,15 +4326,7 @@ export default function App() {
       if (!response.ok) throw new Error("No se pudo cargar check diario.");
       const data = await response.json().catch(() => ({}));
       const payload = data?.data && typeof data.data === "object" ? data.data : {};
-      const rawTemplates = Array.isArray(payload.templates) && payload.templates.length
-        ? payload.templates
-        : [
-            { id: `${slug}-resp`, text: "Respiracion de reprogramacion mental", category: "Salud", critical: true, points: 12 },
-            { id: `${slug}-kpi`, text: "Revision de KPIs", category: "Sistema", critical: true, points: 10 },
-            { id: `${slug}-foco`, text: "Tarea principal completada", category: "Sistema", critical: true, points: 10 },
-            { id: `${slug}-familia`, text: "Momento de presencia personal/familiar", category: "Familia", critical: false, points: 8 },
-            { id: `${slug}-registro`, text: "Registro breve emocional", category: "Salud", critical: false, points: 8 }
-          ];
+      const rawTemplates = Array.isArray(payload.templates) ? payload.templates : [];
       const store = payload.store && typeof payload.store === "object"
         ? {
             days: payload.store.days && typeof payload.store.days === "object" ? payload.store.days : {},
@@ -4112,11 +4336,22 @@ export default function App() {
       const activeTemplateSet = Array.isArray(store.activeTemplateIds)
         ? new Set(store.activeTemplateIds.filter(Boolean))
         : null;
-      const templates = activeTemplateSet
-        ? rawTemplates.filter((template) => activeTemplateSet.has(template.id))
-        : rawTemplates;
+      const templates = selectActiveDailyTemplates(rawTemplates, store.activeTemplateIds);
 
       const dayKey = dailyDateKey();
+      if (shouldSkipDailyPrecheck(templates)) {
+        quickDailyPayloadRef.current = {
+          studentId: payload.studentId || slug,
+          studentName: payload.studentName || student.name || slug,
+          coachNotes: payload.coachNotes || "",
+          templates: [],
+          store
+        };
+        setQuickCheckState({ loading: false, error: "", dayKey, items: [] });
+        setShowPrecheckItems(false);
+        setPracticeScreen("practice");
+        return;
+      }
       let changed = false;
       let day = store.days[dayKey];
       if (!day || !Array.isArray(day.items) || day.items.length === 0) {
@@ -6889,7 +7124,7 @@ export default function App() {
           <h2>Reprogramacion Mental Principiante</h2>
           <p className="muted">
             Escuchás tu audio completo editado. Advanced se habilita al completar 7 días de reproducción. Cada día
-            cuenta al superar 25 minutos sin adelantar el audio.
+            cuenta al terminar los ciclos de respiración (aproximadamente 25 minutos).
           </p>
           <p className="beginner-playback-rule">
             La línea de progreso es informativa. Podés pausar y continuar, pero no adelantar.
@@ -6951,7 +7186,7 @@ export default function App() {
                         }
                       }}
                       className="beginner-player-source"
-                      preload="metadata"
+                      preload="auto"
                       playsInline
                       src={audioItem.src}
                       onLoadedMetadata={(event) => syncBeginnerPlayerUi(audioItem.id, event.currentTarget)}
@@ -6961,6 +7196,10 @@ export default function App() {
                       onPause={() => handleBeginnerAudioPause(audioItem.id)}
                       onEnded={() => handleBeginnerAudioEnded(audioItem.id)}
                       onSeeking={() => handleBeginnerAudioSeeking(audioItem.id)}
+                      onWaiting={() => handleBeginnerAudioWaiting(audioItem.id)}
+                      onStalled={() => handleBeginnerAudioWaiting(audioItem.id)}
+                      onCanPlay={() => handleBeginnerAudioCanPlay(audioItem.id)}
+                      onError={() => handleBeginnerAudioError(audioItem.id)}
                     />
                   </div>
                 );

@@ -650,6 +650,106 @@ button.ghost:hover {
   border-color: color-mix(in srgb, var(--ink) 15%, var(--line) 85%);
 }
 
+button.ghost.danger {
+  color: var(--bad);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+  box-shadow: none;
+}
+
+.task-row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.task-row-actions button {
+  min-height: 44px;
+  padding-inline: 12px;
+}
+
+.task-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 12, 15, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.task-editor-dialog {
+  width: min(460px, 100%);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line) 65%);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+
+.task-editor-dialog form {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.task-editor-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-editor-head h3 {
+  margin: 4px 0 0;
+  font-size: 22px;
+}
+
+.task-editor-close {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.task-editor-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.task-editor-counter {
+  margin: -10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.task-editor-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.task-editor-actions button {
+  min-height: 48px;
+}
+
 /* ── Unlock list ───────────────────────────────────── */
 
 .unlock {
@@ -849,6 +949,24 @@ button.ghost:hover {
 
   .metric-grid p {
     font-size: 18px;
+  }
+
+  .check-row.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .task-row-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .task-editor-backdrop {
+    place-items: end center;
+    padding: 10px;
+  }
+
+  .task-editor-dialog {
+    border-radius: 16px 16px 12px 12px;
   }
 }
 
