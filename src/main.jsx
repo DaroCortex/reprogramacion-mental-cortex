@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import IosUxWebPreview from "./ios-ux-preview/IosUxWebPreview.jsx";
+import AdvancedVolumePreview from "./advanced-volume-preview/AdvancedVolumePreview.jsx";
 import "./styles.css";
 
 class AppErrorBoundary extends React.Component {
@@ -36,8 +37,12 @@ class AppErrorBoundary extends React.Component {
 }
 
 const root = createRoot(document.getElementById("root"));
-const RootApp = import.meta.env.DEV && window.location.pathname === "/ux-ios-preview"
-  ? IosUxWebPreview
+const DEV_PREVIEWS = {
+  "/ux-ios-preview": IosUxWebPreview,
+  "/advanced-volume-preview": AdvancedVolumePreview
+};
+const RootApp = import.meta.env.DEV
+  ? DEV_PREVIEWS[window.location.pathname] || App
   : App;
 root.render(
   <AppErrorBoundary>

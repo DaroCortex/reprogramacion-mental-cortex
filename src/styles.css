@@ -1109,6 +1109,24 @@ input[type="range"]:focus {
   box-shadow: none;
 }
 
+.advanced-volume-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.advanced-volume-heading span {
+  min-width: 0;
+}
+
+.advanced-volume-heading strong {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Stats ─────────────────────────────────────────── */
 
 .stats-grid {

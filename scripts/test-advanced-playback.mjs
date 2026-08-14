@@ -52,6 +52,60 @@ assert.equal(
   }),
   0
 );
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: apneaOnly,
+    phase: "breathing",
+    configuredVolume: 0.8,
+    breathingVolume: 0.55
+  }),
+  0.55
+);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: defaultPlayback,
+    phase: "breathing",
+    configuredVolume: 0.8,
+    breathingVolume: 0
+  }),
+  0
+);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: defaultPlayback,
+    phase: "recovery",
+    configuredVolume: 0.8,
+    breathingVolume: 0.55
+  }),
+  0.55
+);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: defaultPlayback,
+    phase: "apnea",
+    configuredVolume: 0.8,
+    apneaVolume: 0.25
+  }),
+  0.25
+);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: defaultPlayback,
+    phase: "apnea",
+    configuredVolume: 0.8,
+    apneaVolume: 0
+  }),
+  0
+);
+assert.equal(
+  getAdvancedVoiceTargetVolume({
+    playback: defaultPlayback,
+    phase: "apnea",
+    configuredVolume: 0.8,
+    apneaVolume: 4
+  }),
+  1
+);
 
 const experiment = buildAdvancedPlayback({
   features: { advancedPlaybackProfile: "continuous_voice_v1" }

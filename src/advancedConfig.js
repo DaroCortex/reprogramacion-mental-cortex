@@ -6,6 +6,8 @@ export const DEFAULT_ADVANCED_CONFIG = Object.freeze({
   cycles: 5,
   breathStyle: "activation",
   audioVolume: 0.8,
+  personalizedBreathingVolume: null,
+  personalizedApneaVolume: null,
   breathCueVolume: 1,
   bosqueVolume: 0.5,
   ambientSound: "bosque",
@@ -15,8 +17,19 @@ export const DEFAULT_ADVANCED_CONFIG = Object.freeze({
   reverbMode: "soft"
 });
 
+const ADVANCED_PHASE_VOLUME_PILOT_SLUGS = new Set(["fiore"]);
+
+export const hasAdvancedPhaseVolumeControls = (student) =>
+  ADVANCED_PHASE_VOLUME_PILOT_SLUGS.has(String(student?.slug || "").trim().toLowerCase());
+
+const {
+  personalizedBreathingVolume: _personalizedBreathingVolume,
+  personalizedApneaVolume: _personalizedApneaVolume,
+  ...LEGACY_DEFAULT_ADVANCED_CONFIG
+} = DEFAULT_ADVANCED_CONFIG;
+
 const PREVIOUS_AUTOMATIC_ADVANCED_CONFIG = Object.freeze({
-  ...DEFAULT_ADVANCED_CONFIG,
+  ...LEGACY_DEFAULT_ADVANCED_CONFIG,
   cycles: 3
 });
 

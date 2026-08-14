@@ -3,9 +3,11 @@ import { Pause, Play } from "lucide-react";
 import DailyGoalsModule from "./modules/daily/DailyGoalsModule";
 import Admin2Dashboard from "./Admin2Dashboard";
 import StudentExperienceShell from "./student-experience/StudentExperienceShell";
+import AdvancedPersonalAudioControls from "./AdvancedPersonalAudioControls";
 import { useSolutgenSupportWidget } from "./SolutgenSupportWidget";
 import {
   DEFAULT_ADVANCED_CONFIG as DEFAULT_CONFIG,
+  hasAdvancedPhaseVolumeControls,
   migrateSavedAdvancedConfig
 } from "./advancedConfig";
 import {
@@ -1213,6 +1215,7 @@ export default function App() {
         const wetGain = ctx.createGain();
         const convolver = ctx.createConvolver();
         convolver.buffer = buildImpulseResponse(ctx);
+        master.gain.value = 0;
 
         source.connect(dryGain);
         source.connect(convolver);
@@ -1242,14 +1245,11 @@ export default function App() {
       convolverRef.current.buffer =
         config.reverbMode === "camera" ? impulseCameraRef.current : impulseSoftRef.current;
       updateReverbMix(getEffectiveReverbMix(config));
-      if (masterGainRef.current) {
-        masterGainRef.current.gain.value = Math.min(1, Math.max(0, config.audioVolume));
-      }
       return true;
     } catch (error) {
       return false;
     }
-  }, [config.audioVolume, config.reverbMix, config.reverbMode, getEffectiveReverbMix, updateReverbMix]);
+  }, [config.reverbMix, config.reverbMode, getEffectiveReverbMix, updateReverbMix]);
 
   const ensureBreathBuffer = useCallback(async (urlFromCaller) => {
     const url =
@@ -1482,16 +1482,36 @@ export default function App() {
     return studentsWithSlugs.find((item) => item.slug === slug) || null;
   }, [slug, studentsWithSlugs]);
   const advancedPlayback = useMemo(() => buildAdvancedPlayback(student), [student]);
-  const continuousAdvancedVoice = advancedPlayback.continuousVoiceEnabled;
+  const advancedPhaseVolumeControlsEnabled = hasAdvancedPhaseVolumeControls(student);
   const getAdvancedVoiceVolume = useCallback(
     (targetPhase) =>
       getAdvancedVoiceTargetVolume({
         playback: advancedPlayback,
         phase: targetPhase,
-        configuredVolume: config.audioVolume
+        configuredVolume: config.audioVolume,
+        breathingVolume: advancedPhaseVolumeControlsEnabled
+          ? config.personalizedBreathingVolume
+          : null,
+        apneaVolume: advancedPhaseVolumeControlsEnabled
+          ? config.personalizedApneaVolume
+          : null
       }),
-    [advancedPlayback, config.audioVolume]
+    [
+      advancedPlayback,
+      advancedPhaseVolumeControlsEnabled,
+      config.audioVolume,
+      config.personalizedApneaVolume,
+      config.personalizedBreathingVolume
+    ]
   );
+  const personalizedBreathingVolume = getAdvancedVoiceVolume("breathing");
+  const personalizedApneaVolume = getAdvancedVoiceVolume("apnea");
+  const continuousAdvancedVoice = personalizedBreathingVolume > 0;
+  const personalizedAudioEnabled =
+    continuousAdvancedVoice || personalizedApneaVolume > 0;
+  const advancedVoiceTransitionSeconds = continuousAdvancedVoice
+    ? advancedPlayback.transitionSeconds || 0.8
+    : 0;
   const applyAdvancedVoiceVolume = useCallback(
     (targetPhase, { smooth = true } = {}) => {
       if (!audioRef.current) return;
@@ -1503,7 +1523,7 @@ export default function App() {
           smoothGainTo(
             masterGainRef.current,
             targetVolume,
-            advancedPlayback.transitionSeconds
+            advancedVoiceTransitionSeconds
           );
         } else {
           const now = audioContextRef.current?.currentTime || 0;
@@ -1515,7 +1535,7 @@ export default function App() {
       audioRef.current.volume = targetVolume;
     },
     [
-      advancedPlayback.transitionSeconds,
+      advancedVoiceTransitionSeconds,
       ensureReverbGraph,
       getAdvancedVoiceVolume,
       smoothGainTo
@@ -1895,7 +1915,7 @@ export default function App() {
   useEffect(() => {
     if (!audioRef.current) return;
     const targetPhase =
-      continuousAdvancedVoice && isRunningRef.current
+      isRunningRef.current
         ? phaseRef.current
         : "apnea";
     const targetVolume = getAdvancedVoiceVolume(targetPhase);
@@ -1906,7 +1926,7 @@ export default function App() {
       return;
     }
     audioRef.current.volume = targetVolume;
-  }, [config.audioVolume, continuousAdvancedVoice, getAdvancedVoiceVolume]);
+  }, [getAdvancedVoiceVolume]);
 
   useEffect(() => {
     const nextVolume = Math.min(1, Math.max(0, config.breathCueVolume ?? 1));
@@ -3160,7 +3180,7 @@ export default function App() {
     setIsPaused(false);
     if (continuousAdvancedVoice && ["breathing", "recovery", "apnea"].includes(phase)) {
       playAudio({ phaseName: phase, restart: false });
-    } else if (phase === "apnea") {
+    } else if (phase === "apnea" && personalizedApneaVolume > 0) {
       playAudio();
     }
     if (phase === "breathing" || phase === "recovery" || phase === "apnea") {
@@ -3224,10 +3244,12 @@ export default function App() {
     breathCueIndexRef.current = 0;
     stopBreathSound();
     const startPlayback = () => {
-      playAudio({
-        phaseName: "apnea",
-        restart: !continuousAdvancedVoice
-      });
+      if (personalizedAudioEnabled) {
+        playAudio({
+          phaseName: "apnea",
+          restart: !continuousAdvancedVoice
+        });
+      }
       setTimeout(() => {
         if (!isRunningRef.current || isPausedRef.current) return;
         if (selectedAmbientUrl) playBosque();
@@ -3235,7 +3257,7 @@ export default function App() {
       }, 250);
     };
 
-    if (audioRef.current?.src || audioSrc) {
+    if (!personalizedAudioEnabled || audioRef.current?.src || audioSrc) {
       startPlayback();
       return;
     }
@@ -3816,9 +3838,23 @@ export default function App() {
   const previewAudio = () => {
     loadSignedAudio().then((url) => {
       if (!url || !audioRef.current) return;
-      ensureReverbGraph();
+      const hasGraph = ensureReverbGraph();
       audioRef.current.currentTime = 0;
       audioRef.current.loop = false;
+      audioRef.current.muted = false;
+      if (advancedPhaseVolumeControlsEnabled) {
+        applyAdvancedVoiceVolume("apnea", { smooth: false });
+      } else {
+        const previewVolume = Math.min(1, Math.max(0, Number(config.audioVolume) || 0));
+        if (hasGraph && masterGainRef.current) {
+          const now = audioContextRef.current?.currentTime || 0;
+          audioRef.current.volume = 1;
+          masterGainRef.current.gain.cancelScheduledValues(now);
+          masterGainRef.current.gain.setValueAtTime(previewVolume, now);
+        } else {
+          audioRef.current.volume = previewVolume;
+        }
+      }
       audioRef.current.play().catch(() => {
         // Autoplay might be blocked until user gesture
       });
@@ -3849,7 +3885,7 @@ export default function App() {
     if (masterGainRef.current) {
       const now = audioContextRef.current?.currentTime || 0;
       masterGainRef.current.gain.cancelScheduledValues(now);
-      masterGainRef.current.gain.setValueAtTime(Math.min(1, Math.max(0, config.audioVolume)), now);
+      masterGainRef.current.gain.setValueAtTime(0, now);
     }
 
     setTimeout(() => {
@@ -7977,8 +8013,15 @@ export default function App() {
                   }
                 />
               </label>
-              <label className="span-full">
-                Volumen inhala / exhala
+              <label className={`span-full ${advancedPhaseVolumeControlsEnabled ? "advanced-personal-volume" : ""}`}>
+                {advancedPhaseVolumeControlsEnabled ? (
+                  <span className="advanced-volume-heading">
+                    <span>Volumen guía inhala / exhala</span>
+                    <strong>{Math.round(config.breathCueVolume * 100)}%</strong>
+                  </span>
+                ) : (
+                  "Volumen inhala / exhala"
+                )}
                 <input
                   type="range"
                   min="0"
@@ -7993,24 +8036,45 @@ export default function App() {
                   }
                 />
               </label>
-              <label className="span-full">
-                Volumen audio apnea
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={config.audioVolume}
-                  onChange={(event) =>
+              {advancedPhaseVolumeControlsEnabled ? (
+                <AdvancedPersonalAudioControls
+                  breathingVolume={personalizedBreathingVolume}
+                  apneaVolume={personalizedApneaVolume}
+                  onBreathingVolumeChange={(value) =>
                     setConfig((prev) => ({
                       ...prev,
-                      audioVolume: Number(event.target.value)
+                      personalizedBreathingVolume: value
+                    }))
+                  }
+                  onApneaVolumeChange={(value) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      personalizedApneaVolume: value
                     }))
                   }
                 />
-              </label>
+              ) : (
+                <label className="span-full">
+                  Volumen audio apnea
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={config.audioVolume}
+                    onChange={(event) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        audioVolume: Number(event.target.value)
+                      }))
+                    }
+                  />
+                </label>
+              )}
               <label className="span-full">
-                Reverb audio apnea
+                {advancedPhaseVolumeControlsEnabled
+                  ? "Reverb audio personalizado"
+                  : "Reverb audio apnea"}
                 <div className="preset-row">
                   {REVERB_MODE_OPTIONS.map((option) => (
                     <button

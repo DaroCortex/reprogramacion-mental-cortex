@@ -1332,3 +1332,57 @@ Quitar ahora pide confirmación, conserva el día actual y desactiva la plantill
 
 ### Risks / Follow-Up
 Pendiente commit, push y despliegue. Los estados históricos siguen pudiendo corregirse desde Check diario; la protección bloquea altas y bajas retroactivas, no las correcciones explícitas de estado.
+
+## 2026-08-14 09:11:35 -03 - Desplegué la conservación de puntos al quitar tareas
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Aplicar en producción la regla aprobada: conservar puntos históricos y quitar tareas sólo desde el día siguiente
+
+### Touched
+- GitHub main 8854c44bedcad54e9154341a4aa0d596666634f5; Vercel dpl_BT5Y1R9fdUChtRE8NXyDA2bDfSaZ; https://rm.academiacortex.com.ar; R2 daily-goals/viviana-arndt/current.json; ALMA.md
+
+### Details
+El botón confirma la baja desde mañana y el servidor preserva ítems históricos y del día actual frente a clientes incompletos o desactualizados. Las fechas futuras y activeTemplateIds reflejan la baja sin recalcular puntos ganados.
+
+### Verification
+- Deployment READY/PROMOTED y alias asignado; dominio HTTP 200 sirve /assets/index-DIgH4pmT.js con los cuatro textos nuevos; 11 suites y build OK; lectura R2 posterior confirma que Viviana conserva 12 tareas, las 5 restauradas y 48 ítems históricos sin nuevas sobrescrituras.
+
+### Risks / Follow-Up
+Rollback de código promoviendo dpl_6YCnvgTZE51WPBtvrQzBV4Eu2U2x o revirtiendo 8854c44. Rollback de Viviana disponible en el backup manual documentado; no se ejecutó una eliminación real en producción durante la verificación.
+
+## 2026-08-14 12:12:42 -03 - Separé el volumen del audio personalizado por fase en Advanced
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Permitir que cada alumno elija independientemente cuánto escucha su audio durante respiración/recuperación y durante apnea
+
+### Touched
+- src/App.jsx; src/AdvancedPersonalAudioControls.jsx; src/advancedConfig.js; lib/advanced-playback.js; src/advanced-volume-preview/AdvancedVolumePreview.jsx; src/main.jsx; src/styles.css; scripts/test-advanced-config.mjs; scripts/test-advanced-playback.mjs; ALMA.md
+
+### Details
+Los valores iniciales conservan el comportamiento vigente: 32% en respiración/recuperación y 96% en apnea para el perfil estándar. Cero silencia únicamente la fase elegida; respiración activa mantiene reproducción continua y apnea sola conserva el reinicio por ronda. Los ajustes persisten en localStorage por alumno y dispositivo. Se agregó una ruta de vista previa exclusiva de desarrollo.
+
+### Verification
+- 11 suites npm OK; npm run build OK; git diff --check OK; QA Playwright 1365x900 y 390x844 sin overflow ni solapamientos; interacción confirmó respiración 0% con apnea 96% intacta; bundle productivo no contiene las rutas ni fixtures de preview.
+
+### Risks / Follow-Up
+Cambio web local, sin commit, push ni despliegue. La implementación iOS queda pendiente de aprobación del comportamiento y la interfaz web.
+
+## 2026-08-14 12:59:16 -03 - Limité el piloto de volúmenes Advanced al alumno Fiore
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Permitir una prueba funcional en producción sin exponer todavía los nuevos controles al resto de los alumnos
+
+### Touched
+- src/App.jsx; src/advancedConfig.js; scripts/test-advanced-config.mjs; ALMA.md
+
+### Details
+El piloto usa el slug exacto fiore, que corresponde al registro activo con audio y Advanced habilitado. fiore-2 y todos los demás slugs conservan el slider único, las etiquetas, la preescucha y los multiplicadores anteriores. Los valores de fase guardados se ignoran fuera del piloto.
+
+### Verification
+- Consulta pública productiva confirmó fiore activo y fiore-2 sin audio ni Advanced; 11 suites npm OK; npm run build OK; git diff --check OK.
+
+### Risks / Follow-Up
+Pendiente commit, push, despliegue y smoke autenticado con Fiore. Para ampliar o retirar el piloto debe modificarse la lista explícita de slugs.
