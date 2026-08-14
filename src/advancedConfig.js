@@ -17,10 +17,8 @@ export const DEFAULT_ADVANCED_CONFIG = Object.freeze({
   reverbMode: "soft"
 });
 
-const ADVANCED_PHASE_VOLUME_PILOT_SLUGS = new Set(["fiore"]);
-
 export const hasAdvancedPhaseVolumeControls = (student) =>
-  ADVANCED_PHASE_VOLUME_PILOT_SLUGS.has(String(student?.slug || "").trim().toLowerCase());
+  Boolean(String(student?.slug || "").trim());
 
 const {
   personalizedBreathingVolume: _personalizedBreathingVolume,

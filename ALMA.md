@@ -1440,3 +1440,21 @@ El archivo anterior era válido pero estaba a 16 kHz/31 kb/s, -43,3 LUFS y conce
 
 ### Risks / Follow-Up
 No hubo cambio de código ni despliegue. Páginas que ya tenían el MP3 viejo cargado requieren recarga; la pestaña de Fiore fue recargada y quedó en Advanced lista para iniciar. Rollback restaurando students.json desde el backup previo a normalización; el objeto original no fue borrado.
+
+## 2026-08-14 15:08:31 -03 - Extendí los volúmenes por fase de Advanced a todos los alumnos web
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Cerrar el piloto de Fiore y habilitar en producción la configuración independiente del audio personalizado durante respiración/recuperación y apnea
+
+### Touched
+- src/advancedConfig.js; scripts/test-advanced-config.mjs; ALMA.md
+
+### Details
+La disponibilidad deja de depender del slug fiore y se activa para cualquier alumno autenticado. Se conservan los defaults compatibles de 32% en respiración/recuperación y 96% en apnea; cero sigue silenciando sólo la fase seleccionada y las preferencias continúan guardándose por alumno/dispositivo.
+
+### Verification
+- 11 suites npm OK; npm run build OK; git diff --check OK; el test de configuración confirma disponibilidad para fiore, fiore-2 y viviana-arndt, y la mantiene desactivada sin alumno autenticado.
+
+### Risks / Follow-Up
+Pendiente commit, push y despliegue Vercel. La publicación corresponde sólo a RM web; la implementación y entrega nativa iOS continúa pendiente.

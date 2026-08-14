@@ -10,8 +10,10 @@ assert.equal(DEFAULT_ADVANCED_CONFIG.personalizedBreathingVolume, null);
 assert.equal(DEFAULT_ADVANCED_CONFIG.personalizedApneaVolume, null);
 assert.equal(hasAdvancedPhaseVolumeControls({ slug: "fiore" }), true);
 assert.equal(hasAdvancedPhaseVolumeControls({ slug: "Fiore" }), true);
-assert.equal(hasAdvancedPhaseVolumeControls({ slug: "fiore-2" }), false);
-assert.equal(hasAdvancedPhaseVolumeControls({ slug: "viviana-arndt" }), false);
+assert.equal(hasAdvancedPhaseVolumeControls({ slug: "fiore-2" }), true);
+assert.equal(hasAdvancedPhaseVolumeControls({ slug: "viviana-arndt" }), true);
+assert.equal(hasAdvancedPhaseVolumeControls({ slug: "  " }), false);
+assert.equal(hasAdvancedPhaseVolumeControls(null), false);
 
 const previousAutomatic = {
   breathsPerCycle: 30,
