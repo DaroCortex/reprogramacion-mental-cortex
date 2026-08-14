@@ -1458,3 +1458,21 @@ La disponibilidad deja de depender del slug fiore y se activa para cualquier alu
 
 ### Risks / Follow-Up
 Pendiente commit, push y despliegue Vercel. La publicación corresponde sólo a RM web; la implementación y entrega nativa iOS continúa pendiente.
+
+## 2026-08-14 15:10:49 -03 - Desplegué los volúmenes por fase de Advanced para todos los alumnos web
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Publicar en RM web producción el manejo independiente del volumen personalizado durante respiración/recuperación y apnea
+
+### Touched
+- GitHub main 21ec67f854969985a132616f023e5ff5d0d560e2; Vercel dpl_4BT4DLvjC5V8rvvrdxKT5hJDig7N; https://rm.academiacortex.com.ar; /assets/index-CUpjIRXB.js; ALMA.md
+
+### Details
+La lista piloto de Fiore fue retirada. Todo alumno autenticado que ingresa a Advanced recibe los dos controles, con compatibilidad para configuraciones guardadas y los valores efectivos anteriores como defaults.
+
+### Verification
+- Deployment READY y alias rm.academiacortex.com.ar asignado; home y rutas /s/fiore, /s/viviana-arndt y /s/jorge-antonio-cerro-velez HTTP 200; bundle productivo contiene ambas etiquetas de volumen y cero referencias a fiore; 11 suites y build Vite OK.
+
+### Risks / Follow-Up
+Rollback revirtiendo 21ec67f o promoviendo dpl_52wmGUdaRTEVEYZR1CTgRHhw6FzC. Los usuarios con la app abierta deben recargar para recibir el bundle nuevo. iOS continúa pendiente y no fue modificado por este despliegue.
