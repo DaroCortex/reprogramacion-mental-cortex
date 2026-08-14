@@ -195,4 +195,107 @@ assert.equal(
   editedTemplate.text
 );
 
+const tomorrow = "2026-07-26";
+const protectedCurrent = {
+  ...studentEditedSave,
+  store: {
+    ...studentEditedSave.store,
+    activeTemplateIds: [editableTemplate.id, secondTemplate.id],
+    days: {
+      [oldDay]: {
+        items: [
+          {
+            id: `earned-a-${oldDay}`,
+            templateId: editableTemplate.id,
+            text: editableTemplate.text,
+            points: editableTemplate.points,
+            status: "done"
+          },
+          {
+            id: `earned-b-${oldDay}`,
+            templateId: secondTemplate.id,
+            text: secondTemplate.text,
+            points: secondTemplate.points,
+            status: "partial"
+          }
+        ]
+      },
+      [today]: {
+        items: [
+          {
+            id: `today-a-${today}`,
+            templateId: editableTemplate.id,
+            status: "done"
+          },
+          {
+            id: `today-b-${today}`,
+            templateId: secondTemplate.id,
+            status: "done"
+          }
+        ]
+      },
+      [tomorrow]: {
+        items: [
+          {
+            id: `future-a-${tomorrow}`,
+            templateId: editableTemplate.id,
+            status: "pending"
+          },
+          {
+            id: `future-b-${tomorrow}`,
+            templateId: secondTemplate.id,
+            status: "pending"
+          }
+        ]
+      }
+    }
+  }
+};
+const deletionFromTomorrow = mergeClientDailyPayload({
+  current: protectedCurrent,
+  incoming: {
+    ...protectedCurrent,
+    store: {
+      ...protectedCurrent.store,
+      activeTemplateIds: [editableTemplate.id],
+      days: {
+        [oldDay]: {
+          items: [{
+            ...protectedCurrent.store.days[oldDay].items[0],
+            status: "partial"
+          }]
+        },
+        [today]: {
+          items: [protectedCurrent.store.days[today].items[0]]
+        },
+        [tomorrow]: {
+          items: [protectedCurrent.store.days[tomorrow].items[0]]
+        }
+      }
+    }
+  },
+  now
+});
+
+assert.equal(deletionFromTomorrow.store.days[oldDay].items.length, 2);
+assert.equal(deletionFromTomorrow.store.days[oldDay].items[0].status, "partial");
+assert.equal(deletionFromTomorrow.store.days[oldDay].items[1].status, "partial");
+assert.equal(deletionFromTomorrow.store.days[oldDay].items[1].points, secondTemplate.points);
+assert.equal(deletionFromTomorrow.store.days[today].items.length, 2);
+assert.equal(deletionFromTomorrow.store.days[tomorrow].items.length, 1);
+assert.deepEqual(deletionFromTomorrow.store.activeTemplateIds, [editableTemplate.id]);
+
+const staleRoutineReactivation = mergeClientDailyPayload({
+  current: deletionFromTomorrow,
+  incoming: {
+    ...deletionFromTomorrow,
+    store: {
+      ...deletionFromTomorrow.store,
+      activeTemplateIds: null
+    }
+  },
+  now
+});
+assert.deepEqual(staleRoutineReactivation.store.activeTemplateIds, [editableTemplate.id]);
+
 console.log("report plan tests passed");

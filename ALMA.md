@@ -1296,3 +1296,39 @@ Progreso enumera A1 a A5 por cada día y el resumen final de Advanced muestra to
 
 ### Risks / Follow-Up
 Rollback funcional promoviendo dpl_CnD49iQnzuRdUq1knmLYVGQvD3pv. El commit documental posterior no cambia código y genera un deployment adicional que debe quedar promovido antes de cerrar.
+
+## 2026-08-14 08:56:19 -03 - Restauré las tareas y puntos eliminados accidentalmente de Viviana Arndt
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: El reporte pidió restablecer tareas quitadas por error que habían reducido sus puntos semanales
+
+### Touched
+- R2 daily-goals/viviana-arndt/current.json; backup fuente daily-goals/viviana-arndt/backups/1786682144648.json; rollback daily-goals/viviana-arndt/manual-backups/before-restore-2026-08-14T11-55-33-212Z.json
+
+### Details
+La auditoría de 61 snapshots detectó cinco eliminaciones entre 01:35:46 y 01:36:19 -03. Se restauró condicionalmente la copia inmediatamente anterior, recuperando 5 tareas activas y 48 ítems históricos; no existían altas ni cambios de estado posteriores que preservar.
+
+### Verification
+- Lectura canónica posterior: 12 tareas activas, 5 tareas recuperadas, 48 ítems históricos recuperados, 0 diferencias contra la copia fuente; puntos semanales 594 y score 100%, frente a 452 puntos antes de la reparación.
+
+### Risks / Follow-Up
+El botón Quitar sigue sin confirmación y el payload permite que una eliminación afecte historial recibido del cliente. Pedir a Viviana cerrar y reabrir la página antes de continuar; rollback exacto disponible en el backup manual indicado.
+
+## 2026-08-14 09:08:18 -03 - Protegí los puntos históricos al quitar tareas diarias
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: El usuario definió que los puntos ya obtenidos deben mantenerse y que una tarea quitada deje de sumar sólo desde el día siguiente
+
+### Touched
+- src/modules/daily/DailyGoalsModuleCore.jsx; src/modules/daily/daily-routine.js; lib/report-plan.js; scripts/test-daily-routine.mjs; scripts/test-report-plan.mjs; package.json; ALMA.md
+
+### Details
+Quitar ahora pide confirmación, conserva el día actual y desactiva la plantilla para fechas posteriores. La fusión del servidor conserva el conjunto de ítems de días anteriores y del día actual, acepta sólo cambios de estado en días pasados, permite altas del día y eliminaciones futuras, y evita que activeTemplateIds=null de un cliente viejo reactive tareas.
+
+### Verification
+- 11 suites npm OK; npm run build OK; git diff --check y node --check OK; bundle contiene Quitar desde mañana, No aparecerá mañana y el aviso de conservación de puntos.
+
+### Risks / Follow-Up
+Pendiente commit, push y despliegue. Los estados históricos siguen pudiendo corregirse desde Check diario; la protección bloquea altas y bajas retroactivas, no las correcciones explícitas de estado.

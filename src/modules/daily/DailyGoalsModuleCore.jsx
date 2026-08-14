@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { isTemplateActive, removeTemplateFromFutureRoutine } from "./daily-routine.js";
 
 const STATUS_OPTIONS = [
   { id: "done", label: "Hecho", color: "good" },
@@ -773,70 +774,22 @@ function DailyGoalsModule({
   const removeTodayItem = (id) => {
     const item = (store.days[focusDate]?.items || []).find((entry) => entry.id === id);
     const templateId = String(item?.templateId || "");
-    const recurringTemplateId = item?.recurringCustom ? templateId : "";
+    if (!item || !templateId || !isTemplateActive(store, templateId)) return;
+    const confirmed = window.confirm(
+      `¿Quitar "${item.text}" desde mañana? Los puntos obtenidos hasta hoy se conservarán.`
+    );
+    if (!confirmed) return;
     const knownTemplateIds = (activeStudent?.templates || [])
       .map((template) => template.id)
       .filter(Boolean);
 
-    setStore((prev) => {
-      const day = prev.days[focusDate];
-      if (!day && !templateId) return prev;
-
-      if (templateId) {
-        const nextDays = Object.fromEntries(
-          Object.entries(prev.days).map(([key, value]) => [
-            key,
-            key < focusDate
-              ? value
-              : {
-              ...value,
-              items: (value.items || []).filter((entry) => entry.templateId !== templateId)
-                }
-          ])
-        );
-        const sourceTemplateIds = Array.isArray(prev.activeTemplateIds)
-          ? prev.activeTemplateIds
-          : knownTemplateIds;
-        return {
-          ...prev,
-          days: nextDays,
-          activeTemplateIds: sourceTemplateIds.filter((activeId) => activeId !== templateId)
-        };
-      }
-
-      return {
-        ...prev,
-        days: {
-          ...prev.days,
-          [focusDate]: {
-            ...day,
-            items: day.items.filter((item) => item.id !== id)
-          }
-        }
-      };
-    });
-
-    if (recurringTemplateId) {
-      setStudents((prev) =>
-        prev.map((studentItem) =>
-          studentItem.id !== activeStudentId
-            ? studentItem
-            : {
-                ...studentItem,
-                templates: studentItem.templates.filter((template) => template.id !== recurringTemplateId)
-              }
-        )
-      );
-      setMessage("Ayuda eliminada de hoy y de próximos días.");
-      return;
-    }
-
-    if (templateId) {
-      setMessage("Acción quitada y ocultada para los próximos días.");
-      return;
-    }
-
-    setMessage("Acción quitada de hoy.");
+    setStore((prev) => removeTemplateFromFutureRoutine({
+      store: prev,
+      templateId,
+      effectiveAfterKey: focusDate,
+      knownTemplateIds
+    }));
+    setMessage("La acción dejará de aparecer desde mañana. Tus puntos anteriores se conservan.");
   };
 
   const createStudent = () => {
@@ -1231,8 +1184,15 @@ function DailyGoalsModule({
                       <button type="button" className="ghost" onClick={() => openTaskEditor(item)}>
                         Editar
                       </button>
-                      <button type="button" className="ghost danger" onClick={() => removeTodayItem(item.id)}>
-                        Quitar
+                      <button
+                        type="button"
+                        className="ghost danger"
+                        disabled={!isTemplateActive(store, item.templateId)}
+                        onClick={() => removeTodayItem(item.id)}
+                      >
+                        {isTemplateActive(store, item.templateId)
+                          ? "Quitar desde mañana"
+                          : "No aparecerá mañana"}
                       </button>
                     </div>
                   </li>

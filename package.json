@@ -14,6 +14,7 @@
     "test:students-contract": "node scripts/test-students-contract.mjs",
     "test:students-concurrency": "node scripts/test-students-concurrency.mjs",
     "test:report-plan": "node scripts/test-report-plan.mjs",
+    "test:daily-routine": "node scripts/test-daily-routine.mjs",
     "test:beginner-media-session": "node scripts/test-beginner-media-session.mjs",
     "test:daily-precheck": "node scripts/test-daily-precheck.mjs",
     "test:direct-access": "node scripts/test-direct-access.mjs",
