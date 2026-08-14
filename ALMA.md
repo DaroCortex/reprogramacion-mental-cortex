@@ -1422,3 +1422,21 @@ El MP3 legado de 32:44 quedó referenciado exclusivamente como Principiante. Adv
 
 ### Risks / Follow-Up
 El audio Advanced es únicamente temporal y no pasó por Auphonic porque fue generado de forma sintética para prueba funcional. Rollback exacto disponible en el backup indicado; al recibir el audio real de Fiore debe procesarse con Auphonic, reemplazar el test y retirar sus marcas temporaryAdvancedAudio.
+
+## 2026-08-14 13:45:35 -03 - Normalicé el sonido ambiente Océano para parlantes de celular
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Bosque era audible pero Océano no se percibía en la prueba Advanced de Fiore
+
+### Touched
+- R2 students.json; audios/1770471699745-OceanoB.mp3; audios/system/oceano-normalized-44100-2026-08-14T16-40-08-333Z.mp3; backups/students-manual-before-oceano-normalization-2026-08-14T16-40-08-333Z.json; backups/students-manual-before-fiore-qa-cleanup-2026-08-14T16-45-00-863Z.json; https://rm.academiacortex.com.ar; ALMA.md
+
+### Details
+El archivo anterior era válido pero estaba a 16 kHz/31 kb/s, -43,3 LUFS y concentrado en graves poco audibles en teléfonos. Se generó una variante mono 44,1 kHz/128 kb/s, -32,8 LUFS, con recorte de 4,2 s iniciales y fade-in. Se conservó el objeto original y sólo se cambió audioKey del recurso público oceano. Las dos ejecuciones técnicas de Fiore usadas para QA se retiraron del historial y de todos sus agregados.
+
+### Verification
+- Hash completo del MP3 servido coincide con R2; endpoint oceano HTTP 200 completo y HTTP 206 por rango, audio/mpeg; Chrome cargó duración 353,85576 s, Chequear audios mostró 8/8 y durante sesión currentTime avanzó sin error. Cleanup canónico y API pública confirmaron Fiore con 5 prácticas del día, 5 sesiones del día, 12 totales, 9,08 rondas, 265 respiraciones y último registro real 2026-08-14T16:35:14.938Z.
+
+### Risks / Follow-Up
+No hubo cambio de código ni despliegue. Páginas que ya tenían el MP3 viejo cargado requieren recarga; la pestaña de Fiore fue recargada y quedó en Advanced lista para iniciar. Rollback restaurando students.json desde el backup previo a normalización; el objeto original no fue borrado.
