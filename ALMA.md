@@ -1404,3 +1404,21 @@ Sólo el slug fiore recibe los controles independientes de respiración/recupera
 
 ### Risks / Follow-Up
 La prueba auditiva y el cambio de sliders requieren iniciar sesión como Fiore y quedan a cargo del usuario. Rollback de código disponible revirtiendo 29ef89b o promoviendo dpl_BT5Y1R9fdUChtRE8NXyDA2bDfSaZ. iOS continúa sin cambios.
+
+## 2026-08-14 13:28:18 -03 - Separé el audio de Principiante y cargué un audio neutro temporal para Advanced de Fiore
+
+- Kind: `config`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Permitir probar los controles independientes de volumen sin reproducir en Advanced el audio largo de Principiante
+
+### Touched
+- R2 students.json; audios/test/fiore/2026-08-14T16-27-36-100Z-neutral-volume-test.mp3; audios/1770767927515-Fiore.mp3; backups/students-manual-before-fiore-neutral-test-2026-08-14T16-27-36-100Z.json; https://rm.academiacortex.com.ar; ALMA.md
+
+### Details
+El MP3 legado de 32:44 quedó referenciado exclusivamente como Principiante. Advanced apunta a una locución sintética neutral de 17,7 s que se repite durante la sesión; el workflow quedó aprobado y marcado como audio temporal de piloto. No se borró ni sobrescribió ningún audio existente.
+
+### Verification
+- Lectura canónica R2 confirmó claves distintas; Advanced respondió HTTP 206 bytes 0-1023/283420; Principiante respondió HTTP 206 bytes 0-1023/31438390; API pública confirmó audioReady=true, ambos audios presentes y Advanced habilitado sin bloqueo.
+
+### Risks / Follow-Up
+El audio Advanced es únicamente temporal y no pasó por Auphonic porque fue generado de forma sintética para prueba funcional. Rollback exacto disponible en el backup indicado; al recibir el audio real de Fiore debe procesarse con Auphonic, reemplazar el test y retirar sus marcas temporaryAdvancedAudio.
