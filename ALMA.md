@@ -1386,3 +1386,21 @@ El piloto usa el slug exacto fiore, que corresponde al registro activo con audio
 
 ### Risks / Follow-Up
 Pendiente commit, push, despliegue y smoke autenticado con Fiore. Para ampliar o retirar el piloto debe modificarse la lista explícita de slugs.
+
+## 2026-08-14 13:03:15 -03 - Desplegué el piloto de volúmenes Advanced para Fiore
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/formulario-cortex/rm-web-ios-ux-preview`
+- Reason: Permitir que el usuario pruebe los volúmenes separados con una cuenta real antes de habilitarlos para todos o llevarlos a iOS
+
+### Touched
+- GitHub main 29ef89b6d4747e9a0809e8b4af38d4ad61d3d3aa; Vercel dpl_8rbWJ45wWDnCXmwRJGEYG5SYmRSW; https://rm.academiacortex.com.ar; ALMA.md
+
+### Details
+Sólo el slug fiore recibe los controles independientes de respiración/recuperación y apnea. fiore-2 y el resto conservan el control único y el comportamiento anterior.
+
+### Verification
+- Deployment READY con alias asignado a rm.academiacortex.com.ar; ruta /s/fiore HTTP 200; bundle /assets/index-BEEoKBCW.js contiene los dos controles nuevos, el control legado y la compuerta fiore; API pública confirma fiore con audio y Advanced activos y fiore-2 inactivo; 11 suites y build OK.
+
+### Risks / Follow-Up
+La prueba auditiva y el cambio de sliders requieren iniciar sesión como Fiore y quedan a cargo del usuario. Rollback de código disponible revirtiendo 29ef89b o promoviendo dpl_BT5Y1R9fdUChtRE8NXyDA2bDfSaZ. iOS continúa sin cambios.
