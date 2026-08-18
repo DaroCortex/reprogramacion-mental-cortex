@@ -1531,3 +1531,21 @@ Se generó una clave aleatoria exclusiva, se cargó como Sensitive y no se impri
 
 ### Risks / Follow-Up
 La variable entra en vigor con el próximo deployment. Rollback: retirar RM_USAGE_INTEGRATION_KEY y revertir el endpoint.
+
+## 2026-08-18 15:27:52 -03 - Desplegado endpoint privado de historial de respiraciones
+
+- Kind: `deploy`
+- Project root: `/private/tmp/rm-breathing-history.SURtEs`
+- Reason: Habilitar el bloque de uso real en Academia Seguimiento
+
+### Touched
+- GitHub DaroCortex/reprogramacion-mental-cortex commit d8d92f0; Vercel dpl_7XccnhLWd9HJ7sMKzBXwPWvzoWCS; rm.academiacortex.com.ar
+
+### Details
+El endpoint de un solo alumno quedó protegido por la clave Sensitive compartida con Seguimiento. No expone contraseñas, sesiones ni el listado completo.
+
+### Verification
+- Deployment READY para el SHA exacto; dominio HTTP 200; POST sin clave al endpoint productivo HTTP 401; suites breathing-history, students-contract, apnea-history, advanced-config, advanced-playback, advanced-policy, students-concurrency y report-plan OK; build OK.
+
+### Risks / Follow-Up
+No se hizo una llamada productiva autorizada directa porque la clave Sensitive no es recuperable desde Vercel. El circuito se valida a través de Seguimiento con sesión administrativa. Rollback: revertir d8d92f0 y retirar RM_USAGE_INTEGRATION_KEY.
