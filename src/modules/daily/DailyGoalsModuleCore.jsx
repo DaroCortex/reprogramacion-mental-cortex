@@ -390,7 +390,7 @@ function DailyGoalsModule({
       return [{
         id: fixedId,
         name: fixedName,
-        coachNotes: "Tu plan aparecera cuando este listo el informe de tu reunion.",
+        coachNotes: "Cargá tus metas diarias: vos elegís qué querés sostener cada día.",
         templates: []
       }];
     }
@@ -1087,7 +1087,8 @@ function DailyGoalsModule({
               <p className="hint">Tocas un cuadro y se pinta. El texto del check siempre esta visible.</p>
               {yesterdayDay.items.length === 0 && (
                 <p className="hint">
-                  Tu checklist aparecera cuando este listo el informe de tu reunion.
+                  Todavía no cargaste metas. Andá a «Rutina de hoy» y agregá la primera:
+                  mañana vas a poder marcarla acá.
                 </p>
               )}
               <ul className="check-list">
@@ -1164,9 +1165,18 @@ function DailyGoalsModule({
               </header>
               <p className="hint">Hoy puedes cargar hasta {DAILY_ACTION_LIMIT} acciones.</p>
               {todayDay.items.length === 0 && (
-                <p className="hint">
-                  Todavia no hay tareas asignadas desde tu informe.
-                </p>
+                <div className="empty-goals">
+                  <strong>Empezá por tus metas diarias</strong>
+                  <p>
+                    Elegí de dos a cuatro acciones concretas que quieras sostener todos los días.
+                    Quedan guardadas y aparecen solas cada mañana.
+                  </p>
+                  <ul>
+                    <li>Escuché el audio de reprogramación mental</li>
+                    <li>Hice la práctica de visión mental</li>
+                    <li>Dormí en el horario que me propuse</li>
+                  </ul>
+                </div>
               )}
               <div className="test-actions two">
                 <button type="button" onClick={() => openTaskEditor()}>

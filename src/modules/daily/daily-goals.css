@@ -1016,3 +1016,33 @@ button:disabled {
     padding: 20px;
   }
 }
+
+/* Invitación a cargar las metas propias cuando la rutina está vacía. */
+.empty-goals {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  margin: 4px 0 12px;
+  border: 1px dashed rgba(19, 92, 66, 0.35);
+  border-radius: 16px;
+  background: rgba(19, 92, 66, 0.05);
+}
+
+.empty-goals strong {
+  font-size: 1rem;
+}
+
+.empty-goals p {
+  margin: 0;
+  color: #4d5a52;
+  line-height: 1.5;
+}
+
+.empty-goals ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: #4d5a52;
+  font-size: 0.9rem;
+}
