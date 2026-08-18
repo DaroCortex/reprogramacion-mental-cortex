@@ -1476,3 +1476,22 @@ La lista piloto de Fiore fue retirada. Todo alumno autenticado que ingresa a Adv
 
 ### Risks / Follow-Up
 Rollback revirtiendo 21ec67f o promoviendo dpl_52wmGUdaRTEVEYZR1CTgRHhw6FzC. Los usuarios con la app abierta deben recargar para recibir el bundle nuevo. iOS continúa pendiente y no fue modificado por este despliegue.
+
+## 2026-08-18 - Las metas diarias las carga el alumno, no el informe
+
+- Kind: `feature`
+- Reason: Charla con Mariam (18/8): las metas quedaban esperando el informe de la reunión. Dario decidió que cada alumno cargue las suyas.
+
+### Touched
+- src/modules/daily/DailyGoalsModuleCore.jsx, src/modules/daily/daily-goals.css
+
+### Details
+- Los tres textos que decían "aparecerá cuando esté listo el informe de tu reunión" ahora invitan a cargar metas propias.
+- "Rutina de hoy" vacía muestra un bloque con tres ejemplos concretos (audio de reprogramación mental, práctica de visión mental, horario de sueño).
+- El camino del coach (cargar informe PDF/TXT y generar checklist) queda intacto como estaba: fue decisión explícita no tocarlo.
+
+### Verification
+- `npm run build` OK. Módulo montado aislado en el navegador: alumno nuevo ve la invitación, agrega una meta y la invitación desaparece.
+
+### Risks / Follow-Up
+- Pendiente de la misma charla: pantalla completa para el módulo visual en Control de Apneas (Mariam no puede agrandar la imagen para compartir solo esa pantalla).
