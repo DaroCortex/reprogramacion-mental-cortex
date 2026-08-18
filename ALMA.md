@@ -1495,3 +1495,39 @@ Rollback revirtiendo 21ec67f o promoviendo dpl_52wmGUdaRTEVEYZR1CTgRHhw6FzC. Los
 
 ### Risks / Follow-Up
 - Pendiente de la misma charla: pantalla completa para el módulo visual en Control de Apneas (Mariam no puede agrandar la imagen para compartir solo esa pantalla).
+
+## 2026-08-18 15:01:36 -03 - Preparado endpoint privado de historial de respiraciones
+
+- Kind: `edit`
+- Project root: `/private/tmp/rm-breathing-history.SURtEs`
+- Reason: Mostrar en Academia Seguimiento el uso real de la app de respiraciones por alumno
+
+### Touched
+- api/integrations/student-breathing-history.js; lib/breathing-history.js; scripts/test-breathing-history.mjs; package.json
+
+### Details
+Endpoint POST de solo lectura protegido por una clave de integracion dedicada. Resuelve un unico alumno por slug, email o nombre exacto y devuelve totales, dias activos, apneas y hasta 12 sesiones recientes sin credenciales ni auth interna.
+
+### Verification
+- npm run test:breathing-history OK; npm run test:students-contract OK; npm run test:apnea-history OK; npm run build OK; git diff --check OK
+
+### Risks / Follow-Up
+Pendiente configurar la clave privada en RM y Seguimiento, desplegar ambos proyectos y realizar smoke autenticado. Rollback: revertir el commit y retirar la variable de integracion.
+
+## 2026-08-18 15:04:38 -03 - Configurada clave privada para lectura de respiraciones
+
+- Kind: `config`
+- Project root: `/private/tmp/rm-breathing-history.SURtEs`
+- Reason: Autenticar las consultas server-to-server desde Academia Seguimiento sin usar la contraseña administrativa de RM
+
+### Touched
+- Vercel reprogramacion-mental-cortex Production; RM_USAGE_INTEGRATION_KEY
+
+### Details
+Se generó una clave aleatoria exclusiva, se cargó como Sensitive y no se imprimió ni guardó en archivos.
+
+### Verification
+- Vercel CLI confirmó la variable Sensitive en Production.
+
+### Risks / Follow-Up
+La variable entra en vigor con el próximo deployment. Rollback: retirar RM_USAGE_INTEGRATION_KEY y revertir el endpoint.
