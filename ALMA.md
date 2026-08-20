@@ -1549,3 +1549,21 @@ El endpoint de un solo alumno quedó protegido por la clave Sensitive compartida
 
 ### Risks / Follow-Up
 No se hizo una llamada productiva autorizada directa porque la clave Sensitive no es recuperable desde Vercel. El circuito se valida a través de Seguimiento con sesión administrativa. Rollback: revertir d8d92f0 y retirar RM_USAGE_INTEGRATION_KEY.
+
+## 2026-08-20 14:36:40 -03 - Agregué estado operativo seguro y búsqueda activa para alumnos RM
+
+- Kind: `edit`
+- Project root: `/Users/forax/Documents/Claude/worktrees/rm-operational-status-20260820`
+- Reason: Unificar la fuente de verdad de audio, Advanced y uso real para Portal y Seguimiento sin que duplicados inactivos bloqueen cuentas válidas
+
+### Touched
+- lib/student-operational-status.js; lib/student-email-transfer.js; api/admin/student-access-status.js; api/admin/student-operational-statuses.js; api/admin/password-setup-link.js; api/admin/transfer-student-email.js; scripts/test-student-operational-status.mjs; package.json
+
+### Details
+El lote devuelve únicamente campos operativos, prioriza coincidencias activas y limita el match por nombre a consultas explícitas marcadas para revisión. La transferencia de email exige origen inactivo, destino activo, confirmación exacta, backup privado R2 y verificación posterior.
+
+### Verification
+- npm run test:operational-status: OK
+
+### Risks / Follow-Up
+Todavía no desplegado. La transferencia productiva de Mariam se ejecutará sólo después del despliegue y un preflight de estado; rollback mediante el backup R2 generado por el endpoint.

@@ -1,6 +1,7 @@
 import { readStudents } from "../../lib/r2.js";
 import { verifyAdminPassword } from "../../lib/auth.js";
-import { hasPassword, normalizeEmail } from "../../lib/student-auth.js";
+import { resolveStudentOperationalStatus } from "../../lib/student-operational-status.js";
+import { normalizeEmail } from "../../lib/student-auth.js";
 
 export default async function handler(req, res) {
   try {
@@ -20,26 +21,9 @@ export default async function handler(req, res) {
     }
 
     const students = await readStudents();
-    const student = slug
-      ? students.find((item) => String(item?.slug || "").trim() === slug)
-      : students.find((item) => email && normalizeEmail(item?.email) === email);
-
-    if (!student) {
-      return res.status(200).json({
-        ok: true,
-        studentExists: false,
-        hasPassword: false,
-        email,
-        slug
-      });
-    }
-
     return res.status(200).json({
       ok: true,
-      studentExists: true,
-      hasPassword: hasPassword(student),
-      email: normalizeEmail(student.email),
-      slug: String(student.slug || "").trim()
+      ...resolveStudentOperationalStatus(students, { slug, email })
     });
   } catch (error) {
     console.error("student access status error:", error);

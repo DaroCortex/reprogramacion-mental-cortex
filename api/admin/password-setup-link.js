@@ -5,6 +5,7 @@ import {
   normalizeEmail,
   redactStudentAuth
 } from "../../lib/student-auth.js";
+import { findStudentMatch, isActiveStudent } from "../../lib/student-operational-status.js";
 
 const getBaseUrl = (req) => {
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
@@ -27,16 +28,17 @@ export default async function handler(req, res) {
     const slug = String(req.body?.slug || "").trim();
     const email = normalizeEmail(req.body?.email);
     const students = await readStudents();
-    const index = students.findIndex((student) =>
-      slug ? student.slug === slug : email ? normalizeEmail(student.email) === email : false
-    );
-    if (index < 0) {
+    const match = findStudentMatch(students, { slug, email });
+    if (!match) {
       return res.status(404).json({ error: "Estudiante no encontrado" });
     }
+    if (!isActiveStudent(match.student)) {
+      return res.status(409).json({ error: "El acceso del estudiante esta inactivo" });
+    }
 
-    const generated = createOneTimeToken(students[index], "passwordSetup", 72);
+    const generated = createOneTimeToken(match.student, "passwordSetup", 72);
     const nextStudents = students.slice();
-    nextStudents[index] = generated.student;
+    nextStudents[match.index] = generated.student;
     await writeStudents(nextStudents);
     const setupUrl = `${getBaseUrl(req)}/set-password?token=${encodeURIComponent(generated.token)}`;
     return res.status(200).json({

@@ -19,6 +19,7 @@
     "test:beginner-media-session": "node scripts/test-beginner-media-session.mjs",
     "test:daily-precheck": "node scripts/test-daily-precheck.mjs",
     "test:direct-access": "node scripts/test-direct-access.mjs",
+    "test:operational-status": "node scripts/test-student-operational-status.mjs",
     "backfill:beginner-25m": "node scripts/backfill-beginner-25m.mjs",
     "students:generate": "node scripts/generate_students.mjs"
   },
