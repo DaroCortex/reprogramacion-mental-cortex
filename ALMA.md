@@ -1567,3 +1567,39 @@ El lote devuelve únicamente campos operativos, prioriza coincidencias activas y
 
 ### Risks / Follow-Up
 Todavía no desplegado. La transferencia productiva de Mariam se ejecutará sólo después del despliegue y un preflight de estado; rollback mediante el backup R2 generado por el endpoint.
+
+## 2026-08-20 14:50:43 -03 - Desplegué el estado operativo seguro de alumnos RM
+
+- Kind: `deploy`
+- Project root: `/Users/forax/Documents/Claude/worktrees/rm-operational-status-20260820`
+- Reason: Habilitar la fuente canónica que necesitan Formulario, Portal y Seguimiento para distinguir audio listo, Advanced y uso real
+
+### Touched
+- GitHub DaroCortex/reprogramacion-mental-cortex commit 3a0d438; Vercel dpl_94m1DDqgRnsajuo9oGeuR1fc9yrc; rm.academiacortex.com.ar
+
+### Details
+El deployment productivo quedó promovido con el SHA exacto. Los endpoints administrativos nuevos exigen la contraseña administrativa; todavía no se ejecutó ninguna transferencia de identidad.
+
+### Verification
+- Vercel READY/PROMOTED y alias productivo activo; home HTTP 200; POST sin contraseña a student-operational-statuses HTTP 401; pruebas operational-status, students-contract, advanced-policy, students-concurrency y build Vite OK.
+
+### Risks / Follow-Up
+Rollback promoviendo dpl_Bq2fQv6iGmsw94oe7fhc2YatJpxn o revirtiendo 3a0d438. Formulario, Portal y Seguimiento aún deben desplegarse en ese orden.
+
+## 2026-08-20 15:08:56 -03 - Consolidé el email de Mariam en su cuenta RM activa
+
+- Kind: `migration`
+- Project root: `/Users/forax/Documents/Claude/worktrees/rm-operational-status-20260820`
+- Reason: El email estaba en el registro inactivo mariam mientras el audio listo y el uso iOS pertenecían a mariam-rujana
+
+### Touched
+- Producción RM: registros mariam y mariam-rujana; backup R2 backups/students-before-email-transfer-2026-08-20T18-02-33-272Z-mariam-rujana.json
+
+### Details
+El endpoint administrativo transfirió únicamente el email, dejó vacío el origen inactivo y verificó que exista un único propietario activo. No se creó ni cambió contraseña.
+
+### Verification
+- Preflight: origen inactivo y destino activo/listo; respuesta changed=true verified=true; postflight por email resolvió mariam-rujana, active=true, beginner_ready=true, advanced_unlocked=true, identity_needs_review=false y último uso iOS.
+
+### Risks / Follow-Up
+Rollback restaurando el backup privado R2 indicado y verificando unicidad del email. El registro fuente permanece inactivo para preservar historial.
